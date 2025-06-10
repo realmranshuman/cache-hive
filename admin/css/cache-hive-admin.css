@@ -1,0 +1,47 @@
+.cachehive-wrap .nav-tab-wrapper {
+  margin-bottom: 20px;
+}
+.cachehive-tab-content .postbox-container {
+  margin-top: 20px;
+}
+.cachehive-tab-content .form-table th {
+  width: 200px;
+}
+.cachehive-tab-content .form-table td label {
+  display: block;
+  margin-bottom: 0.5em;
+}
+.cachehive-tab-content .postbox .inside {
+  padding: 0 12px 12px;
+}
+.cachehive-tab-content p.submit {
+  margin-top: 0;
+  padding-top: 0;
+}
+/* Rule Builder Styles */
+/* #cachehive-rule-builder .rule-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    background: #f9f9f9;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+#cachehive-rule-builder .rule-row:first-child .rule-logic {
+    visibility: hidden;
+}
+#cachehive-rule-builder .rule-value {
+    flex-grow: 1;
+}
+#cachehive-rule-builder .remove-rule {
+    color: #a00;
+    border-color: #a00;
+    padding: 0 8px;
+    line-height: 26px;
+}
+#cachehive-rule-builder .remove-rule:hover {
+    background: #a00;
+    color: #fff;
+} */
