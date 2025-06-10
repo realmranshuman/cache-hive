@@ -1,4 +1,12 @@
 <?php
+/**
+ * Installation Handler
+ *
+ * This file contains the class responsible for plugin installation and activation tasks.
+ *
+ * @package CacheHive
+ */
+
 namespace CacheHive\Includes;
 
 if ( ! defined( 'WPINC' ) ) {
@@ -18,7 +26,7 @@ class Install {
 		self::create_cache_directory();
 		self::install_dropin();
 
-		// Schedule cron job
+		// Schedule cron job for cache maintenance.
 		if ( ! wp_next_scheduled( \CacheHive\Includes\Caching\Page_Cache_Manager::CRON_HOOK ) ) {
 			wp_schedule_event( time(), 'hourly', \CacheHive\Includes\Caching\Page_Cache_Manager::CRON_HOOK );
 		}
@@ -61,8 +69,13 @@ class Install {
 			wp_mkdir_p( $cache_path );
 		}
 
-		if ( ! file_exists( $cache_path . '/index.php' ) ) {
-			@file_put_contents( $cache_path . '/index.php', '<?php // Silence is golden.' );
+		$security_file = $cache_path . '/index.php';
+		if ( ! file_exists( $security_file ) ) {
+			$result = file_put_contents( $security_file, '<?php // Silence is golden.' );
+			if ( false === $result ) {
+				// Log error or handle the failure gracefully.
+				error_log( 'CacheHive: Failed to create security index.php file in cache directory.' );
+			}
 		}
 	}
 }

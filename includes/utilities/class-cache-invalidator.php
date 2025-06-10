@@ -1,4 +1,12 @@
 <?php
+/**
+ * Cache Invalidator Utility Class
+ *
+ * Handles all cache invalidation (clearing) tasks for CacheHive.
+ *
+ * @package CacheHive
+ */
+
 namespace CacheHive\Includes\Utilities;
 
 if ( ! defined( 'WPINC' ) ) {
@@ -10,6 +18,9 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class Cache_Invalidator {
 
+	/**
+	 * Constructor.
+	 */
 	public function __construct() {
 		$this->init_invalidation_hooks();
 	}
@@ -48,6 +59,9 @@ class Cache_Invalidator {
 
 	/**
 	 * Callback for when a new comment is posted or edited.
+	 *
+	 * @param int             $comment_id Comment ID.
+	 * @param int|string|null $comment_approved Approval status.
 	 */
 	public function on_comment_change( $comment_id, $comment_approved = null ) {
 		if ( 1 === $comment_approved || 'approve' === $comment_approved ) {
@@ -57,6 +71,10 @@ class Cache_Invalidator {
 
 	/**
 	 * Callback for when a comment's status changes.
+	 *
+	 * @param string $new_status New status.
+	 * @param string $old_status Old status.
+	 * @param object $comment Comment object.
 	 */
 	public function on_comment_status_change( $new_status, $old_status, $comment ) {
 		if ( $old_status !== $new_status && ( 'approved' === $new_status || 'approved' === $old_status ) ) {
@@ -88,7 +106,11 @@ class Cache_Invalidator {
 
 		// Re-add the security file.
 		if ( ! file_exists( $cache_dir . 'index.php' ) ) {
-			@file_put_contents( $cache_dir . 'index.php', '<?php // Silence is golden.' );
+			// Attempt to create the file and check for errors.
+			$result = file_put_contents( $cache_dir . 'index.php', '<?php // Silence is golden.' );
+			if ( false === $result ) {
+				// Optionally log or handle the error here.
+			}
 		}
 
 		do_action( 'cachehive_entire_cache_cleared' );

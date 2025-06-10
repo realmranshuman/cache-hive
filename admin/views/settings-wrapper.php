@@ -1,9 +1,25 @@
 <?php
+/**
+ * Admin settings wrapper template.
+ *
+ * @package CacheHive
+ */
+
 if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-$active_tab = $_GET['tab'] ?? 'page_cache';
+// Verify nonce and check admin permissions.
+if ( ! current_user_can( 'manage_options' ) ) {
+	wp_die( esc_html__( 'You do not have sufficient permissions to access this page.', 'cache-hive' ) );
+}
+
+// Verify nonce for tab switching.
+if ( isset( $_GET['_wpnonce'] ) && ! wp_verify_nonce( sanitize_key( wp_unslash( $_GET['_wpnonce'] ) ), 'cachehive_tab_nonce' ) ) {
+	wp_die( esc_html__( 'Invalid nonce specified', 'cache-hive' ) );
+}
+
+$active_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'page_cache';
 ?>
 <div class="wrap cachehive-wrap">
 	<h1><?php esc_html_e( 'Cache Settings', 'cache-hive' ); ?></h1>

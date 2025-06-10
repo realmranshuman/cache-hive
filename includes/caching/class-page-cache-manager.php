@@ -1,4 +1,15 @@
 <?php
+/**
+ * Page Cache Manager Class
+ *
+ * Handles the creation and management of static page cache files.
+ * This class is responsible for output buffering, cache file generation,
+ * and cache invalidation scheduling.
+ *
+ * @package CacheHive
+ * @subpackage Caching
+ */
+
 namespace CacheHive\Includes\Caching;
 
 use CacheHive\Includes\Settings;
@@ -16,9 +27,26 @@ class Page_Cache_Manager {
 	const CACHE_DIR = WP_CONTENT_DIR . '/cache/cache-hive/';
 	const CRON_HOOK = 'cachehive_purge_expired_cache';
 
+	/**
+	 * Settings instance.
+	 *
+	 * @var Settings
+	 */
 	private $settings;
+
+	/**
+	 * Cache invalidator instance.
+	 *
+	 * @var Cache_Invalidator
+	 */
 	private $invalidator;
 
+	/**
+	 * Constructor.
+	 *
+	 * @param Settings          $settings    Settings instance.
+	 * @param Cache_Invalidator $invalidator Cache invalidator instance.
+	 */
 	public function __construct( Settings $settings, Cache_Invalidator $invalidator ) {
 		$this->settings    = $settings;
 		$this->invalidator = $invalidator;
@@ -84,7 +112,7 @@ class Page_Cache_Manager {
 			return $buffer;
 		}
 
-		// Perform minification if enabled
+		// Perform minification if enabled.
 		if ( $this->settings->get_option( 'minify_html_enabled' ) ) {
 			$buffer = $this->minify_html( $buffer );
 		}
@@ -117,12 +145,27 @@ class Page_Cache_Manager {
 	 * @return string|false The absolute path to the cache file, or false on invalid URI.
 	 */
 	private function get_cache_filepath() {
-		if ( strpos( $_SERVER['REQUEST_URI'], '..' ) !== false ) {
-			return false; }
+		if ( ! isset( $_SERVER['REQUEST_URI'] ) ) {
+			return false;
+		}
+
+		$request_uri = sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) );
+		if ( strpos( $request_uri, '..' ) !== false ) {
+			return false;
+		}
 
 		// Use the override constant if it exists, otherwise use the server variable.
-		$host = defined( 'CACHEHIVE_HOST' ) ? CACHEHIVE_HOST : strtok( $_SERVER['HTTP_HOST'], ':' );
-		$uri  = $_SERVER['REQUEST_URI'];
+		$host = '';
+		if ( defined( 'CACHEHIVE_HOST' ) ) {
+			$host = CACHEHIVE_HOST;
+		} elseif ( isset( $_SERVER['HTTP_HOST'] ) ) {
+			$host = strtok( sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ), ':' );
+		}
+
+		if ( empty( $host ) ) {
+			return false;
+		}
+
 		$path = self::CACHE_DIR . $host;
 
 		// Add mobile sub-directory if mobile caching is enabled and it's a mobile request.
@@ -130,9 +173,9 @@ class Page_Cache_Manager {
 			$path .= '/mobile';
 		}
 
-		$path .= $uri;
+		$path .= $request_uri;
 
-		if ( '/' === substr( $uri, -1 ) ) {
+		if ( '/' === substr( $request_uri, -1 ) ) {
 			$filepath = $path . 'index.html';
 		} else {
 			$filepath = $path;
@@ -140,6 +183,7 @@ class Page_Cache_Manager {
 
 		return $filepath;
 	}
+
 	/**
 	 * Simple mobile detection based on User-Agent.
 	 *
@@ -150,9 +194,11 @@ class Page_Cache_Manager {
 			return false;
 		}
 
+		$user_agent = sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) );
+
 		// This uses the same regex as the deprecated wp_is_mobile() for consistency.
 		$mobile_pattern = '/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|rim)|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i';
-		return (bool) preg_match( $mobile_pattern, $_SERVER['HTTP_USER_AGENT'] );
+		return (bool) preg_match( $mobile_pattern, $user_agent );
 	}
 
 	/**
@@ -169,17 +215,17 @@ class Page_Cache_Manager {
 		$buffer = preg_replace( '/<!--(.|\s)*?-->/', '', $buffer );
 		$buffer = preg_replace( '/\s+/', ' ', $buffer );
 
-		// Minify inline CSS if enabled.
+		// Minify inline CSS if enabled for better performance.
 		if ( $minify_inline_css ) {
 			$buffer = preg_replace_callback(
 				'#<style(.*?)>(.*?)</style>#is',
 				function ( $matches ) {
 					$css = $matches[2];
-					// Remove comments
+					// Remove CSS comments for size reduction.
 					$css = preg_replace( '!/\*[^*]*\*+([^/][^*]*\*+)*/!', '', $css );
-					// Remove space after colons
+					// Remove space after colons for compression.
 					$css = str_replace( ': ', ':', $css );
-					// Remove whitespace
+					// Remove whitespace for minimal file size.
 					$css = str_replace( array( "\r\n", "\r", "\n", "\t", '  ', '    ', '    ' ), '', $css );
 					return "<style{$matches[1]}>{$css}</style>";
 				},
@@ -192,14 +238,14 @@ class Page_Cache_Manager {
 			$buffer = preg_replace_callback(
 				'#<script(.*?)>(.*?)</script>#is',
 				function ( $matches ) {
-					// Don't minify scripts with a type attribute like application/ld+json
+					// Don't minify scripts with a type attribute like application/ld+json.
 					if ( strpos( $matches[1], 'type' ) !== false && strpos( $matches[1], 'javascript' ) === false ) {
 						return $matches[0];
 					}
 					// Basic JS minification: remove comments and newlines. A proper minifier is better but more complex.
 					$js = $matches[2];
-					$js = preg_replace( '/\s*\/\/[^\n]*/', '', $js ); // single line comments
-					$js = preg_replace( '/\s*\/\*(.|\s)*?\*\//', '', $js ); // multi-line comments
+					$js = preg_replace( '/\s*\/\/[^\n]*/', '', $js ); // single line comments.
+					$js = preg_replace( '/\s*\/\*(.|\s)*?\*\//', '', $js ); // multi-line comments.
 					$js = preg_replace( '/\s+/', ' ', $js );
 					return "<script{$matches[1]}>" . trim( $js ) . '</script>';
 				},
@@ -209,6 +255,7 @@ class Page_Cache_Manager {
 
 		return trim( $buffer );
 	}
+
 	/**
 	 * Basic check to see if the content is likely HTML.
 	 *

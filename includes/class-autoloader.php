@@ -1,4 +1,12 @@
 <?php
+/**
+ * Autoloader Class
+ *
+ * Handles the autoloading of all plugin classes using spl_autoload_register.
+ *
+ * @package CacheHive
+ */
+
 namespace CacheHive\Includes;
 
 if ( ! defined( 'WPINC' ) ) {
@@ -12,6 +20,11 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class Autoloader {
 
+	/**
+	 * Constructor.
+	 *
+	 * Registers the autoloader callback with spl_autoload_register.
+	 */
 	public function __construct() {
 		spl_autoload_register( array( $this, 'load' ) );
 	}

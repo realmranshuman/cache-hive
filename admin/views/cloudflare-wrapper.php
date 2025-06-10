@@ -1,4 +1,15 @@
 <?php
+/**
+ * Cloudflare Integration Admin View.
+ *
+ * This file renders the Cloudflare integration settings page in the WordPress admin area
+ * for the Cache Hive plugin. It provides a UI for entering and saving Cloudflare API credentials.
+ *
+ * @package   CacheHive
+ * @subpackage Admin/Views
+ * @since     1.0.0
+ */
+
 if ( ! defined( 'WPINC' ) ) {
 	die;
 }

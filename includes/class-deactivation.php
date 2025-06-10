@@ -1,4 +1,12 @@
 <?php
+/**
+ * Deactivation Handler
+ *
+ * This file contains the class responsible for cleanup tasks when the plugin is deactivated.
+ *
+ * @package CacheHive
+ */
+
 namespace CacheHive\Includes;
 
 if ( ! defined( 'WPINC' ) ) {
@@ -10,6 +18,12 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class Deactivation {
 
+	/**
+	 * Performs cleanup tasks when the plugin is deactivated.
+	 *
+	 * This method removes the advanced-cache.php drop-in, unschedules cron jobs,
+	 * and flushes rewrite rules to ensure a clean deactivation state.
+	 */
 	public static function deactivate() {
 		self::uninstall_dropin(); // <-- Add this
 

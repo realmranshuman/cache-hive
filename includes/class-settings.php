@@ -1,45 +1,91 @@
 <?php
+/**
+ * Settings Management Class
+ *
+ * Handles all plugin settings operations including reading, writing,
+ * and rendering settings fields.
+ *
+ * @package CacheHive
+ */
+
 namespace CacheHive\Includes;
 
 if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
+/**
+ * Class Settings
+ *
+ * Manages plugin settings and renders settings fields.
+ */
 class Settings {
+
+	/**
+	 * Holds the plugin options.
+	 *
+	 * @var array
+	 */
 	private $options;
 
+	/**
+	 * Constructor.
+	 *
+	 * Initializes the settings by loading options from WordPress.
+	 */
 	public function __construct() {
 		$this->options = get_option( CACHEHIVE_SETTINGS_SLUG, $this->get_default_settings() );
 	}
 
-	public function get_option( $key, $default = null ) {
-		return isset( $this->options[ $key ] ) ? $this->options[ $key ] : $default;
+	/**
+	 * Get a specific option value.
+	 *
+	 * @param string $key     Option key to retrieve.
+	 * @param mixed  $fallback Fallback value if option is not set.
+	 * @return mixed Option value or fallback.
+	 */
+	public function get_option( $key, $fallback = null ) {
+		return isset( $this->options[ $key ] ) ? $this->options[ $key ] : $fallback;
 	}
 
+	/**
+	 * Get default settings.
+	 *
+	 * @return array Default settings array.
+	 */
 	public function get_default_settings() {
 		$default_paths   = "/wp-admin/\n/wp-login.php\n/wp-cron.php\n/xmlrpc.php\n/wp-json/\n/my-account/";
 		$default_cookies = "comment_author\nwordpress_logged_in\nwp-postpass";
 
 		return array(
-			// Page Cache
+			// Page Cache settings.
 			'page_cache_enabled'   => 0,
 			'cache_lifespan'       => 10,
 			'mobile_cache_enabled' => 0,
 			'minify_html_enabled'  => 0,
-			// Exclusions
+			// Exclusion settings.
 			'excluded_url_paths'   => $default_paths,
 			'excluded_cookies'     => $default_cookies,
-			// Cloudflare Settings
+			// Cloudflare settings.
 			'cloudflare_api_token' => '',
 			'cloudflare_zone_id'   => '',
 		);
 	}
 
+	/**
+	 * Sanitize and validate settings input.
+	 *
+	 * @param array $input Raw input array.
+	 * @return array Sanitized output array.
+	 */
 	public function sanitize( $input ) {
 		$current_options  = (array) get_option( CACHEHIVE_SETTINGS_SLUG, $this->get_default_settings() );
 		$sanitized_output = $current_options;
 
-		if ( isset( $_POST['cachehive_clear_cache_submit'] ) ) {
+		if ( isset( $_POST['cachehive_clear_cache_submit'] )
+			&& isset( $_POST['_wpnonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'cachehive_settings' )
+		) {
 			do_action( 'cachehive_manual_clear_cache_request' );
 			add_settings_error( 'cachehive-notices', 'cache-cleared', __( 'Site cache has been cleared.', 'cache-hive' ), 'updated' );
 		}
@@ -63,6 +109,11 @@ class Settings {
 		return $sanitized_output;
 	}
 
+	/**
+	 * Compile local exclusions into a PHP file.
+	 *
+	 * @param array $settings Current settings array.
+	 */
 	private function compile_local_exclusions( $settings ) {
 		$config_dir = WP_CONTENT_DIR . '/cache/cache-hive/config';
 		if ( ! is_dir( $config_dir ) ) {
@@ -91,40 +142,72 @@ class Settings {
 		file_put_contents( $config_file, $php_code, LOCK_EX );
 	}
 
-	// --- RENDER METHODS ---
+	/**
+	 * Render a checkbox field.
+	 *
+	 * @param array $args Field arguments.
+	 */
 	public function render_checkbox_field( $args ) {
 		$option_name = $args['label_for'];
 		$value       = $this->get_option( $option_name, 0 );
-		echo '<label><input type="checkbox" id="' . esc_attr( $option_name ) . '" name="' . CACHEHIVE_SETTINGS_SLUG . '[' . esc_attr( $option_name ) . ']" value="1" ' . checked( 1, $value, false ) . ' /> ';
+		echo '<label><input type="checkbox" id="' . esc_attr( $option_name ) . '" name="' . esc_attr( CACHEHIVE_SETTINGS_SLUG . '[' . $option_name . ']' ) . '" value="1" ' . checked( 1, $value, false ) . ' /> ';
 		echo ' ' . esc_html( $args['description'] ?? '' ) . '</label>';
 	}
+
+	/**
+	 * Render a number field.
+	 *
+	 * @param array $args Field arguments.
+	 */
 	public function render_number_field( $args ) {
 		$option_name = $args['label_for'];
 		$value       = $this->get_option( $option_name, 0 );
 		$suffix      = isset( $args['suffix'] ) ? ' ' . esc_html( $args['suffix'] ) : '';
-		echo '<input type="number" id="' . esc_attr( $option_name ) . '" name="' . CACHEHIVE_SETTINGS_SLUG . '[' . esc_attr( $option_name ) . ']" value="' . esc_attr( $value ) . '" class="small-text" /> ' . esc_html( $suffix );
+		echo '<input type="number" id="' . esc_attr( $option_name ) . '" name="' . esc_attr( CACHEHIVE_SETTINGS_SLUG . '[' . $option_name . ']' ) . '" value="' . esc_attr( $value ) . '" class="small-text" /> ' . wp_kses_post( $suffix );
 		if ( ! empty( $args['description'] ) ) {
-			echo '<p class="description">' . esc_html( $args['description'] ) . '</p>'; }
+			echo '<p class="description">' . esc_html( $args['description'] ) . '</p>';
+		}
 	}
+
+	/**
+	 * Render a textarea field.
+	 *
+	 * @param array $args Field arguments.
+	 */
 	public function render_textarea_field( $args ) {
 		$option_name = $args['label_for'];
 		$value       = $this->get_option( $option_name, '' );
-		echo '<textarea id="' . esc_attr( $option_name ) . '" name="' . CACHEHIVE_SETTINGS_SLUG . '[' . esc_attr( $option_name ) . ']" rows="6" class="large-text code">' . esc_textarea( $value ) . '</textarea>';
+		echo '<textarea id="' . esc_attr( $option_name ) . '" name="' . esc_attr( CACHEHIVE_SETTINGS_SLUG . '[' . $option_name . ']' ) . '" rows="6" class="large-text code">' . esc_textarea( $value ) . '</textarea>';
 		if ( ! empty( $args['description'] ) ) {
-			echo '<p class="description">' . wp_kses_post( $args['description'] ) . '</p>'; }
+			echo '<p class="description">' . wp_kses_post( $args['description'] ) . '</p>';
+		}
 	}
+
+	/**
+	 * Render a text field.
+	 *
+	 * @param array $args Field arguments.
+	 */
 	public function render_text_field( $args ) {
 		$option_name = $args['label_for'];
 		$value       = $this->get_option( $option_name, '' );
-		echo '<input type="text" id="' . esc_attr( $option_name ) . '" name="' . CACHEHIVE_SETTINGS_SLUG . '[' . esc_attr( $option_name ) . ']" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		echo '<input type="text" id="' . esc_attr( $option_name ) . '" name="' . esc_attr( CACHEHIVE_SETTINGS_SLUG . '[' . $option_name . ']' ) . '" value="' . esc_attr( $value ) . '" class="regular-text" />';
 		if ( ! empty( $args['description'] ) ) {
-			echo '<p class="description">' . wp_kses_post( $args['description'] ) . '</p>'; }
+			echo '<p class="description">' . wp_kses_post( $args['description'] ) . '</p>';
+		}
 	}
+
+	/**
+	 * Render a password field.
+	 *
+	 * @param array $args Field arguments.
+	 */
 	public function render_password_field( $args ) {
 		$option_name = $args['label_for'];
 		$value       = $this->get_option( $option_name, '' );
-		echo '<input type="password" id="' . esc_attr( $option_name ) . '" name="' . CACHEHIVE_SETTINGS_SLUG . '[' . esc_attr( $option_name ) . ']" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		echo '<input type="password" id="' . esc_attr( $option_name ) . '" name="' . esc_attr( CACHEHIVE_SETTINGS_SLUG . '[' . $option_name . ']' ) . '" value="' . esc_attr( $value ) . '" class="regular-text" />';
 		if ( ! empty( $args['description'] ) ) {
-			echo '<p class="description">' . wp_kses_post( $args['description'] ) . '</p>'; }
+			echo '<p class="description">' . wp_kses_post( $args['description'] ) . '</p>';
+		}
 	}
 }

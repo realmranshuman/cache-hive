@@ -6,6 +6,9 @@
  * Its purpose is to check for a static cache file and serve it directly,
  * or to stop if an exclusion rule is met. It must be extremely fast.
  *
+ * Note: WordPress sanitization functions are not available at this stage.
+ *
+ * @package CacheHive
  * @version 1.0.0
  */
 
@@ -31,25 +34,49 @@ if ( is_readable( $ch_exclusion_file ) ) {
 // === STAGE 2: PREPARE FOR CACHE SERVING ===
 // If we've reached this point, the request is potentially cacheable.
 
-// A fast helper function for mobile detection.
+/**
+ * Quick mobile device detection based on user agent.
+ *
+ * @return bool True if request is from a mobile device.
+ */
 function cachehive_is_mobile_request_early() {
-	if ( empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
+	if ( ! isset( $_SERVER['HTTP_USER_AGENT'] ) ) {
 		return false;
 	}
+
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
+	$user_agent = strip_tags( trim( $_SERVER['HTTP_USER_AGENT'] ) );
 	// This regex is a standard pattern for detecting a wide range of mobile devices.
 	$mobile_pattern = '/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|rim)|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i';
-	return (bool) preg_match( $mobile_pattern, $_SERVER['HTTP_USER_AGENT'] );
+	return (bool) preg_match( $mobile_pattern, $user_agent );
 }
 
 // --- Path Construction ---
-if ( strpos( $_SERVER['REQUEST_URI'], '..' ) !== false ) {
+if ( ! isset( $_SERVER['REQUEST_URI'] ) ) {
+	return;
+}
+
+// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
+$request_uri = strip_tags( trim( $_SERVER['REQUEST_URI'] ) );
+if ( strpos( $request_uri, '..' ) !== false ) {
 	// Prevent directory traversal attacks.
 	return;
 }
 
 // Use strtok to safely get the host and URI path without port numbers or query strings.
-$ch_host     = defined( 'CACHEHIVE_HOST' ) ? CACHEHIVE_HOST : strtok( $_SERVER['HTTP_HOST'], ':' );
-$ch_uri_path = strtok( $_SERVER['REQUEST_URI'], '?' );
+$ch_host = '';
+if ( defined( 'CACHEHIVE_HOST' ) ) {
+	$ch_host = CACHEHIVE_HOST;
+} elseif ( isset( $_SERVER['HTTP_HOST'] ) ) {
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
+	$ch_host = strtok( strip_tags( trim( $_SERVER['HTTP_HOST'] ) ), ':' );
+}
+
+if ( empty( $ch_host ) ) {
+	return;
+}
+
+$ch_uri_path = strtok( $request_uri, '?' );
 
 // Determine the base path for cache files.
 $ch_base_path = WP_CONTENT_DIR . '/cache/cache-hive/' . $ch_host;
