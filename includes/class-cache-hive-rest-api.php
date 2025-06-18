@@ -72,7 +72,7 @@ final class Cache_Hive_REST_API {
      */
     public static function get_settings() {
         $settings = Cache_Hive_Settings::get_settings();
-        // Map backend config keys to frontend field names and convert textarea fields to arrays
+        // Map backend config keys to frontend field names and convert textarea fields to newline-delimited strings
         $map = [
             // Cache Tab
             'enableCache' => 'enableCache',
@@ -107,19 +107,19 @@ final class Cache_Hive_REST_API {
             'excludeCookies' => 'excludeCookies',
             'excludeRoles' => 'excludeRoles',
             // Browser Cache Tab
-            'browserCacheEnabled' => 'browserCache',
+            'browserCacheEnabled' => 'browserCacheEnabled',
             'browserCacheTTL' => 'browserCacheTTL',
             // Object Cache Tab
-            'objectCacheEnabled' => 'enabled',
-            'objectCacheMethod' => 'method',
-            'objectCacheHost' => 'host',
-            'objectCachePort' => 'port',
-            'objectCacheLifetime' => 'lifetime',
-            'objectCacheUsername' => 'username',
-            'objectCachePassword' => 'password',
-            'objectCacheGlobalGroups' => 'globalGroups',
-            'objectCacheNoCacheGroups' => 'noCacheGroups',
-            'objectCachePersistentConnection' => 'persistentConnection',
+            'objectCacheEnabled' => 'objectCacheEnabled',
+            'objectCacheMethod' => 'objectCacheMethod',
+            'objectCacheHost' => 'objectCacheHost',
+            'objectCachePort' => 'objectCachePort',
+            'objectCacheLifetime' => 'objectCacheLifetime',
+            'objectCacheUsername' => 'objectCacheUsername',
+            'objectCachePassword' => 'objectCachePassword',
+            'objectCacheGlobalGroups' => 'objectCacheGlobalGroups',
+            'objectCacheNoCacheGroups' => 'objectCacheNoCacheGroups',
+            'objectCachePersistentConnection' => 'objectCachePersistentConnection',
         ];
         $textarea_fields = [
             'mobileUserAgents', 'customPurgeHooks', 'excludeUris', 'excludeQueryStrings', 'excludeCookies',
@@ -129,7 +129,7 @@ final class Cache_Hive_REST_API {
         foreach ($map as $configKey => $frontendKey) {
             if (isset($settings[$configKey])) {
                 if (in_array($configKey, $textarea_fields)) {
-                    $frontend[$frontendKey] = $settings[$configKey] === '' ? '' : preg_split('/\r?\n/', $settings[$configKey]);
+                    $frontend[$frontendKey] = $settings[$configKey]; // Always return as newline-delimited string
                 } else {
                     $frontend[$frontendKey] = $settings[$configKey];
                 }
@@ -150,7 +150,7 @@ final class Cache_Hive_REST_API {
         if ( empty( $params ) ) {
             return new WP_REST_Response( ['error' => 'No settings provided.'], 400 );
         }
-        // Map frontend field names to backend config keys
+        // Map frontend field names to backend config keys (camelCase, as in config.php)
         $reverse_map = [
             // Cache Tab
             'enableCache' => 'enableCache',
@@ -185,34 +185,30 @@ final class Cache_Hive_REST_API {
             'excludeCookies' => 'excludeCookies',
             'excludeRoles' => 'excludeRoles',
             // Browser Cache Tab
-            'browserCache' => 'browserCacheEnabled',
+            'browserCacheEnabled' => 'browserCacheEnabled',
             'browserCacheTTL' => 'browserCacheTTL',
             // Object Cache Tab
-            'enabled' => 'objectCacheEnabled',
-            'method' => 'objectCacheMethod',
-            'host' => 'objectCacheHost',
-            'port' => 'objectCachePort',
-            'lifetime' => 'objectCacheLifetime',
-            'username' => 'objectCacheUsername',
-            'password' => 'objectCachePassword',
-            'globalGroups' => 'objectCacheGlobalGroups',
-            'noCacheGroups' => 'objectCacheNoCacheGroups',
-            'persistentConnection' => 'objectCachePersistentConnection',
+            'objectCacheEnabled' => 'objectCacheEnabled',
+            'objectCacheMethod' => 'objectCacheMethod',
+            'objectCacheHost' => 'objectCacheHost',
+            'objectCachePort' => 'objectCachePort',
+            'objectCacheLifetime' => 'objectCacheLifetime',
+            'objectCacheUsername' => 'objectCacheUsername',
+            'objectCachePassword' => 'objectCachePassword',
+            'objectCacheGlobalGroups' => 'objectCacheGlobalGroups',
+            'objectCacheNoCacheGroups' => 'objectCacheNoCacheGroups',
+            'objectCachePersistentConnection' => 'objectCachePersistentConnection',
         ];
         $textarea_fields = [
             'mobileUserAgents', 'customPurgeHooks', 'excludeUris', 'excludeQueryStrings', 'excludeCookies',
-            'globalGroups', 'noCacheGroups'
+            'objectCacheGlobalGroups', 'objectCacheNoCacheGroups'
         ];
         $backend = [];
         foreach ($params as $frontendKey => $value) {
             if (isset($reverse_map[$frontendKey])) {
                 $configKey = $reverse_map[$frontendKey];
                 if (in_array($frontendKey, $textarea_fields)) {
-                    if (is_array($value)) {
-                        $backend[$configKey] = implode("\n", array_map('trim', $value));
-                    } else {
-                        $backend[$configKey] = trim($value);
-                    }
+                    $backend[$configKey] = trim((string)$value); // Always save as string
                 } elseif (is_bool($value)) {
                     $backend[$configKey] = (bool)$value;
                 } elseif (is_numeric($value) && strpos($frontendKey, 'TTL') !== false) {
