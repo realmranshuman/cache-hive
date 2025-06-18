@@ -132,20 +132,18 @@ final class Cache_Hive_Disk {
         }
 
         $host = strtolower( $_SERVER['HTTP_HOST'] );
-        $path_parts = [$host];
+        $dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
 
-        // For logged-in users, add hashed user folder after domain
+        // For logged-in users, add hashed user folder after slug (not before)
         if ( function_exists('is_user_logged_in') && is_user_logged_in() && function_exists('wp_get_current_user') ) {
             $settings = method_exists('Cache_Hive_Settings', 'get_settings') ? Cache_Hive_Settings::get_settings() : [];
             if ( isset($settings['cacheLoggedUsers']) && $settings['cacheLoggedUsers'] ) {
                 $user = wp_get_current_user();
-                // Use a hash for the user folder for privacy
                 $user_hash = 'user_' . md5($user->ID . (defined('AUTH_KEY') ? AUTH_KEY : 'cachehive'));
-                $path_parts[] = $user_hash;
+                $dir_path .= '/' . $user_hash;
             }
         }
 
-        $dir_path = CACHE_HIVE_CACHE_DIR . '/' . implode('/', $path_parts) . $uri;
         $file_name = (method_exists('Cache_Hive_Engine', 'is_mobile') && Cache_Hive_Engine::is_mobile()) ? 'index-mobile.html' : 'index.html';
         return $dir_path . '/' . $file_name;
     }
@@ -424,9 +422,12 @@ final class Cache_Hive_Disk {
             if ($domain === '.' || $domain === '..') continue;
             $domain_path = $cache_dir . '/' . $domain;
             if (!is_dir($domain_path)) continue;
-            $user_path = $domain_path . '/' . $user_hash;
-            if (is_dir($user_path)) {
-                self::delete_directory($user_path);
+            // Recursively find all user_hash folders under all slugs
+            $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($domain_path, RecursiveDirectoryIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
+            foreach ($rii as $file) {
+                if ($file->isDir() && basename($file->getPathname()) === $user_hash) {
+                    self::delete_directory($file->getPathname());
+                }
             }
         }
     }
