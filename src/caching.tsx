@@ -54,7 +54,6 @@ export const initialSettingsState: AllCacheSettings = {
   frontPageTTL: "604800",
   feedTTL: "604800",
   restTTL: "604800",
-  autoPurgeAllPages: true,
   autoPurgeFrontPage: true,
   autoPurgeHomePage: false,
   autoPurgePages: true,
@@ -108,10 +107,10 @@ function CacheSettingsContent({ resource, onSettingsUpdate }: CacheSettingsConte
       const payload = { ...settings, ...data }; // Overlay changed data onto current settings.
 
       try {
-        const updatedSettingsFromServer = await updateSettings(payload);
-        // Normalize the updated settings received from the server.
-        const normalizedUpdatedSettings = normalizeSettingsData(updatedSettingsFromServer);
-        
+        await updateSettings(payload);
+        // Always re-fetch from backend after save to get normalized/corrected values
+        const freshSettings = await getSettings();
+        const normalizedUpdatedSettings = normalizeSettingsData(freshSettings);
         setSettings(normalizedUpdatedSettings); // Update local state
         onSettingsUpdate(normalizedUpdatedSettings); // Notify parent to update the resource
 
@@ -152,7 +151,7 @@ function CacheSettingsContent({ resource, onSettingsUpdate }: CacheSettingsConte
   };
 
   const autoPurgeTabInitial: AutoPurgeFormData = {
-    autoPurgeAllPages: settings.autoPurgeAllPages,
+    autoPurgeEntireSite: settings.autoPurgeEntireSite, 
     autoPurgeFrontPage: settings.autoPurgeFrontPage,
     autoPurgeHomePage: settings.autoPurgeHomePage,
     autoPurgePages: settings.autoPurgePages,

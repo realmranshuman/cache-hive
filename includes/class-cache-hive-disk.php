@@ -275,6 +275,58 @@ final class Cache_Hive_Disk {
     }
 
     /**
+     * Purges the entire private cache for all users.
+     *
+     * @since 1.0.0
+     */
+    public static function purge_all_private() {
+        $cache_dir = CACHE_HIVE_CACHE_DIR;
+        if ( ! is_dir( $cache_dir ) ) return;
+        $domains = scandir($cache_dir);
+        foreach ($domains as $domain) {
+            if ($domain === '.' || $domain === '..') continue;
+            $domain_path = $cache_dir . '/' . $domain;
+            if (!is_dir($domain_path)) continue;
+            $subdirs = scandir($domain_path);
+            foreach ($subdirs as $subdir) {
+                if (strpos($subdir, 'user_') === 0) {
+                    $user_path = $domain_path . '/' . $subdir;
+                    if (is_dir($user_path)) {
+                        self::delete_directory($user_path);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Purges a single private URL for all users.
+     *
+     * @since 1.0.0
+     * @param string $url The URL to purge.
+     */
+    public static function purge_private_url( $url ) {
+        $url_parts = parse_url( $url );
+        $uri = rtrim( $url_parts['path'], '/' );
+        if ( empty( $uri ) ) {
+            $uri = '/__index__';
+        }
+        $host = strtolower( $url_parts['host'] );
+        $dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
+        if ( is_dir( $dir_path ) ) {
+            $subdirs = scandir($dir_path);
+            foreach ($subdirs as $subdir) {
+                if (strpos($subdir, 'user_') === 0) {
+                    $user_path = $dir_path . '/' . $subdir;
+                    if (is_dir($user_path)) {
+                        self::delete_directory($user_path);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Recursively deletes a directory.
      *
      * @since 1.0.0

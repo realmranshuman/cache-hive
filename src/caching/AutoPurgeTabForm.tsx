@@ -17,7 +17,7 @@ import {
 // Schema field names MUST match the keys in your AllCacheSettings and PHP defaults
 const autoPurgeSchema = z.object({
   // Auto Purge Rules
-  autoPurgeAllPages: z.boolean(), // Renamed
+  autoPurgeEntireSite: z.boolean().optional(), // Make optional
   autoPurgeFrontPage: z.boolean(),
   autoPurgeHomePage: z.boolean(),
   autoPurgePages: z.boolean(),
@@ -29,7 +29,9 @@ const autoPurgeSchema = z.object({
   autoPurgeTermArchive: z.boolean(),
   // Global Settings
   purgeOnUpgrade: z.boolean().optional(),
-  serveStale: z.boolean().optional(), // Renamed
+  serveStale: z.boolean().optional(),
+  // Custom Purge Hooks
+  customPurgeHooks: z.string().optional(),
 });
 
 export type AutoPurgeFormData = z.infer<typeof autoPurgeSchema>;
@@ -50,7 +52,7 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
   const form = useForm<AutoPurgeFormData>({
     resolver: zodResolver(autoPurgeSchema),
     defaultValues: {
-      autoPurgeAllPages: initial.autoPurgeAllPages ?? false,
+      autoPurgeEntireSite: initial.autoPurgeEntireSite ?? false, // Default to false if not set
       autoPurgeFrontPage: initial.autoPurgeFrontPage ?? false,
       autoPurgeHomePage: initial.autoPurgeHomePage ?? false,
       autoPurgePages: initial.autoPurgePages ?? false,
@@ -62,6 +64,7 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
       autoPurgeTermArchive: initial.autoPurgeTermArchive ?? false,
       purgeOnUpgrade: initial.purgeOnUpgrade ?? false,
       serveStale: initial.serveStale ?? false,
+      customPurgeHooks: initial.customPurgeHooks ?? `switch_theme\ndeactivated_plugin\nactivated_plugin\nwp_update_nav_menu\nwp_update_nav_menu_item`,
     },
   });
 
@@ -70,12 +73,26 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
   }, [initial, form.reset]);
 
   async function handleSubmit(data: AutoPurgeFormData) {
-    await onSubmit(data);
+    // Ensure all boolean keys are present, even if false
+    const allKeys = [
+      "autoPurgeEntireSite", "autoPurgeFrontPage", "autoPurgeHomePage", "autoPurgePages",
+      "autoPurgeAuthorArchive", "autoPurgePostTypeArchive", "autoPurgeYearlyArchive",
+      "autoPurgeMonthlyArchive", "autoPurgeDailyArchive", "autoPurgeTermArchive",
+      "purgeOnUpgrade", "serveStale"
+    ];
+    const completeData: AutoPurgeFormData = { ...data };
+    allKeys.forEach((key) => {
+      if (typeof completeData[key as keyof AutoPurgeFormData] !== "boolean") {
+        // If missing, set to false
+        (completeData as any)[key] = false;
+      }
+    });
+    await onSubmit(completeData);
   }
 
   // Define which keys are part of the "Auto Purge Rules For Publish/Update" group
   const autoPurgeRuleKeys = [
-    "autoPurgeAllPages", "autoPurgeFrontPage", "autoPurgeHomePage", "autoPurgePages",
+    "autoPurgeEntireSite", "autoPurgeFrontPage", "autoPurgeHomePage", "autoPurgePages",
     "autoPurgeAuthorArchive", "autoPurgePostTypeArchive", "autoPurgeYearlyArchive",
     "autoPurgeMonthlyArchive", "autoPurgeDailyArchive", "autoPurgeTermArchive"
   ] as const;
@@ -117,7 +134,7 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
                       />
                     </FormControl>
                     <FormLabel htmlFor={key} className="text-sm font-normal cursor-pointer flex-grow">
-                      {formatLabel(key)} {/* Use helper for label */}
+                      {formatLabel(key.replace('EntireSite', 'Entire Site Cache'))} {/* Use helper for label, with special case */}
                     </FormLabel>
                     <FormMessage />
                   </FormItem>
@@ -127,6 +144,28 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
           </div>
         </div>
 
+        {/* Custom Purge Hooks Textarea */}
+        <FormField
+          control={form.control}
+          name="customPurgeHooks"
+          render={({ field }) => (
+            <FormItem className="pt-4">
+              <FormLabel>Custom Purge Hooks</FormLabel>
+              <FormControl>
+                <textarea
+                  className="w-full min-h-[80px] border rounded-md p-2 font-mono text-xs"
+                  placeholder="Enter one hook per line (e.g. switch_theme)"
+                  {...field}
+                  disabled={isSaving}
+                />
+              </FormControl>
+              <div className="text-xs text-muted-foreground mt-1">
+                When any of these hooks fire, the entire cache will be purged. Default hooks: <code>switch_theme</code>, <code>deactivated_plugin</code>, <code>activated_plugin</code>, <code>wp_update_nav_menu</code>, <code>wp_update_nav_menu_item</code>.
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name="serveStale" // Corrected name

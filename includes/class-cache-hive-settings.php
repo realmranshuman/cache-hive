@@ -99,7 +99,7 @@ final class Cache_Hive_Settings {
             'restTTL' => 604800,
 
             // --- Auto Purge Tab ---
-            'autoPurgeAllPages' => true,
+            'autoPurgeEntireSite' => false, // Default to false
             'autoPurgeFrontPage' => true,
             'autoPurgeHomePage' => false,
             'autoPurgePages' => true,
@@ -111,6 +111,7 @@ final class Cache_Hive_Settings {
             'autoPurgeTermArchive' => true,
             'purgeOnUpgrade' => true,
             'serveStale' => false,
+            'customPurgeHooks' => "switch_theme\ndeactivated_plugin\nactivated_plugin\nwp_update_nav_menu\nwp_update_nav_menu_item",
 
             // --- Exclusions Tab ---
             'excludeUris' => implode("\n", $default_exclude_uris),
@@ -154,34 +155,36 @@ final class Cache_Hive_Settings {
     public static function sanitize_settings( $input ) {
         $defaults = self::get_default_settings();
         $sanitized = [];
-        
+        // Only allow keys that exist in defaults
         foreach ( $defaults as $key => $default_value ) {
-            if ( ! isset( $input[ $key ] ) ) {
-                continue; // Only process submitted keys
-            }
-
-            $value = $input[ $key ];
-
-            if ( is_bool( $default_value ) ) {
-                $sanitized[ $key ] = (bool) $value;
-            } elseif ( is_int( $default_value ) ) {
-                $sanitized[ $key ] = absint( $value );
-            } elseif ( is_array( $default_value ) ) {
-                $sanitized[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : [];
-            } else {
-                // Handle textarea fields that need to preserve line breaks
-                if ( in_array( $key, ['mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies'] ) ) {
-                    // Split by newlines, trim each line, remove empty lines, then rejoin with newlines
-                    $lines = explode("\n", $value);
-                    $lines = array_filter(array_map('trim', $lines));
-                    $sanitized[ $key ] = implode("\n", $lines);
+            if ( isset( $input[ $key ] ) ) {
+                $value = $input[ $key ];
+                if ( is_bool( $default_value ) ) {
+                    $sanitized[ $key ] = (bool) $value;
+                } elseif ( is_int( $default_value ) ) {
+                    $sanitized[ $key ] = absint( $value );
+                } elseif ( is_array( $default_value ) ) {
+                    $sanitized[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : [];
                 } else {
-                    // Regular text fields
-                    $sanitized[ $key ] = sanitize_text_field( $value );
+                    // Handle textarea fields that need to preserve line breaks
+                    if ( in_array( $key, ['mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies', 'customPurgeHooks'] ) ) {
+                        $lines = explode("\n", $value);
+                        $lines = array_filter(array_map('trim', $lines));
+                        $sanitized[ $key ] = implode("\n", $lines);
+                    } else {
+                        $sanitized[ $key ] = sanitize_text_field( $value );
+                    }
+                }
+            } else {
+                // If a boolean key is missing from input, set it to false
+                if ( is_bool( $default_value ) ) {
+                    $sanitized[ $key ] = false;
+                } else {
+                    $sanitized[ $key ] = $default_value;
                 }
             }
         }
-        
+        // Remove any legacy keys from input
         return $sanitized;
     }
 }

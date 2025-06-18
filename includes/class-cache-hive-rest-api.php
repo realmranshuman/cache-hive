@@ -88,16 +88,12 @@ final class Cache_Hive_REST_API {
             return new WP_REST_Response( ['error' => 'No settings provided.'], 400 );
         }
         
-        $current_settings = Cache_Hive_Settings::get_settings();
+        // Only allow keys that exist in defaults
         $new_settings = Cache_Hive_Settings::sanitize_settings( $params );
-        
-        // Merge with existing settings to not lose any un-submitted keys.
-        $updated_settings = array_merge( $current_settings, $new_settings );
-        
-        update_option( 'cache_hive_settings', $updated_settings );
-        
+        // Do not merge with current_settings, just use sanitized new_settings
+        update_option( 'cache_hive_settings', $new_settings );
         // After updating settings, we need to regenerate the config file.
-        Cache_Hive_Disk::create_config_file( $updated_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
 
         // If Cloudflare settings changed, test connection.
         if ( isset($new_settings['cloudflare_api_token']) || isset($new_settings['cloudflare_api_key']) ) {
