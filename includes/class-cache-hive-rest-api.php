@@ -72,14 +72,70 @@ final class Cache_Hive_REST_API {
      */
     public static function get_settings() {
         $settings = Cache_Hive_Settings::get_settings();
-        // Convert objectCacheGlobalGroups and objectCacheNoCacheGroups to arrays for the frontend
-        if (isset($settings['objectCacheGlobalGroups'])) {
-            $settings['objectCacheGlobalGroups'] = preg_split('/\r?\n/', $settings['objectCacheGlobalGroups']);
+        // Map backend config keys to frontend field names and convert textarea fields to arrays
+        $map = [
+            // Cache Tab
+            'enableCache' => 'enableCache',
+            'cacheLoggedUsers' => 'cacheLoggedUsers',
+            'cacheCommenters' => 'cacheCommenters',
+            'cacheRestApi' => 'cacheRestApi',
+            'cacheMobile' => 'cacheMobile',
+            'mobileUserAgents' => 'mobileUserAgents',
+            // TTL Tab
+            'publicCacheTTL' => 'publicCacheTTL',
+            'privateCacheTTL' => 'privateCacheTTL',
+            'frontPageTTL' => 'frontPageTTL',
+            'feedTTL' => 'feedTTL',
+            'restTTL' => 'restTTL',
+            // Auto Purge Tab
+            'autoPurgeEntireSite' => 'autoPurgeEntireSite',
+            'autoPurgeFrontPage' => 'autoPurgeFrontPage',
+            'autoPurgeHomePage' => 'autoPurgeHomePage',
+            'autoPurgePages' => 'autoPurgePages',
+            'autoPurgeAuthorArchive' => 'autoPurgeAuthorArchive',
+            'autoPurgePostTypeArchive' => 'autoPurgePostTypeArchive',
+            'autoPurgeYearlyArchive' => 'autoPurgeYearlyArchive',
+            'autoPurgeMonthlyArchive' => 'autoPurgeMonthlyArchive',
+            'autoPurgeDailyArchive' => 'autoPurgeDailyArchive',
+            'autoPurgeTermArchive' => 'autoPurgeTermArchive',
+            'purgeOnUpgrade' => 'purgeOnUpgrade',
+            'serveStale' => 'serveStale',
+            'customPurgeHooks' => 'customPurgeHooks',
+            // Exclusions Tab
+            'excludeUris' => 'excludeUris',
+            'excludeQueryStrings' => 'excludeQueryStrings',
+            'excludeCookies' => 'excludeCookies',
+            'excludeRoles' => 'excludeRoles',
+            // Browser Cache Tab
+            'browserCacheEnabled' => 'browserCache',
+            'browserCacheTTL' => 'browserCacheTTL',
+            // Object Cache Tab
+            'objectCacheEnabled' => 'enabled',
+            'objectCacheMethod' => 'method',
+            'objectCacheHost' => 'host',
+            'objectCachePort' => 'port',
+            'objectCacheLifetime' => 'lifetime',
+            'objectCacheUsername' => 'username',
+            'objectCachePassword' => 'password',
+            'objectCacheGlobalGroups' => 'globalGroups',
+            'objectCacheNoCacheGroups' => 'noCacheGroups',
+            'objectCachePersistentConnection' => 'persistentConnection',
+        ];
+        $textarea_fields = [
+            'mobileUserAgents', 'customPurgeHooks', 'excludeUris', 'excludeQueryStrings', 'excludeCookies',
+            'objectCacheGlobalGroups', 'objectCacheNoCacheGroups'
+        ];
+        $frontend = [];
+        foreach ($map as $configKey => $frontendKey) {
+            if (isset($settings[$configKey])) {
+                if (in_array($configKey, $textarea_fields)) {
+                    $frontend[$frontendKey] = $settings[$configKey] === '' ? '' : preg_split('/\r?\n/', $settings[$configKey]);
+                } else {
+                    $frontend[$frontendKey] = $settings[$configKey];
+                }
+            }
         }
-        if (isset($settings['objectCacheNoCacheGroups'])) {
-            $settings['objectCacheNoCacheGroups'] = preg_split('/\r?\n/', $settings['objectCacheNoCacheGroups']);
-        }
-        return new WP_REST_Response( $settings, 200 );
+        return new WP_REST_Response($frontend, 200);
     }
 
     /**
@@ -94,14 +150,79 @@ final class Cache_Hive_REST_API {
         if ( empty( $params ) ) {
             return new WP_REST_Response( ['error' => 'No settings provided.'], 400 );
         }
-        // Convert arrays to newline-delimited strings for textarea fields
-        foreach (['objectCacheGlobalGroups', 'objectCacheNoCacheGroups'] as $key) {
-            if (isset($params[$key]) && is_array($params[$key])) {
-                $params[$key] = implode("\n", array_map('trim', $params[$key]));
+        // Map frontend field names to backend config keys
+        $reverse_map = [
+            // Cache Tab
+            'enableCache' => 'enableCache',
+            'cacheLoggedUsers' => 'cacheLoggedUsers',
+            'cacheCommenters' => 'cacheCommenters',
+            'cacheRestApi' => 'cacheRestApi',
+            'cacheMobile' => 'cacheMobile',
+            'mobileUserAgents' => 'mobileUserAgents',
+            // TTL Tab
+            'publicCacheTTL' => 'publicCacheTTL',
+            'privateCacheTTL' => 'privateCacheTTL',
+            'frontPageTTL' => 'frontPageTTL',
+            'feedTTL' => 'feedTTL',
+            'restTTL' => 'restTTL',
+            // Auto Purge Tab
+            'autoPurgeEntireSite' => 'autoPurgeEntireSite',
+            'autoPurgeFrontPage' => 'autoPurgeFrontPage',
+            'autoPurgeHomePage' => 'autoPurgeHomePage',
+            'autoPurgePages' => 'autoPurgePages',
+            'autoPurgeAuthorArchive' => 'autoPurgeAuthorArchive',
+            'autoPurgePostTypeArchive' => 'autoPurgePostTypeArchive',
+            'autoPurgeYearlyArchive' => 'autoPurgeYearlyArchive',
+            'autoPurgeMonthlyArchive' => 'autoPurgeMonthlyArchive',
+            'autoPurgeDailyArchive' => 'autoPurgeDailyArchive',
+            'autoPurgeTermArchive' => 'autoPurgeTermArchive',
+            'purgeOnUpgrade' => 'purgeOnUpgrade',
+            'serveStale' => 'serveStale',
+            'customPurgeHooks' => 'customPurgeHooks',
+            // Exclusions Tab
+            'excludeUris' => 'excludeUris',
+            'excludeQueryStrings' => 'excludeQueryStrings',
+            'excludeCookies' => 'excludeCookies',
+            'excludeRoles' => 'excludeRoles',
+            // Browser Cache Tab
+            'browserCache' => 'browserCacheEnabled',
+            'browserCacheTTL' => 'browserCacheTTL',
+            // Object Cache Tab
+            'enabled' => 'objectCacheEnabled',
+            'method' => 'objectCacheMethod',
+            'host' => 'objectCacheHost',
+            'port' => 'objectCachePort',
+            'lifetime' => 'objectCacheLifetime',
+            'username' => 'objectCacheUsername',
+            'password' => 'objectCachePassword',
+            'globalGroups' => 'objectCacheGlobalGroups',
+            'noCacheGroups' => 'objectCacheNoCacheGroups',
+            'persistentConnection' => 'objectCachePersistentConnection',
+        ];
+        $textarea_fields = [
+            'mobileUserAgents', 'customPurgeHooks', 'excludeUris', 'excludeQueryStrings', 'excludeCookies',
+            'globalGroups', 'noCacheGroups'
+        ];
+        $backend = [];
+        foreach ($params as $frontendKey => $value) {
+            if (isset($reverse_map[$frontendKey])) {
+                $configKey = $reverse_map[$frontendKey];
+                if (in_array($frontendKey, $textarea_fields)) {
+                    if (is_array($value)) {
+                        $backend[$configKey] = implode("\n", array_map('trim', $value));
+                    } else {
+                        $backend[$configKey] = trim($value);
+                    }
+                } elseif (is_bool($value)) {
+                    $backend[$configKey] = (bool)$value;
+                } elseif (is_numeric($value) && strpos($frontendKey, 'TTL') !== false) {
+                    $backend[$configKey] = (int)$value;
+                } else {
+                    $backend[$configKey] = $value;
+                }
             }
         }
-        // Only allow keys that exist in defaults
-        $new_settings = Cache_Hive_Settings::sanitize_settings( $params );
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $backend );
         update_option( 'cache_hive_settings', $new_settings );
         Cache_Hive_Disk::create_config_file( $new_settings );
         if ( isset($new_settings['cloudflare_api_token']) || isset($new_settings['cloudflare_api_key']) ) {
