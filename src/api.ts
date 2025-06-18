@@ -12,6 +12,7 @@ export async function getSettings(): Promise<any> {
       'X-WP-Nonce': wpApiSettings.nonce,
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new Error('Failed to fetch settings');
@@ -25,16 +26,35 @@ export async function getSettings(): Promise<any> {
  */
 export async function updateSettings(data: any): Promise<any> {
   const response = await fetch(`${wpApiSettings.root}${API_NAMESPACE}/settings`, {
-    method: 'POST', // Or 'PUT' depending on your REST API setup, POST is common for updates
+    method: 'POST',
     headers: {
       'X-WP-Nonce': wpApiSettings.nonce,
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(data),
   });
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.message || 'Failed to update settings');
+  }
+  return response.json();
+}
+
+/**
+ * Fetches all WordPress roles for use in the exclusions form.
+ */
+export async function getRoles(): Promise<{ id: string; name: string }[]> {
+  const response = await fetch(`${wpApiSettings.root}${API_NAMESPACE}/roles`, {
+    method: 'GET',
+    headers: {
+      'X-WP-Nonce': wpApiSettings.nonce,
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch roles');
   }
   return response.json();
 }

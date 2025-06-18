@@ -13,8 +13,8 @@ export function CacheSettingsSkeleton() {
       <CardContent>
         {/* Tab row mimic */}
         <div className="grid w-full grid-cols-4 sm:grid-cols-6 gap-2 mb-6">
-          {["Cache", "TTL", "Auto Purge", "Exclusions"].map((tab) => (
-            <Skeleton key={tab} className="h-10 rounded-md w-full" />
+          {["Cache", "TTL", "Auto Purge", "Exclusions", "Object Cache", "Browser Cache"].map((tab) => (
+            <Skeleton key={tab} className="h-8 rounded-md w-full" />
           ))}
         </div>
         <form className="space-y-4">

@@ -13,6 +13,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Suspense } from "react";
+import { wrapPromise } from "@/utils/wrapPromise";
+import { getRoles } from "../api";
+import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
 
 // Schema field names MUST match the keys in your AllCacheSettings and PHP defaults
 const exclusionsSchema = z.object({
@@ -24,21 +28,74 @@ const exclusionsSchema = z.object({
 
 export type ExclusionsFormData = z.infer<typeof exclusionsSchema>;
 
-// Get actual roles from WordPress if possible via localization, or keep a static list
-// For simplicity, using a static list that matches your current UI
-const wordpressRoles = [
-  { id: "administrator", name: "Administrator" },
-  { id: "editor", name: "Editor" },
-  { id: "author", name: "Author" },
-  { id: "contributor", name: "Contributor" },
-  { id: "subscriber", name: "Subscriber" },
-  // Add any other common roles you want to list
-];
-
 interface ExclusionsTabFormProps {
   initial: Partial<ExclusionsFormData>;
   onSubmit: (data: ExclusionsFormData) => Promise<void>;
   isSaving: boolean;
+}
+
+// Suspense resource for roles
+const rolesResource = wrapPromise(getRoles());
+
+function ExclusionsRolesField({
+  roles,
+  form,
+  isSaving,
+}: {
+  roles: { id: string; name: string }[];
+  form: ReturnType<typeof useForm<ExclusionsFormData>>;
+  isSaving: boolean;
+}) {
+  return (
+    <FormField
+      control={form.control}
+      name="excludeRoles"
+      render={() => (
+        <FormItem className="space-y-3">
+          <FormLabel className="text-base font-medium">
+            User Roles to Exclude from Caching
+          </FormLabel>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {roles.map((role) => (
+              <FormField
+                key={role.id}
+                control={form.control}
+                name="excludeRoles"
+                render={({ field }) => (
+                  <FormItem className="flex items-center space-x-2 p-2 border rounded-md hover:bg-accent hover:text-accent-foreground">
+                    <FormControl>
+                      <Checkbox
+                        id={`role-${role.id}`}
+                        checked={field.value?.includes(role.id) || false}
+                        onCheckedChange={(checked) => {
+                          const currentValue = field.value || [];
+                          if (checked) {
+                            field.onChange([...currentValue, role.id]);
+                          } else {
+                            field.onChange(
+                              currentValue.filter((r: string) => r !== role.id)
+                            );
+                          }
+                        }}
+                        disabled={isSaving}
+                      />
+                    </FormControl>
+                    <FormLabel
+                      htmlFor={`role-${role.id}`}
+                      className="text-sm font-normal cursor-pointer flex-grow"
+                    >
+                      {role.name}
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+            ))}
+          </div>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
 }
 
 export function ExclusionsTabForm({
@@ -148,58 +205,13 @@ wp-postpass_`}
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="excludeRoles" // Updated name
-          render={() => (
-            // Field is not directly used here due to custom Checkbox logic
-            <FormItem className="space-y-3">
-              <FormLabel className="text-base font-medium">
-                User Roles to Exclude from Caching
-              </FormLabel>{" "}
-              {/* Updated Label */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {wordpressRoles.map((role) => (
-                  <FormField
-                    key={role.id}
-                    control={form.control}
-                    name="excludeRoles"
-                    render={({ field }) => (
-                      <FormItem className="flex items-center space-x-2 p-2 border rounded-md hover:bg-accent hover:text-accent-foreground">
-                        <FormControl>
-                          <Checkbox
-                            id={`role-${role.id}`}
-                            checked={field.value?.includes(role.id) || false}
-                            onCheckedChange={(checked) => {
-                              const currentValue = field.value || [];
-                              if (checked) {
-                                field.onChange([...currentValue, role.id]);
-                              } else {
-                                field.onChange(
-                                  currentValue.filter(
-                                    (r: string) => r !== role.id
-                                  )
-                                );
-                              }
-                            }}
-                            disabled={isSaving}
-                          />
-                        </FormControl>
-                        <FormLabel
-                          htmlFor={`role-${role.id}`}
-                          className="text-sm font-normal cursor-pointer flex-grow"
-                        >
-                          {role.name}
-                        </FormLabel>
-                      </FormItem>
-                    )}
-                  />
-                ))}
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <Suspense fallback={<ExclusionsRolesSkeleton />}>
+          <ExclusionsRolesField
+            roles={rolesResource.read()}
+            form={form}
+            isSaving={isSaving}
+          />
+        </Suspense>
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}

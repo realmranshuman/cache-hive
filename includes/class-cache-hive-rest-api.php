@@ -52,6 +52,15 @@ final class Cache_Hive_REST_API {
             'callback'            => array( __CLASS__, 'perform_action' ),
             'permission_callback' => array( __CLASS__, 'permissions_check' ),
         ) );
+
+        // Route for getting WordPress roles
+        register_rest_route( self::$namespace, '/roles', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_roles' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
     }
 
     /**
@@ -264,5 +273,25 @@ final class Cache_Hive_REST_API {
             default:
                 return new WP_REST_Response( ['error' => 'Invalid action specified.'], 404 );
         }
+    }
+
+    /**
+     * Get all WordPress roles for use in the exclusions form.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_roles() {
+        if ( ! function_exists( 'get_editable_roles' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+        }
+        $roles = [];
+        foreach ( get_editable_roles() as $role_key => $role ) {
+            $roles[] = [
+                'id' => $role_key,
+                'name' => translate_user_role( $role['name'] ),
+            ];
+        }
+        return new WP_REST_Response( $roles, 200 );
     }
 }
