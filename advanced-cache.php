@@ -144,8 +144,9 @@ class Cache_Hive_Advanced_Cache {
         }
 
         // Add browser caching headers if enabled in settings.
-        if ( $this->settings['browser_cache_enabled'] ) {
-            $ttl_days = absint( $this->settings['browser_cache_ttl'] );
+        // Use config keys as defined in config.php: browserCacheEnabled, browserCacheTTL
+        if ( isset($this->settings['browserCacheEnabled']) && $this->settings['browserCacheEnabled'] ) {
+            $ttl_days = isset($this->settings['browserCacheTTL']) ? absint( $this->settings['browserCacheTTL'] ) : 0;
             if ( $ttl_days > 0 ) {
                 $ttl_seconds = $ttl_days * DAY_IN_SECONDS;
                 header( 'Cache-Control: public, max-age=' . $ttl_seconds );
