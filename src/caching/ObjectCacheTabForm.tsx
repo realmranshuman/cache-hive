@@ -17,43 +17,71 @@ import {
 } from "@/components/ui/form"
 
 const objectCacheSchema = z.object({
-  enabled: z.boolean(),
-  method: z.string(),
-  host: z.string(),
-  port: z.string(),
-  lifetime: z.string(),
-  username: z.string().optional(),
-  password: z.string().optional(),
-  globalGroups: z.string().optional(),
-  noCacheGroups: z.string().optional(),
-  persistentConnection: z.boolean().optional(),
+  objectCacheEnabled: z.boolean(),
+  objectCacheMethod: z.string(),
+  objectCacheHost: z.string(),
+  objectCachePort: z.number().min(1),
+  objectCacheLifetime: z.number().min(1),
+  objectCacheUsername: z.string().optional(),
+  objectCachePassword: z.string().optional(),
+  objectCacheGlobalGroups: z.any(),
+  objectCacheNoCacheGroups: z.any(),
+  objectCachePersistentConnection: z.boolean().optional(),
 })
 
 type ObjectCacheFormData = z.infer<typeof objectCacheSchema>
 
-export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: ObjectCacheFormData, onSubmit: (data: ObjectCacheFormData) => void, isSaving: boolean }) {
+export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: Partial<ObjectCacheFormData>, onSubmit: (data: ObjectCacheFormData) => Promise<void>, isSaving: boolean }) {
+  // Convert array to newline-separated string for textarea display
+  function toTextarea(val?: string[] | string) {
+    if (Array.isArray(val)) return val.join("\n");
+    if (typeof val === "string") return val.replace(/ +/g, "\n").replace(/\n+/g, "\n").trim();
+    return "";
+  }
+  // Convert textarea (newline-separated) to array for backend
+  function fromTextarea(val: string) {
+    return val.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
+  }
+
   const form = useForm<ObjectCacheFormData>({
     resolver: zodResolver(objectCacheSchema),
     defaultValues: {
-      enabled: initial.enabled ?? false,
-      method: initial.method ?? "memcached",
-      host: initial.host ?? "localhost",
-      port: initial.port ?? "11211",
-      lifetime: initial.lifetime ?? "3600",
-      username: initial.username ?? "",
-      password: initial.password ?? "",
-      globalGroups: initial.globalGroups ?? "",
-      noCacheGroups: initial.noCacheGroups ?? "",
-      persistentConnection: initial.persistentConnection ?? false,
+      objectCacheEnabled: initial.objectCacheEnabled ?? false,
+      objectCacheMethod: initial.objectCacheMethod ?? "memcached",
+      objectCacheHost: initial.objectCacheHost ?? "localhost",
+      objectCachePort: Number(initial.objectCachePort) || 11211,
+      objectCacheLifetime: Number(initial.objectCacheLifetime) || 3600,
+      objectCacheUsername: initial.objectCacheUsername ?? "",
+      objectCachePassword: initial.objectCachePassword ?? "",
+      objectCacheGlobalGroups: toTextarea(initial.objectCacheGlobalGroups),
+      objectCacheNoCacheGroups: toTextarea(initial.objectCacheNoCacheGroups),
+      objectCachePersistentConnection: Boolean(initial.objectCachePersistentConnection) ?? false,
     },
   })
 
   React.useEffect(() => {
-    form.reset(initial);
+    form.reset({
+      objectCacheEnabled: initial.objectCacheEnabled ?? false,
+      objectCacheMethod: initial.objectCacheMethod ?? "memcached",
+      objectCacheHost: initial.objectCacheHost ?? "localhost",
+      objectCachePort: Number(initial.objectCachePort) || 11211,
+      objectCacheLifetime: Number(initial.objectCacheLifetime) || 3600,
+      objectCacheUsername: initial.objectCacheUsername ?? "",
+      objectCachePassword: initial.objectCachePassword ?? "",
+      objectCacheGlobalGroups: toTextarea(initial.objectCacheGlobalGroups),
+      objectCacheNoCacheGroups: toTextarea(initial.objectCacheNoCacheGroups),
+      objectCachePersistentConnection: Boolean(initial.objectCachePersistentConnection) ?? false,
+    });
   }, [initial, form.reset]);
 
-  function handleSubmit(data: ObjectCacheFormData) {
-    onSubmit(data)
+  async function handleSubmit(data: ObjectCacheFormData) {
+    // Convert textarea values to array for backend
+    const payload = {
+      ...data,
+      objectCacheGlobalGroups: fromTextarea(data.objectCacheGlobalGroups as string),
+      objectCacheNoCacheGroups: fromTextarea(data.objectCacheNoCacheGroups as string),
+    };
+    await onSubmit(payload as ObjectCacheFormData);
   }
 
   return (
@@ -61,7 +89,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
         <FormField
           control={form.control}
-          name="enabled"
+          name="objectCacheEnabled"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Object Cache</FormLabel>
@@ -74,7 +102,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         />
         <FormField
           control={form.control}
-          name="method"
+          name="objectCacheMethod"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Method</FormLabel>
@@ -96,7 +124,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
-            name="host"
+            name="objectCacheHost"
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel>Host</FormLabel>
@@ -109,12 +137,12 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
           />
           <FormField
             control={form.control}
-            name="port"
+            name="objectCachePort"
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel>Port</FormLabel>
                 <FormControl>
-                  <Input {...field} id="port" disabled={isSaving} />
+                  <Input {...field} id="port" type="number" min={1} disabled={isSaving} onChange={e => field.onChange(Number(e.target.value))} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -123,12 +151,12 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         </div>
         <FormField
           control={form.control}
-          name="lifetime"
+          name="objectCacheLifetime"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Default Object Lifetime (seconds)</FormLabel>
               <FormControl>
-                <Input {...field} id="object-lifetime" disabled={isSaving} />
+                <Input {...field} id="object-lifetime" type="number" min={1} disabled={isSaving} onChange={e => field.onChange(Number(e.target.value))} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -137,7 +165,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
-            name="username"
+            name="objectCacheUsername"
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel>Username</FormLabel>
@@ -150,7 +178,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
           />
           <FormField
             control={form.control}
-            name="password"
+            name="objectCachePassword"
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel>Password</FormLabel>
@@ -164,7 +192,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         </div>
         <FormField
           control={form.control}
-          name="globalGroups"
+          name="objectCacheGlobalGroups"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Global Groups</FormLabel>
@@ -177,7 +205,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         />
         <FormField
           control={form.control}
-          name="noCacheGroups"
+          name="objectCacheNoCacheGroups"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Do Not Cache Groups</FormLabel>
@@ -190,7 +218,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
         />
         <FormField
           control={form.control}
-          name="persistentConnection"
+          name="objectCachePersistentConnection"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Persistent Connection</FormLabel>

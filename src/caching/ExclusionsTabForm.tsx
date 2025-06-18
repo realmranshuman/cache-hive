@@ -18,12 +18,11 @@ import { wrapPromise } from "@/utils/wrapPromise";
 import { getRoles } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
 
-// Schema field names MUST match the keys in your AllCacheSettings and PHP defaults
 const exclusionsSchema = z.object({
-  excludeUris: z.string().optional(), // Renamed
-  excludeQueryStrings: z.string().optional(), // Renamed
-  excludeCookies: z.string().optional(), // Renamed
-  excludeRoles: z.array(z.string()).optional(), // Renamed
+  excludeUris: z.string().optional(),
+  excludeQueryStrings: z.string().optional(),
+  excludeCookies: z.string().optional(),
+  excludeRoles: z.array(z.string()).optional(),
 });
 
 export type ExclusionsFormData = z.infer<typeof exclusionsSchema>;
@@ -34,7 +33,6 @@ interface ExclusionsTabFormProps {
   isSaving: boolean;
 }
 
-// Suspense resource for roles
 const rolesResource = wrapPromise(getRoles());
 
 function ExclusionsRolesField({
@@ -114,8 +112,6 @@ export function ExclusionsTabForm({
   });
 
   React.useEffect(() => {
-    // Reset form with possibly new initial values (e.g., after fetching)
-    // Ensure that array fields are initialized correctly if `initial.excludeRoles` is undefined
     form.reset({
       excludeUris: initial.excludeUris || "",
       excludeQueryStrings: initial.excludeQueryStrings || "",
@@ -125,7 +121,6 @@ export function ExclusionsTabForm({
   }, [initial, form.reset]);
 
   async function handleSubmit(data: ExclusionsFormData) {
-    // Ensure excludeRoles is always an array, even if empty
     const payload = {
       ...data,
       excludeRoles: data.excludeRoles || [],

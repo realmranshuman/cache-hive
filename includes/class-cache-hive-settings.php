@@ -170,7 +170,19 @@ final class Cache_Hive_Settings {
                     $sanitized[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : [];
                 } else {
                     // Handle textarea fields that need to preserve line breaks
-                    if ( in_array( $key, ['mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies', 'customPurgeHooks', 'objectCacheGlobalGroups', 'objectCacheNoCacheGroups'] ) ) {
+                    if ( in_array( $key, ['objectCacheGlobalGroups', 'objectCacheNoCacheGroups'] ) ) {
+                        if ( is_array( $value ) ) {
+                            // Sanitize each value and remove empties
+                            $lines = array_filter(array_map('sanitize_text_field', $value));
+                            $sanitized[ $key ] = array_values($lines);
+                        } else {
+                            // Accept string, split by newline, trim, sanitize, remove empties
+                            $lines = explode("\n", $value);
+                            $lines = array_filter(array_map('trim', $lines));
+                            $lines = array_filter(array_map('sanitize_text_field', $lines));
+                            $sanitized[ $key ] = array_values($lines);
+                        }
+                    } elseif ( in_array( $key, ['mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies', 'customPurgeHooks'] ) ) {
                         $lines = explode("\n", $value);
                         $lines = array_filter(array_map('trim', $lines));
                         $sanitized[ $key ] = implode("\n", $lines);

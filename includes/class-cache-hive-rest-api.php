@@ -61,6 +61,80 @@ final class Cache_Hive_REST_API {
                 'permission_callback' => array( __CLASS__, 'permissions_check' ),
             ),
         ) );
+
+        // Per-section endpoints
+        register_rest_route( self::$namespace, '/cache', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_cache_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => array( __CLASS__, 'update_cache_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
+        register_rest_route( self::$namespace, '/ttl', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_ttl_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => array( __CLASS__, 'update_ttl_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
+        register_rest_route( self::$namespace, '/autopurge', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_autopurge_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => array( __CLASS__, 'update_autopurge_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
+        register_rest_route( self::$namespace, '/exclusions', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_exclusions_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => array( __CLASS__, 'update_exclusions_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
+        register_rest_route( self::$namespace, '/object-cache', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_object_cache_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => array( __CLASS__, 'update_object_cache_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
+        register_rest_route( self::$namespace, '/browser-cache', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array( __CLASS__, 'get_browser_cache_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::EDITABLE,
+                'callback'            => array( __CLASS__, 'update_browser_cache_settings' ),
+                'permission_callback' => array( __CLASS__, 'permissions_check' ),
+            ),
+        ) );
     }
 
     /**
@@ -293,5 +367,355 @@ final class Cache_Hive_REST_API {
             ];
         }
         return new WP_REST_Response( $roles, 200 );
+    }
+
+    /**
+     * Get cache settings.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_cache_settings() {
+        $settings = Cache_Hive_Settings::get_settings();
+        $cache_settings = [
+            'enableCache' => isset( $settings['enableCache'] ) ? $settings['enableCache'] : '',
+            'cacheLoggedUsers' => isset( $settings['cacheLoggedUsers'] ) ? $settings['cacheLoggedUsers'] : '',
+            'cacheCommenters' => isset( $settings['cacheCommenters'] ) ? $settings['cacheCommenters'] : '',
+            'cacheRestApi' => isset( $settings['cacheRestApi'] ) ? $settings['cacheRestApi'] : '',
+            'cacheMobile' => isset( $settings['cacheMobile'] ) ? $settings['cacheMobile'] : '',
+            'mobileUserAgents' => isset( $settings['mobileUserAgents'] ) ? $settings['mobileUserAgents'] : '',
+        ];
+        return new WP_REST_Response( $cache_settings, 200 );
+    }
+
+    /**
+     * Update cache settings.
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response
+     */
+    public static function update_cache_settings( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $settings = Cache_Hive_Settings::get_settings();
+        $updated_settings = $settings;
+
+        foreach ( $params as $key => $value ) {
+            switch ( $key ) {
+                case 'enableCache':
+                case 'cacheLoggedUsers':
+                case 'cacheCommenters':
+                case 'cacheRestApi':
+                case 'cacheMobile':
+                    $updated_settings[$key] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+                    break;
+                case 'mobileUserAgents':
+                    $updated_settings[$key] = sanitize_textarea_field( $value );
+                    break;
+                default:
+                    continue 2;
+            }
+        }
+
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
+        update_option( 'cache_hive_settings', $new_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
+
+        return new WP_REST_Response( $new_settings, 200 );
+    }
+
+    /**
+     * Get TTL settings.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_ttl_settings() {
+        $settings = Cache_Hive_Settings::get_settings();
+        $ttl_settings = [
+            'publicCacheTTL' => isset( $settings['publicCacheTTL'] ) ? $settings['publicCacheTTL'] : '',
+            'privateCacheTTL' => isset( $settings['privateCacheTTL'] ) ? $settings['privateCacheTTL'] : '',
+            'frontPageTTL' => isset( $settings['frontPageTTL'] ) ? $settings['frontPageTTL'] : '',
+            'feedTTL' => isset( $settings['feedTTL'] ) ? $settings['feedTTL'] : '',
+            'restTTL' => isset( $settings['restTTL'] ) ? $settings['restTTL'] : '',
+        ];
+        return new WP_REST_Response( $ttl_settings, 200 );
+    }
+
+    /**
+     * Update TTL settings.
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response
+     */
+    public static function update_ttl_settings( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $settings = Cache_Hive_Settings::get_settings();
+        $updated_settings = $settings;
+
+        foreach ( $params as $key => $value ) {
+            switch ( $key ) {
+                case 'publicCacheTTL':
+                case 'privateCacheTTL':
+                case 'frontPageTTL':
+                case 'feedTTL':
+                case 'restTTL':
+                    $updated_settings[$key] = intval( $value );
+                    break;
+                default:
+                    continue 2;
+            }
+        }
+
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
+        update_option( 'cache_hive_settings', $new_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
+
+        return new WP_REST_Response( $new_settings, 200 );
+    }
+
+    /**
+     * Get auto-purge settings.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_autopurge_settings() {
+        $settings = Cache_Hive_Settings::get_settings();
+        $autopurge_settings = [
+            'autoPurgeEntireSite' => isset( $settings['autoPurgeEntireSite'] ) ? $settings['autoPurgeEntireSite'] : '',
+            'autoPurgeFrontPage' => isset( $settings['autoPurgeFrontPage'] ) ? $settings['autoPurgeFrontPage'] : '',
+            'autoPurgeHomePage' => isset( $settings['autoPurgeHomePage'] ) ? $settings['autoPurgeHomePage'] : '',
+            'autoPurgePages' => isset( $settings['autoPurgePages'] ) ? $settings['autoPurgePages'] : '',
+            'autoPurgeAuthorArchive' => isset( $settings['autoPurgeAuthorArchive'] ) ? $settings['autoPurgeAuthorArchive'] : '',
+            'autoPurgePostTypeArchive' => isset( $settings['autoPurgePostTypeArchive'] ) ? $settings['autoPurgePostTypeArchive'] : '',
+            'autoPurgeYearlyArchive' => isset( $settings['autoPurgeYearlyArchive'] ) ? $settings['autoPurgeYearlyArchive'] : '',
+            'autoPurgeMonthlyArchive' => isset( $settings['autoPurgeMonthlyArchive'] ) ? $settings['autoPurgeMonthlyArchive'] : '',
+            'autoPurgeDailyArchive' => isset( $settings['autoPurgeDailyArchive'] ) ? $settings['autoPurgeDailyArchive'] : '',
+            'autoPurgeTermArchive' => isset( $settings['autoPurgeTermArchive'] ) ? $settings['autoPurgeTermArchive'] : '',
+            'purgeOnUpgrade' => isset( $settings['purgeOnUpgrade'] ) ? $settings['purgeOnUpgrade'] : '',
+            'serveStale' => isset( $settings['serveStale'] ) ? $settings['serveStale'] : '',
+            'customPurgeHooks' => isset( $settings['customPurgeHooks'] ) ? $settings['customPurgeHooks'] : '',
+        ];
+        return new WP_REST_Response( $autopurge_settings, 200 );
+    }
+
+    /**
+     * Update auto-purge settings.
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response
+     */
+    public static function update_autopurge_settings( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $settings = Cache_Hive_Settings::get_settings();
+        $updated_settings = $settings;
+
+        foreach ( $params as $key => $value ) {
+            switch ( $key ) {
+                case 'autoPurgeEntireSite':
+                case 'autoPurgeFrontPage':
+                case 'autoPurgeHomePage':
+                case 'autoPurgePages':
+                case 'autoPurgeAuthorArchive':
+                case 'autoPurgePostTypeArchive':
+                case 'autoPurgeYearlyArchive':
+                case 'autoPurgeMonthlyArchive':
+                case 'autoPurgeDailyArchive':
+                case 'autoPurgeTermArchive':
+                case 'purgeOnUpgrade':
+                case 'serveStale':
+                    $updated_settings[$key] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+                    break;
+                case 'customPurgeHooks':
+                    $updated_settings[$key] = sanitize_textarea_field( $value );
+                    break;
+                default:
+                    continue 2;
+            }
+        }
+
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
+        update_option( 'cache_hive_settings', $new_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
+
+        return new WP_REST_Response( $new_settings, 200 );
+    }
+
+    /**
+     * Get exclusions settings.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_exclusions_settings() {
+        $settings = Cache_Hive_Settings::get_settings();
+        $exclusions_settings = [
+            'excludeUris' => isset( $settings['excludeUris'] ) ? $settings['excludeUris'] : '',
+            'excludeQueryStrings' => isset( $settings['excludeQueryStrings'] ) ? $settings['excludeQueryStrings'] : '',
+            'excludeCookies' => isset( $settings['excludeCookies'] ) ? $settings['excludeCookies'] : '',
+            'excludeRoles' => isset( $settings['excludeRoles'] ) && is_array($settings['excludeRoles']) ? array_values($settings['excludeRoles']) : [],
+        ];
+        return new WP_REST_Response( $exclusions_settings, 200 );
+    }
+
+    /**
+     * Update exclusions settings.
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response
+     */
+    public static function update_exclusions_settings( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $settings = Cache_Hive_Settings::get_settings();
+        $updated_settings = $settings;
+
+        foreach ( $params as $key => $value ) {
+            switch ( $key ) {
+                case 'excludeUris':
+                case 'excludeQueryStrings':
+                case 'excludeCookies':
+                    $updated_settings[$key] = sanitize_textarea_field( $value );
+                    break;
+                case 'excludeRoles':
+                    if (is_array($value)) {
+                        $updated_settings[$key] = array_map('sanitize_text_field', $value);
+                    } else {
+                        $updated_settings[$key] = [];
+                    }
+                    break;
+                default:
+                    continue 2;
+            }
+        }
+
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
+        update_option( 'cache_hive_settings', $new_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
+
+        return new WP_REST_Response( $new_settings, 200 );
+    }
+
+    /**
+     * Get object cache settings.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_object_cache_settings() {
+        $settings = Cache_Hive_Settings::get_settings();
+        $object_cache_settings = [
+            'objectCacheEnabled' => isset( $settings['objectCacheEnabled'] ) ? $settings['objectCacheEnabled'] : false,
+            'objectCacheMethod' => isset( $settings['objectCacheMethod'] ) ? $settings['objectCacheMethod'] : '',
+            'objectCacheHost' => isset( $settings['objectCacheHost'] ) ? $settings['objectCacheHost'] : '',
+            'objectCachePort' => isset( $settings['objectCachePort'] ) ? $settings['objectCachePort'] : '',
+            'objectCacheLifetime' => isset( $settings['objectCacheLifetime'] ) ? $settings['objectCacheLifetime'] : '',
+            'objectCacheUsername' => isset( $settings['objectCacheUsername'] ) ? $settings['objectCacheUsername'] : '',
+            'objectCachePassword' => isset( $settings['objectCachePassword'] ) ? $settings['objectCachePassword'] : '',
+            'objectCacheGlobalGroups' => isset($settings['objectCacheGlobalGroups']) ? (is_array($settings['objectCacheGlobalGroups']) ? $settings['objectCacheGlobalGroups'] : preg_split('/[\s,]+/', trim($settings['objectCacheGlobalGroups']))) : [],
+            'objectCacheNoCacheGroups' => isset($settings['objectCacheNoCacheGroups']) ? (is_array($settings['objectCacheNoCacheGroups']) ? $settings['objectCacheNoCacheGroups'] : preg_split('/[\s,]+/', trim($settings['objectCacheNoCacheGroups']))) : [],
+            'objectCachePersistentConnection' => isset( $settings['objectCachePersistentConnection'] ) ? $settings['objectCachePersistentConnection'] : false,
+        ];
+        return new WP_REST_Response( $object_cache_settings, 200 );
+    }
+
+    /**
+     * Update object cache settings.
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response
+     */
+    public static function update_object_cache_settings( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $settings = Cache_Hive_Settings::get_settings();
+        $updated_settings = $settings;
+
+        foreach ( $params as $key => $value ) {
+            switch ( $key ) {
+                case 'objectCacheEnabled':
+                    $updated_settings[$key] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+                    break;
+                case 'objectCacheMethod':
+                case 'objectCacheHost':
+                case 'objectCacheUsername':
+                case 'objectCachePassword':
+                    $updated_settings[$key] = sanitize_text_field( $value );
+                    break;
+                case 'objectCachePort':
+                case 'objectCacheLifetime':
+                case 'objectCachePersistentConnection':
+                    $updated_settings[$key] = intval( $value );
+                    break;
+                case 'objectCacheGlobalGroups':
+                case 'objectCacheNoCacheGroups':
+                    if (is_array($value)) {
+                        $updated_settings[$key] = array_map('sanitize_text_field', $value);
+                    } elseif (is_string($value)) {
+                        $updated_settings[$key] = array_filter(array_map('sanitize_text_field', preg_split('/[\s,]+/', $value)));
+                    } else {
+                        $updated_settings[$key] = [];
+                    }
+                    break;
+                default:
+                    continue 2;
+            }
+        }
+
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
+        update_option( 'cache_hive_settings', $new_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
+
+        return new WP_REST_Response( $new_settings, 200 );
+    }
+
+    /**
+     * Get browser cache settings.
+     *
+     * @since 1.0.0
+     * @return WP_REST_Response
+     */
+    public static function get_browser_cache_settings() {
+        $settings = Cache_Hive_Settings::get_settings();
+        $browser_cache_settings = [
+            'browserCacheEnabled' => isset( $settings['browserCacheEnabled'] ) ? $settings['browserCacheEnabled'] : '',
+            'browserCacheTTL' => isset( $settings['browserCacheTTL'] ) ? $settings['browserCacheTTL'] : '',
+        ];
+        return new WP_REST_Response( $browser_cache_settings, 200 );
+    }
+
+    /**
+     * Update browser cache settings.
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response
+     */
+    public static function update_browser_cache_settings( WP_REST_Request $request ) {
+        $params = $request->get_json_params();
+        $settings = Cache_Hive_Settings::get_settings();
+        $updated_settings = $settings;
+
+        foreach ( $params as $key => $value ) {
+            switch ( $key ) {
+                case 'browserCacheEnabled':
+                    $updated_settings[$key] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+                    break;
+                case 'browserCacheTTL':
+                    $updated_settings[$key] = intval( $value );
+                    break;
+                default:
+                    continue 2;
+            }
+        }
+
+        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
+        update_option( 'cache_hive_settings', $new_settings );
+        Cache_Hive_Disk::create_config_file( $new_settings );
+
+        return new WP_REST_Response( $new_settings, 200 );
     }
 }

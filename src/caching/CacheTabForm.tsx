@@ -1,6 +1,6 @@
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useWatch } from "react-hook-form"; // Import useWatch
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -14,7 +14,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-// Schema field names MUST match the keys in your AllCacheSettings and PHP defaults
 const cacheSchema = z.object({
   enableCache: z.boolean(),
   cacheLoggedUsers: z.boolean(),
@@ -27,16 +26,12 @@ const cacheSchema = z.object({
 export type CacheFormData = z.infer<typeof cacheSchema>;
 
 interface CacheTabFormProps {
-  initial: Partial<CacheFormData>; // Allow partial for initial load before all settings are fetched
-  onSubmit: (data: CacheFormData) => Promise<void>; // Make it async
+  initial: Partial<CacheFormData>;
+  onSubmit: (data: CacheFormData) => Promise<void>;
   isSaving: boolean;
 }
 
-export function CacheTabForm({
-  initial,
-  onSubmit,
-  isSaving,
-}: CacheTabFormProps) {
+export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps) {
   const form = useForm<CacheFormData>({
     resolver: zodResolver(cacheSchema),
     defaultValues: {
@@ -49,21 +44,17 @@ export function CacheTabForm({
     },
   });
 
-  // Watch the cacheMobile field to conditionally show user agents
   const cacheMobileValue = useWatch({
     control: form.control,
     name: "cacheMobile",
   });
 
   React.useEffect(() => {
-    form.reset(initial); // Reset form with fetched initial values
+    form.reset(initial);
   }, [initial, form.reset]);
 
   async function handleSubmit(data: CacheFormData) {
     await onSubmit(data);
-    // Optionally, reset the form if the backend returns the full updated settings
-    // and your parent component updates the `initial` prop.
-    // form.reset(data); // Or form.reset(updatedSettingsFromParent)
   }
 
   return (
@@ -74,8 +65,7 @@ export function CacheTabForm({
           name="enableCache"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Enable Full-Page Caching</FormLabel>{" "}
-              {/* Updated Label */}
+              <FormLabel>Enable Full-Page Caching</FormLabel>
               <FormControl>
                 <Switch
                   checked={field.value}
@@ -92,8 +82,7 @@ export function CacheTabForm({
           name="cacheLoggedUsers"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Cache for Logged-in Users</FormLabel>{" "}
-              {/* Updated Label */}
+              <FormLabel>Cache for Logged-in Users</FormLabel>
               <FormControl>
                 <Switch
                   checked={field.value}
@@ -110,7 +99,7 @@ export function CacheTabForm({
           name="cacheCommenters"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Cache for Commenters</FormLabel> {/* Updated Label */}
+              <FormLabel>Cache for Commenters</FormLabel>
               <FormControl>
                 <Switch
                   checked={field.value}
@@ -127,8 +116,7 @@ export function CacheTabForm({
           name="cacheRestApi"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Cache REST API Requests</FormLabel>{" "}
-              {/* Updated Label */}
+              <FormLabel>Cache REST API Requests</FormLabel>
               <FormControl>
                 <Switch
                   checked={field.value}
@@ -145,8 +133,7 @@ export function CacheTabForm({
           name="cacheMobile"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Cache for Mobile Devices</FormLabel>{" "}
-              {/* Updated Label */}
+              <FormLabel>Cache for Mobile Devices</FormLabel>
               <FormControl>
                 <Switch
                   checked={field.value}
@@ -158,7 +145,6 @@ export function CacheTabForm({
             </FormItem>
           )}
         />
-        {/* Conditionally render mobileUserAgents based on cacheMobileValue */}
         {cacheMobileValue && (
           <FormField
             control={form.control}
@@ -168,11 +154,7 @@ export function CacheTabForm({
                 <FormLabel>Custom Mobile User Agent List</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder={`Enter one user agent per line:
-Mobile
-Android
-iPhone
-iPad`}
+                    placeholder={`Enter one user agent per line:\nMobile\nAndroid\niPhone\niPad`}
                     rows={4}
                     {...field}
                     disabled={isSaving}

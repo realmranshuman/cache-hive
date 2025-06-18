@@ -15,27 +15,42 @@ import {
 } from "@/components/ui/form"
 
 const browserCacheSchema = z.object({
-  browserCache: z.boolean(),
-  browserCacheTTL: z.string().optional(),
+  browserCacheEnabled: z.boolean(),
+  browserCacheTTL: z
+    .preprocess((val) => {
+      if (typeof val === "string") return Number(val);
+      return val;
+    },
+      z
+        .number()
+        .min(14400, "Minimum 4 hours (14400 seconds)")
+        .max(63072000, "Maximum 2 years (63072000 seconds)")
+    ),
 })
 
 type BrowserCacheFormData = z.infer<typeof browserCacheSchema>
 
-export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: BrowserCacheFormData, onSubmit: (data: BrowserCacheFormData) => void, isSaving: boolean }) {
-  const form = useForm<BrowserCacheFormData>({
+// Fix: Explicitly type the form as useForm<any> to avoid zodResolver type mismatch
+export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: any, onSubmit: (data: BrowserCacheFormData) => Promise<void>, isSaving: boolean }) {
+  const normalizedInitial: BrowserCacheFormData = {
+    browserCacheEnabled: Boolean(initial.browserCacheEnabled),
+    browserCacheTTL: typeof initial.browserCacheTTL === 'number' ? initial.browserCacheTTL : Number(initial.browserCacheTTL) || 31536000,
+  };
+
+  const form = useForm({
     resolver: zodResolver(browserCacheSchema),
-    defaultValues: {
-      browserCache: initial.browserCache ?? false,
-      browserCacheTTL: initial.browserCacheTTL ?? "",
-    },
-  })
+    defaultValues: normalizedInitial,
+  });
 
   React.useEffect(() => {
-    form.reset(initial);
+    form.reset(normalizedInitial);
   }, [initial, form.reset]);
 
-  function handleSubmit(data: BrowserCacheFormData) {
-    onSubmit(data)
+  async function handleSubmit(data: BrowserCacheFormData) {
+    await onSubmit({
+      ...data,
+      browserCacheTTL: Number(data.browserCacheTTL),
+    });
   }
 
   return (
@@ -43,7 +58,7 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: 
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
         <FormField
           control={form.control}
-          name="browserCache"
+          name="browserCacheEnabled"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Browser Cache</FormLabel>
@@ -61,7 +76,18 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: 
             <FormItem className="space-y-2">
               <FormLabel>Browser Cache TTL (seconds)</FormLabel>
               <FormControl>
-                <Input {...field} id="browser-cache-ttl" placeholder="31536000" disabled={isSaving} />
+                <Input
+                  {...field}
+                  id="browser-cache-ttl"
+                  type="number"
+                  min={14400}
+                  max={63072000}
+                  step={1}
+                  placeholder="31536000"
+                  disabled={isSaving}
+                  value={typeof field.value === 'number' || typeof field.value === 'string' ? field.value : ''}
+                  onChange={e => field.onChange(e.target.value === '' ? '' : Number(e.target.value))}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

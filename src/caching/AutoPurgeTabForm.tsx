@@ -14,10 +14,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-// Schema field names MUST match the keys in your AllCacheSettings and PHP defaults
 const autoPurgeSchema = z.object({
-  // Auto Purge Rules
-  autoPurgeEntireSite: z.boolean().optional(), // Make optional
+  autoPurgeEntireSite: z.boolean().optional(),
   autoPurgeFrontPage: z.boolean(),
   autoPurgeHomePage: z.boolean(),
   autoPurgePages: z.boolean(),
@@ -27,10 +25,8 @@ const autoPurgeSchema = z.object({
   autoPurgeMonthlyArchive: z.boolean(),
   autoPurgeDailyArchive: z.boolean(),
   autoPurgeTermArchive: z.boolean(),
-  // Global Settings
   purgeOnUpgrade: z.boolean().optional(),
   serveStale: z.boolean().optional(),
-  // Custom Purge Hooks
   customPurgeHooks: z.string().optional(),
 });
 
