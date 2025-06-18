@@ -31,7 +31,7 @@ const objectCacheSchema = z.object({
 
 type ObjectCacheFormData = z.infer<typeof objectCacheSchema>
 
-export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCacheFormData, onSubmit: (data: ObjectCacheFormData) => void }) {
+export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: ObjectCacheFormData, onSubmit: (data: ObjectCacheFormData) => void, isSaving: boolean }) {
   const form = useForm<ObjectCacheFormData>({
     resolver: zodResolver(objectCacheSchema),
     defaultValues: {
@@ -48,6 +48,10 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
     },
   })
 
+  React.useEffect(() => {
+    form.reset(initial);
+  }, [initial, form.reset]);
+
   function handleSubmit(data: ObjectCacheFormData) {
     onSubmit(data)
   }
@@ -62,7 +66,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
             <FormItem className="flex items-center justify-between">
               <FormLabel>Object Cache</FormLabel>
               <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -75,7 +79,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
             <FormItem className="space-y-2">
               <FormLabel>Method</FormLabel>
               <FormControl>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select value={field.value} onValueChange={field.onChange} disabled={isSaving}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -97,7 +101,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
               <FormItem className="space-y-2">
                 <FormLabel>Host</FormLabel>
                 <FormControl>
-                  <Input {...field} id="host" />
+                  <Input {...field} id="host" disabled={isSaving} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -110,7 +114,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
               <FormItem className="space-y-2">
                 <FormLabel>Port</FormLabel>
                 <FormControl>
-                  <Input {...field} id="port" />
+                  <Input {...field} id="port" disabled={isSaving} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -124,7 +128,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
             <FormItem className="space-y-2">
               <FormLabel>Default Object Lifetime (seconds)</FormLabel>
               <FormControl>
-                <Input {...field} id="object-lifetime" />
+                <Input {...field} id="object-lifetime" disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -138,7 +142,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
               <FormItem className="space-y-2">
                 <FormLabel>Username</FormLabel>
                 <FormControl>
-                  <Input {...field} id="username" />
+                  <Input {...field} id="username" disabled={isSaving} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -151,7 +155,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
               <FormItem className="space-y-2">
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input {...field} id="password" type="password" />
+                  <Input {...field} id="password" type="password" disabled={isSaving} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -165,7 +169,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
             <FormItem className="space-y-2">
               <FormLabel>Global Groups</FormLabel>
               <FormControl>
-                <Textarea {...field} id="global-groups" placeholder="users\nuserlogins\nusermeta\nsite-options" rows={3} />
+                <Textarea {...field} id="global-groups" placeholder={"users\nuserlogins\nusermeta\nsite-options"} rows={4} disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -178,7 +182,7 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
             <FormItem className="space-y-2">
               <FormLabel>Do Not Cache Groups</FormLabel>
               <FormControl>
-                <Textarea {...field} id="no-cache-groups" placeholder="comment\ncounts\nplugins" rows={3} />
+                <Textarea {...field} id="no-cache-groups" placeholder={"comment\ncounts\nplugins"} rows={4} disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -191,14 +195,16 @@ export function ObjectCacheTabForm({ initial, onSubmit }: { initial: ObjectCache
             <FormItem className="flex items-center justify-between">
               <FormLabel>Persistent Connection</FormLabel>
               <FormControl>
-                <Switch checked={field.value || false} onCheckedChange={field.onChange} />
+                <Switch checked={field.value || false} onCheckedChange={field.onChange} disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
         <div className="flex justify-end">
-          <Button type="submit">Save Changes</Button>
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Changes"}
+          </Button>
         </div>
       </form>
     </Form>

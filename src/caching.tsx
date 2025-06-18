@@ -20,6 +20,8 @@ import { toast as sonnerToast } from "sonner";
 import { createSettingsResource, normalizeSettingsData, SettingsResource } from "@/resources/cacheSettingsResource";
 import { ErrorBoundary } from "@/utils/ErrorBoundary";
 import { wrapPromise } from "@/utils/wrapPromise";
+import { ObjectCacheTabForm } from "./caching/ObjectCacheTabForm";
+import { BrowserCacheTabForm } from "./caching/BrowserCacheTabForm";
 
 interface ObjectCacheFormData {
   objectCacheEnabled?: boolean;
@@ -29,6 +31,9 @@ interface ObjectCacheFormData {
   objectCacheLifetime?: string;
   objectCacheUsername?: string;
   objectCachePassword?: string;
+  objectCacheGlobalGroups?: string;
+  objectCacheNoCacheGroups?: string;
+  objectCachePersistentConnection?: boolean;
 }
 interface BrowserCacheFormData {
   browserCacheEnabled?: boolean;
@@ -78,6 +83,9 @@ export const initialSettingsState: AllCacheSettings = {
   objectCacheLifetime: "3600",
   objectCacheUsername: "",
   objectCachePassword: "",
+  objectCacheGlobalGroups: "",
+  objectCacheNoCacheGroups: "",
+  objectCachePersistentConnection: false,
 };
 
 // Create the initial resource once.
@@ -194,13 +202,13 @@ function CacheSettingsContent({ resource, onSettingsUpdate }: CacheSettingsConte
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="cache" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 sm:grid-cols-6">
+            <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
               <TabsTrigger value="cache">Cache</TabsTrigger>
               <TabsTrigger value="ttl">TTL</TabsTrigger>
               <TabsTrigger value="autopurge">Auto Purge</TabsTrigger>
               <TabsTrigger value="exclusions">Exclusions</TabsTrigger>
-              {/* <TabsTrigger value="object">Object Cache</TabsTrigger> */}
-              {/* <TabsTrigger value="browser">Browser Cache</TabsTrigger> */}
+              <TabsTrigger value="object">Object Cache</TabsTrigger>
+              <TabsTrigger value="browser">Browser Cache</TabsTrigger>
             </TabsList>
 
             <TabsContent value="cache" className="space-y-6 mt-6">
@@ -231,6 +239,50 @@ function CacheSettingsContent({ resource, onSettingsUpdate }: CacheSettingsConte
               <ExclusionsTabForm
                 initial={exclusionsTabInitial}
                 onSubmit={handleSettingsSubmit}
+                isSaving={isSaving}
+              />
+            </TabsContent>
+
+            <TabsContent value="object" className="space-y-6 mt-6">
+              <ObjectCacheTabForm
+                initial={{
+                  enabled: settings.objectCacheEnabled ?? false,
+                  method: settings.objectCacheMethod ?? "memcached",
+                  host: settings.objectCacheHost ?? "localhost",
+                  port: settings.objectCachePort ?? "11211",
+                  lifetime: settings.objectCacheLifetime ?? "3600",
+                  username: settings.objectCacheUsername ?? "",
+                  password: settings.objectCachePassword ?? "",
+                  globalGroups: settings.objectCacheGlobalGroups ?? "",
+                  noCacheGroups: settings.objectCacheNoCacheGroups ?? "",
+                  persistentConnection: settings.objectCachePersistentConnection ?? false,
+                }}
+                onSubmit={(data) => handleSettingsSubmit({
+                  objectCacheEnabled: data.enabled,
+                  objectCacheMethod: data.method,
+                  objectCacheHost: data.host,
+                  objectCachePort: data.port,
+                  objectCacheLifetime: data.lifetime,
+                  objectCacheUsername: data.username,
+                  objectCachePassword: data.password,
+                  objectCacheGlobalGroups: data.globalGroups ?? "",
+                  objectCacheNoCacheGroups: data.noCacheGroups ?? "",
+                  objectCachePersistentConnection: data.persistentConnection ?? false,
+                })}
+                isSaving={isSaving}
+              />
+            </TabsContent>
+
+            <TabsContent value="browser" className="space-y-6 mt-6">
+              <BrowserCacheTabForm
+                initial={{
+                  browserCache: settings.browserCacheEnabled ?? false,
+                  browserCacheTTL: String(settings.browserCacheTTL ?? ""),
+                }}
+                onSubmit={(data) => handleSettingsSubmit({
+                  browserCacheEnabled: data.browserCache,
+                  browserCacheTTL: data.browserCacheTTL,
+                })}
                 isSaving={isSaving}
               />
             </TabsContent>

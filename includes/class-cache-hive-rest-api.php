@@ -72,6 +72,13 @@ final class Cache_Hive_REST_API {
      */
     public static function get_settings() {
         $settings = Cache_Hive_Settings::get_settings();
+        // Convert objectCacheGlobalGroups and objectCacheNoCacheGroups to arrays for the frontend
+        if (isset($settings['objectCacheGlobalGroups'])) {
+            $settings['objectCacheGlobalGroups'] = preg_split('/\r?\n/', $settings['objectCacheGlobalGroups']);
+        }
+        if (isset($settings['objectCacheNoCacheGroups'])) {
+            $settings['objectCacheNoCacheGroups'] = preg_split('/\r?\n/', $settings['objectCacheNoCacheGroups']);
+        }
         return new WP_REST_Response( $settings, 200 );
     }
 
@@ -87,22 +94,20 @@ final class Cache_Hive_REST_API {
         if ( empty( $params ) ) {
             return new WP_REST_Response( ['error' => 'No settings provided.'], 400 );
         }
-        
+        // Convert arrays to newline-delimited strings for textarea fields
+        foreach (['objectCacheGlobalGroups', 'objectCacheNoCacheGroups'] as $key) {
+            if (isset($params[$key]) && is_array($params[$key])) {
+                $params[$key] = implode("\n", array_map('trim', $params[$key]));
+            }
+        }
         // Only allow keys that exist in defaults
         $new_settings = Cache_Hive_Settings::sanitize_settings( $params );
-        // Do not merge with current_settings, just use sanitized new_settings
         update_option( 'cache_hive_settings', $new_settings );
-        // After updating settings, we need to regenerate the config file.
         Cache_Hive_Disk::create_config_file( $new_settings );
-
-        // If Cloudflare settings changed, test connection.
         if ( isset($new_settings['cloudflare_api_token']) || isset($new_settings['cloudflare_api_key']) ) {
              Cache_Hive_Cloudflare::verify_credentials();
         }
-        
-        // Purge cache after settings save.
         Cache_Hive_Purge::purge_all();
-        
         return new WP_REST_Response( Cache_Hive_Settings::get_settings(true), 200 );
     }
 

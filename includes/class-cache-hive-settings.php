@@ -131,6 +131,9 @@ final class Cache_Hive_Settings {
             'objectCacheLifetime' => '3600',
             'objectCacheUsername' => '',
             'objectCachePassword' => '',
+            'objectCacheGlobalGroups' => '', // New: textarea, newline-delimited
+            'objectCacheNoCacheGroups' => '', // New: textarea, newline-delimited
+            'objectCachePersistentConnection' => false, // New: boolean
 
             // --- Cloudflare Integration ---
             'cloudflare_enabled' => false,
@@ -167,7 +170,7 @@ final class Cache_Hive_Settings {
                     $sanitized[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : [];
                 } else {
                     // Handle textarea fields that need to preserve line breaks
-                    if ( in_array( $key, ['mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies', 'customPurgeHooks'] ) ) {
+                    if ( in_array( $key, ['mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies', 'customPurgeHooks', 'objectCacheGlobalGroups', 'objectCacheNoCacheGroups'] ) ) {
                         $lines = explode("\n", $value);
                         $lines = array_filter(array_map('trim', $lines));
                         $sanitized[ $key ] = implode("\n", $lines);

@@ -114,13 +114,8 @@ final class Cache_Hive_Engine {
         }
 
         // Add browser caching headers if enabled.
-        if ( isset(self::$settings['browserCacheEnabled']) && self::$settings['browserCacheEnabled'] ) {
-            $ttl_days = isset(self::$settings['browserCacheTTL']) ? absint( self::$settings['browserCacheTTL'] ) : 0;
-            if ( $ttl_days > 0 ) {
-                $ttl_seconds = $ttl_days * DAY_IN_SECONDS;
-                header( 'Cache-Control: public, max-age=' . $ttl_seconds );
-                header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + $ttl_seconds ) . ' GMT' );
-            }
+        if ( class_exists('Cache_Hive_Browser_Cache') ) {
+            Cache_Hive_Browser_Cache::send_headers(self::$settings);
         }
         
         // Deliver the file.

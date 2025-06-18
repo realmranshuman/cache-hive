@@ -21,7 +21,7 @@ const browserCacheSchema = z.object({
 
 type BrowserCacheFormData = z.infer<typeof browserCacheSchema>
 
-export function BrowserCacheTabForm({ initial, onSubmit }: { initial: BrowserCacheFormData, onSubmit: (data: BrowserCacheFormData) => void }) {
+export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: BrowserCacheFormData, onSubmit: (data: BrowserCacheFormData) => void, isSaving: boolean }) {
   const form = useForm<BrowserCacheFormData>({
     resolver: zodResolver(browserCacheSchema),
     defaultValues: {
@@ -29,6 +29,10 @@ export function BrowserCacheTabForm({ initial, onSubmit }: { initial: BrowserCac
       browserCacheTTL: initial.browserCacheTTL ?? "",
     },
   })
+
+  React.useEffect(() => {
+    form.reset(initial);
+  }, [initial, form.reset]);
 
   function handleSubmit(data: BrowserCacheFormData) {
     onSubmit(data)
@@ -44,7 +48,7 @@ export function BrowserCacheTabForm({ initial, onSubmit }: { initial: BrowserCac
             <FormItem className="flex items-center justify-between">
               <FormLabel>Browser Cache</FormLabel>
               <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -57,14 +61,16 @@ export function BrowserCacheTabForm({ initial, onSubmit }: { initial: BrowserCac
             <FormItem className="space-y-2">
               <FormLabel>Browser Cache TTL (seconds)</FormLabel>
               <FormControl>
-                <Input {...field} id="browser-cache-ttl" placeholder="31536000" />
+                <Input {...field} id="browser-cache-ttl" placeholder="31536000" disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
         <div className="flex justify-end">
-          <Button type="submit">Save Changes</Button>
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Changes"}
+          </Button>
         </div>
       </form>
     </Form>
