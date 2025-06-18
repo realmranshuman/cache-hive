@@ -6,6 +6,7 @@ import { Dashboard } from "./dashboard";
 import { Caching } from "./caching";
 import { PageOptimization } from "./page-optimization";
 import { CloudflareIntegration } from "./cloudflare-integration";
+import { Toaster } from "@/components/ui/sonner";
 import "./index.css";
 
 function getTabFromUrl() {
@@ -97,6 +98,7 @@ function CacheHiveApp() {
             </TabsContent>
           </Tabs>
         </div>
+        <Toaster position="bottom-center" richColors closeButton/>
       </div>
   );
 }

@@ -112,32 +112,28 @@ function CacheSettingsContent({ resource, onSettingsUpdate }: CacheSettingsConte
   const handleSettingsSubmit = useCallback(
     async (data: Partial<AllCacheSettings>) => {
       setIsSaving(true);
-      const payload = { ...settings, ...data }; // Overlay changed data onto current settings.
-
-      try {
+      const payload = { ...settings, ...data };
+      const savePromise = (async () => {
         await updateSettings(payload);
         // Always re-fetch from backend after save to get normalized/corrected values
         const freshSettings = await getSettings();
         const normalizedUpdatedSettings = normalizeSettingsData(freshSettings);
-        setSettings(normalizedUpdatedSettings); // Update local state
-        onSettingsUpdate(normalizedUpdatedSettings); // Notify parent to update the resource
-
-        sonnerToast({
-          title: "Success",
-          description: "Settings saved successfully.",
-        });
-      } catch (error: any) {
-        console.error("Failed to save settings:", error);
-        sonnerToast({
-          title: "Error",
-          description: error.message || "Could not save settings.",
-          variant: "destructive",
-        });
+        setSettings(normalizedUpdatedSettings);
+        onSettingsUpdate(normalizedUpdatedSettings);
+        return { name: "Settings" };
+      })();
+      sonnerToast.promise(savePromise, {
+        loading: "Saving...",
+        success: (data) => `${data.name} saved successfully.`,
+        error: (err) => err.message || "Could not save settings.",
+      });
+      try {
+        await savePromise;
       } finally {
         setIsSaving(false);
       }
     },
-    [settings, onSettingsUpdate] // Add settings and onSettingsUpdate to dependency array
+    [settings, onSettingsUpdate]
   );
 
   // --- Slice settings for each form (uses local `settings` state) ---
