@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { verifyNginxBrowserCache, BrowserCacheStatus } from "@/api";
+import { toast as sonnerToast } from "sonner";
 
 const browserCacheSchema = z.object({
   browserCacheEnabled: z.boolean(),
@@ -36,9 +37,11 @@ type Props = {
   onSubmit: (data: BrowserCacheFormData) => Promise<void>;
   isSaving: boolean;
   status?: BrowserCacheStatus;
+  error?: { message: string; rules: string } | null;
+  manualRules?: string | null;
 };
 
-export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status }: Props) {
+export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error, manualRules }: Props) {
   const [verifyLoading, setVerifyLoading] = React.useState(false);
   const [verifyMessage, setVerifyMessage] = React.useState<string | null>(null);
 
@@ -56,6 +59,24 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status }: Pro
       ...data,
       browserCacheTTL: Number(data.browserCacheTTL),
     });
+  }
+
+  async function handleCopy(rules: string) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(rules);
+    } else {
+      // fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = rules;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+    sonnerToast.success('Rules copied to clipboard!');
   }
 
   async function handleVerifyNginx() {
@@ -78,25 +99,36 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status }: Pro
     }
   }
 
-  // Apache/LiteSpeed: .htaccess not writable
-  if (status && (status.server === 'apache' || status.server === 'litespeed') && status.htaccessWritable === false) {
+  // Show error and rules to copy if .htaccess is not writable after save attempt (even if rules are present)
+  if (error && manualRules) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-100 text-red-800 p-3 rounded">.htaccess is not writable. Please add the following rules manually:</div>
-        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
-        <Button onClick={() => {navigator.clipboard.writeText(status.rules)}}>Copy</Button>
+        <div className="bg-red-100 text-red-800 p-3 rounded">{error.message}</div>
+        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={manualRules} />
+        <Button onClick={() => handleCopy(manualRules)}>Copy</Button>
       </div>
     );
   }
 
-  // Nginx: not verified
-  if (status && status.server === 'nginx' && !status.nginxVerified) {
+  // Apache/LiteSpeed: .htaccess not writable and rules not present (initial load, not after save)
+  if (status && (status.server === 'apache' || status.server === 'litespeed') && status.htaccessWritable === false && status.rulesPresent === false) {
     return (
       <div className="space-y-4">
-        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">Nginx detected. Add these rules to your config and click Verify after reloading Nginx.</div>
+        <div className="bg-red-100 text-red-800 p-3 rounded">.htaccess is not writable and does not contain browser cache rules. Please add the following rules manually:</div>
+        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
+        <Button onClick={() => handleCopy(status.rules)}>Copy</Button>
+      </div>
+    );
+  }
+
+  // Nginx: not verified, rules not present (simulate read-only by always showing if rulesPresent is false)
+  if (status && status.server === 'nginx' && !status.nginxVerified && status.rulesPresent === false) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">Nginx config is missing browser cache rules. Please add the following rules and reload Nginx, then click Verify.</div>
         <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
         <div className="flex gap-2">
-          <Button onClick={() => {navigator.clipboard.writeText(status.rules)}}>Copy</Button>
+          <Button onClick={() => handleCopy(status.rules)}>Copy</Button>
           <Button onClick={handleVerifyNginx} disabled={verifyLoading}>{verifyLoading ? 'Verifying...' : 'Verify'}</Button>
         </div>
         {verifyMessage && <div className="text-sm text-gray-700">{verifyMessage}</div>}

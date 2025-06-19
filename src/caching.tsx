@@ -78,6 +78,9 @@ export function Caching() {
   // Per-section resources, only fetch on demand
   const [resources, setResources] = useState<{ [key: string]: any }>({});
 
+  // browserError state
+  const [browserError, setBrowserError] = useState<{ message: string; rules: string } | null>(null);
+
   // Fetch data for a tab if not already fetched
   const ensureResource = useCallback(
     (tab: string) => {
@@ -149,10 +152,37 @@ export function Caching() {
     (section: string, updater: (data: any) => Promise<any>) =>
       async (data: any) => {
         setSaving((prev) => ({ ...prev, [section]: true }));
-        const savePromise = updater(data).then(() => {
-          refreshSection(section);
-          return { name: "Settings" };
-        });
+        if (section === "browser") setBrowserError(null);
+        let savePromise: Promise<any>;
+        if (section === "browser") {
+          savePromise = updater(data)
+            .then((result) => {
+              // Success: refresh section to get latest backend state
+              refreshSection(section);
+              return { name: "Settings" };
+            })
+            .catch((err) => {
+              // If backend provides currentStatus, revert UI to backend state
+              if (err.currentStatus) {
+                setResources((prev) => ({
+                  ...prev,
+                  [section]: wrapPromise(Promise.resolve(err.currentStatus)),
+                }));
+              }
+              setBrowserError({
+                message:
+                  (err.message || "Could not save settings.") +
+                  (err.rules ? " Please update/replace the existing browser cache rules with the following:" : ""),
+                rules: err.rules || "",
+              });
+              throw err;
+            });
+        } else {
+          savePromise = updater(data).then(() => {
+            refreshSection(section);
+            return { name: "Settings" };
+          });
+        }
         sonnerToast.promise(savePromise, {
           loading: "Saving...",
           success: (data) => `${data.name} saved successfully.`,
@@ -268,6 +298,8 @@ export function Caching() {
                               )}
                               isSaving={saving.browser}
                               status={initial}
+                              error={browserError}
+                              manualRules={browserError?.rules}
                             />
                           )
                         }

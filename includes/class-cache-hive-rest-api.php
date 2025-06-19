@@ -464,6 +464,7 @@ final class Cache_Hive_REST_API {
             'htaccessWritable' => null,
             'nginxVerified' => null,
             'rules' => '',
+            'rulesPresent' => false,
         ];
         if ($server === 'apache' || $server === 'litespeed') {
             if (!function_exists('get_home_path')) {
@@ -471,11 +472,32 @@ final class Cache_Hive_REST_API {
             }
             $htaccess_file = trailingslashit(get_home_path()) . '.htaccess';
             $status['htaccessWritable'] = is_writable($htaccess_file);
-            $status['rules'] = Cache_Hive_Browser_Cache::generate_htaccess_rules($settings);
+            $rules = Cache_Hive_Browser_Cache::generate_htaccess_rules($settings);
+            $status['rules'] = $rules;
+            $status['rulesPresent'] = false;
+            if (file_exists($htaccess_file)) {
+                $contents = @file_get_contents($htaccess_file);
+                if ($contents && strpos($contents, '# BEGIN Cache Hive Browser Cache') !== false && strpos($contents, '# END Cache Hive Browser Cache') !== false) {
+                    $status['rulesPresent'] = true;
+                }
+            }
+            // If not present and not writable, provide default rules (1 year)
+            if (!$status['rulesPresent'] && !$status['htaccessWritable']) {
+                $default_settings = $settings;
+                $default_settings['browserCacheTTL'] = 31536000;
+                $status['rules'] = Cache_Hive_Browser_Cache::generate_htaccess_rules($default_settings);
+            }
         } elseif ($server === 'nginx') {
-            $status['rules'] = Cache_Hive_Browser_Cache::generate_nginx_rules($settings);
-            // Nginx verification is a stub for now
+            $rules = Cache_Hive_Browser_Cache::generate_nginx_rules($settings);
+            $status['rules'] = $rules;
             $status['nginxVerified'] = false;
+            // For Nginx, you could add a similar check for rules presence if you have a way to verify
+            $status['rulesPresent'] = !empty($rules); // Always true if rules generated
+            if (!$status['rulesPresent']) {
+                $default_settings = $settings;
+                $default_settings['browserCacheTTL'] = 31536000;
+                $status['rules'] = Cache_Hive_Browser_Cache::generate_nginx_rules($default_settings);
+            }
         }
         return new WP_REST_Response($status, 200);
     }
@@ -508,15 +530,27 @@ final class Cache_Hive_REST_API {
         Cache_Hive_Disk::create_config_file($new_settings);
         $server = Cache_Hive_Browser_Cache::get_server_software();
         if ($server === 'apache' || $server === 'litespeed') {
+            if (!function_exists('get_home_path')) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            $htaccess_file = trailingslashit(get_home_path()) . '.htaccess';
+            $rules = Cache_Hive_Browser_Cache::generate_htaccess_rules($new_settings);
             $result = Cache_Hive_Browser_Cache::update_htaccess($new_settings);
             if (is_wp_error($result)) {
+                // Always return the rules the user tried to save, so the frontend can show them
+                // Also return the current status/settings so the frontend can revert UI
+                $currentStatus = self::get_browser_cache_settings()->get_data();
                 return new WP_REST_Response([
                     'error' => $result->get_error_message(),
                     'code' => $result->get_error_code(),
+                    'rules' => $rules,
+                    'currentStatus' => $currentStatus,
                 ], 500);
             }
         }
-        return new WP_REST_Response($new_settings, 200);
+        // On success, return the new status (not just settings)
+        $status = self::get_browser_cache_settings()->get_data();
+        return new WP_REST_Response($status, 200);
     }
 
     /**

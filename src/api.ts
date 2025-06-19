@@ -157,6 +157,7 @@ export interface BrowserCacheStatus {
   htaccessWritable?: boolean | null;
   nginxVerified?: boolean | null;
   rules: string;
+  rulesPresent?: boolean;
 }
 
 export async function getBrowserCacheSettings(): Promise<BrowserCacheStatus> {
@@ -194,7 +195,19 @@ export async function updateBrowserCacheSettings(data: { browserCacheEnabled: bo
     credentials: 'include',
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to update browser cache settings');
+  if (!response.ok) {
+    let errorData: any = {};
+    try {
+      errorData = await response.json();
+    } catch (e) {
+      // fallback to generic error
+    }
+    const err: any = new Error(errorData.error || 'Failed to update browser cache settings');
+    err.code = errorData.code;
+    err.rules = errorData.rules;
+    err.currentStatus = errorData.currentStatus;
+    throw err;
+  }
   return response.json();
 }
 
