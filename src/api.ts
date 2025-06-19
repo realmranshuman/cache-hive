@@ -146,7 +146,20 @@ export async function updateObjectCacheSettings(data: any) {
   if (!response.ok) throw new Error('Failed to update object cache settings');
   return response.json();
 }
-export async function getBrowserCacheSettings() {
+
+// --- Browser Cache Status Interface ---
+export interface BrowserCacheStatus {
+  settings: {
+    browserCacheEnabled: boolean;
+    browserCacheTTL: number;
+  };
+  server: 'apache' | 'nginx' | 'litespeed' | 'unknown';
+  htaccessWritable?: boolean | null;
+  nginxVerified?: boolean | null;
+  rules: string;
+}
+
+export async function getBrowserCacheSettings(): Promise<BrowserCacheStatus> {
   const response = await fetch(`${wpApiSettings.root}${API_NAMESPACE}/browser-cache`, {
     method: 'GET',
     headers: {
@@ -158,7 +171,20 @@ export async function getBrowserCacheSettings() {
   if (!response.ok) throw new Error('Failed to fetch browser cache settings');
   return response.json();
 }
-export async function updateBrowserCacheSettings(data: any) {
+
+export async function verifyNginxBrowserCache(): Promise<{ verified: boolean; message?: string }> {
+  const response = await fetch(`${wpApiSettings.root}${API_NAMESPACE}/browser-cache/verify-nginx`, {
+    method: 'POST',
+    headers: {
+      'X-WP-Nonce': wpApiSettings.nonce,
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to verify Nginx browser cache');
+  return response.json();
+}
+export async function updateBrowserCacheSettings(data: { browserCacheEnabled: boolean; browserCacheTTL: number }) {
   const response = await fetch(`${wpApiSettings.root}${API_NAMESPACE}/browser-cache`, {
     method: 'POST',
     headers: {

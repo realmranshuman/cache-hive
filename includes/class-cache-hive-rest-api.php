@@ -9,6 +9,10 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+if ( ! class_exists( 'Cache_Hive_Browser_Cache' ) ) {
+    require_once __DIR__ . '/class-cache-hive-browser-cache.php';
+}
+
 final class Cache_Hive_REST_API {
 
     /**
@@ -105,6 +109,11 @@ final class Cache_Hive_REST_API {
                 'callback'            => array( __CLASS__, 'update_browser_cache_settings' ),
                 'permission_callback' => array( __CLASS__, 'permissions_check' ),
             ),
+        ) );
+        register_rest_route( self::$namespace, '/browser-cache/verify-nginx', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => array( __CLASS__, 'verify_nginx_browser_cache' ),
+            'permission_callback' => array( __CLASS__, 'permissions_check' ),
         ) );
 
         // Route for performing actions
@@ -438,50 +447,88 @@ final class Cache_Hive_REST_API {
     }
 
     /**
-     * Get browser cache settings.
+     * Get browser cache settings and status (expanded).
      *
      * @since 1.0.0
      * @return WP_REST_Response
      */
     public static function get_browser_cache_settings() {
         $settings = Cache_Hive_Settings::get_settings();
-        $browser_cache_settings = [
-            'browserCacheEnabled' => isset( $settings['browserCacheEnabled'] ) ? $settings['browserCacheEnabled'] : '',
-            'browserCacheTTL' => isset( $settings['browserCacheTTL'] ) ? $settings['browserCacheTTL'] : '',
+        $server = Cache_Hive_Browser_Cache::get_server_software();
+        $status = [
+            'settings' => [
+                'browserCacheEnabled' => isset($settings['browserCacheEnabled']) ? $settings['browserCacheEnabled'] : '',
+                'browserCacheTTL' => isset($settings['browserCacheTTL']) ? $settings['browserCacheTTL'] : '',
+            ],
+            'server' => $server,
+            'htaccessWritable' => null,
+            'nginxVerified' => null,
+            'rules' => '',
         ];
-        return new WP_REST_Response( $browser_cache_settings, 200 );
+        if ($server === 'apache' || $server === 'litespeed') {
+            if (!function_exists('get_home_path')) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            $htaccess_file = trailingslashit(get_home_path()) . '.htaccess';
+            $status['htaccessWritable'] = is_writable($htaccess_file);
+            $status['rules'] = Cache_Hive_Browser_Cache::generate_htaccess_rules($settings);
+        } elseif ($server === 'nginx') {
+            $status['rules'] = Cache_Hive_Browser_Cache::generate_nginx_rules($settings);
+            // Nginx verification is a stub for now
+            $status['nginxVerified'] = false;
+        }
+        return new WP_REST_Response($status, 200);
     }
 
     /**
-     * Update browser cache settings.
+     * Update browser cache settings and update .htaccess if needed.
      *
      * @since 1.0.0
      * @param WP_REST_Request $request The request object.
      * @return WP_REST_Response
      */
-    public static function update_browser_cache_settings( WP_REST_Request $request ) {
+    public static function update_browser_cache_settings(WP_REST_Request $request) {
         $params = $request->get_json_params();
         $settings = Cache_Hive_Settings::get_settings();
         $updated_settings = $settings;
-
-        foreach ( $params as $key => $value ) {
-            switch ( $key ) {
+        foreach ($params as $key => $value) {
+            switch ($key) {
                 case 'browserCacheEnabled':
-                    $updated_settings[$key] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+                    $updated_settings[$key] = filter_var($value, FILTER_VALIDATE_BOOLEAN);
                     break;
                 case 'browserCacheTTL':
-                    $updated_settings[$key] = intval( $value );
+                    $updated_settings[$key] = intval($value);
                     break;
                 default:
                     continue 2;
             }
         }
+        $new_settings = Cache_Hive_Settings::sanitize_settings($updated_settings);
+        update_option('cache_hive_settings', $new_settings);
+        Cache_Hive_Disk::create_config_file($new_settings);
+        $server = Cache_Hive_Browser_Cache::get_server_software();
+        if ($server === 'apache' || $server === 'litespeed') {
+            $result = Cache_Hive_Browser_Cache::update_htaccess($new_settings);
+            if (is_wp_error($result)) {
+                return new WP_REST_Response([
+                    'error' => $result->get_error_message(),
+                    'code' => $result->get_error_code(),
+                ], 500);
+            }
+        }
+        return new WP_REST_Response($new_settings, 200);
+    }
 
-        $new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
-        update_option( 'cache_hive_settings', $new_settings );
-        Cache_Hive_Disk::create_config_file( $new_settings );
-
-        return new WP_REST_Response( $new_settings, 200 );
+    /**
+     * Verify Nginx browser cache rules (stub).
+     *
+     * @since 1.0.0
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public static function verify_nginx_browser_cache(WP_REST_Request $request) {
+        // TODO: Implement actual verification logic
+        return new WP_REST_Response(['verified' => false, 'message' => 'Verification not implemented.'], 200);
     }
 
     /**

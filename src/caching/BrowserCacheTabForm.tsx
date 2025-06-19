@@ -13,6 +13,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
+import { verifyNginxBrowserCache, BrowserCacheStatus } from "@/api";
 
 const browserCacheSchema = z.object({
   browserCacheEnabled: z.boolean(),
@@ -30,21 +31,25 @@ const browserCacheSchema = z.object({
 
 type BrowserCacheFormData = z.infer<typeof browserCacheSchema>
 
-// Fix: Explicitly type the form as useForm<any> to avoid zodResolver type mismatch
-export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: any, onSubmit: (data: BrowserCacheFormData) => Promise<void>, isSaving: boolean }) {
-  const normalizedInitial: BrowserCacheFormData = {
-    browserCacheEnabled: Boolean(initial.browserCacheEnabled),
-    browserCacheTTL: typeof initial.browserCacheTTL === 'number' ? initial.browserCacheTTL : Number(initial.browserCacheTTL) || 31536000,
-  };
+type Props = {
+  initial: BrowserCacheStatus["settings"];
+  onSubmit: (data: BrowserCacheFormData) => Promise<void>;
+  isSaving: boolean;
+  status?: BrowserCacheStatus;
+};
+
+export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status }: Props) {
+  const [verifyLoading, setVerifyLoading] = React.useState(false);
+  const [verifyMessage, setVerifyMessage] = React.useState<string | null>(null);
 
   const form = useForm({
     resolver: zodResolver(browserCacheSchema),
-    defaultValues: normalizedInitial,
+    defaultValues: initial,
   });
 
   React.useEffect(() => {
-    form.reset(normalizedInitial);
-  }, [initial, form.reset]);
+    form.reset(initial);
+  }, [initial]);
 
   async function handleSubmit(data: BrowserCacheFormData) {
     await onSubmit({
@@ -53,6 +58,58 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: 
     });
   }
 
+  async function handleVerifyNginx() {
+    setVerifyLoading(true);
+    setVerifyMessage(null);
+    try {
+      const res = await fetch('/wp-includes/css/dashicons.min.css?_ch_verify=' + Date.now());
+      const cacheControl = res.headers.get('cache-control');
+      if (cacheControl && /max-age|public/.test(cacheControl)) {
+        const verifyRes = await verifyNginxBrowserCache();
+        setVerifyMessage(verifyRes.message || 'Verified!');
+        // Optionally, you can trigger a refresh in parent after verification
+      } else {
+        setVerifyMessage('Could not verify caching headers.');
+      }
+    } catch (e) {
+      setVerifyMessage('Verification failed.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  }
+
+  // Apache/LiteSpeed: .htaccess not writable
+  if (status && (status.server === 'apache' || status.server === 'litespeed') && status.htaccessWritable === false) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-red-100 text-red-800 p-3 rounded">.htaccess is not writable. Please add the following rules manually:</div>
+        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
+        <Button onClick={() => {navigator.clipboard.writeText(status.rules)}}>Copy</Button>
+      </div>
+    );
+  }
+
+  // Nginx: not verified
+  if (status && status.server === 'nginx' && !status.nginxVerified) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">Nginx detected. Add these rules to your config and click Verify after reloading Nginx.</div>
+        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
+        <div className="flex gap-2">
+          <Button onClick={() => {navigator.clipboard.writeText(status.rules)}}>Copy</Button>
+          <Button onClick={handleVerifyNginx} disabled={verifyLoading}>{verifyLoading ? 'Verifying...' : 'Verify'}</Button>
+        </div>
+        {verifyMessage && <div className="text-sm text-gray-700">{verifyMessage}</div>}
+      </div>
+    );
+  }
+
+  // Nginx: verified
+  if (status && status.server === 'nginx' && status.nginxVerified) {
+    return <div className="bg-green-100 text-green-800 p-3 rounded">Nginx browser cache rules are verified and active.</div>;
+  }
+
+  // Default: show form
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
@@ -100,5 +157,5 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving }: { initial: 
         </div>
       </form>
     </Form>
-  )
+  );
 }

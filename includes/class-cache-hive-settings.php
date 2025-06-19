@@ -121,7 +121,7 @@ final class Cache_Hive_Settings {
 
             // --- Browser Cache Tab ---
             'browserCacheEnabled' => true,
-            'browserCacheTTL' => 7,
+            'browserCacheTTL' => 604800, // 7 days in seconds
 
             // --- Object Cache Tab ---
             'objectCacheEnabled' => false,

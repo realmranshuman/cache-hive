@@ -261,12 +261,13 @@ export function Caching() {
                             />
                           ) : (
                             <BrowserCacheTabForm
-                              initial={initial}
+                              initial={initial.settings}
                               onSubmit={handleSave(
                                 "browser",
                                 updateBrowserCacheSettings
                               )}
                               isSaving={saving.browser}
+                              status={initial}
                             />
                           )
                         }
