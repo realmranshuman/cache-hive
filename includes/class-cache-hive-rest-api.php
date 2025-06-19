@@ -457,15 +457,10 @@ final class Cache_Hive_REST_API {
         $server = Cache_Hive_Browser_Cache::get_server_software();
         $status = [
             'settings' => [
-                'browserCacheEnabled' => isset($settings['browserCacheEnabled']) ? $settings['browserCacheEnabled'] : '',
-                'browserCacheTTL' => isset($settings['browserCacheTTL']) ? $settings['browserCacheTTL'] : '',
+                'browserCacheEnabled' => isset($settings['browserCacheEnabled']) ? (bool)$settings['browserCacheEnabled'] : false,
+                'browserCacheTTL' => isset($settings['browserCacheTTL']) ? (int)$settings['browserCacheTTL'] : 0,
             ],
             'server' => $server,
-            'htaccessWritable' => null,
-            'nginxVerified' => null,
-            'rules' => '',
-            'rulesPresent' => false,
-            'rulesMatchSettings' => false,
         ];
         if ($server === 'apache' || $server === 'litespeed') {
             if (!function_exists('get_home_path')) {
@@ -508,14 +503,40 @@ final class Cache_Hive_REST_API {
                 $status['rules'] = Cache_Hive_Browser_Cache::generate_htaccess_rules($default_settings);
             }
         } elseif ($server === 'nginx') {
-            $rules = Cache_Hive_Browser_Cache::generate_nginx_rules($settings);
-            $status['rules'] = $rules;
-            $status['nginxVerified'] = false;
-            $status['rulesPresent'] = !empty($rules); // Always true if rules generated
-            if (!$status['rulesPresent']) {
-                $default_settings = $settings;
-                $default_settings['browserCacheTTL'] = 31536000;
-                $status['rules'] = Cache_Hive_Browser_Cache::generate_nginx_rules($default_settings);
+            // Try to detect browser cache headers for a static file
+            $test_url = site_url('/wp-includes/css/dashicons.min.css');
+            $response = wp_remote_head($test_url, ['timeout' => 5]);
+            $ttl = 0;
+            $verified = false;
+            if (!is_wp_error($response) && isset($response['headers']['cache-control'])) {
+                $cc = $response['headers']['cache-control'];
+                if (is_array($cc)) {
+                    $cc = implode(',', $cc);
+                }
+                if (preg_match('/max-age=(\d+)/', $cc, $m)) {
+                    $ttl = (int)$m[1];
+                    $verified = true;
+                }
+            }
+            if (!is_wp_error($response) && isset($response['headers']['expires']) && !$verified) {
+                $expires = strtotime($response['headers']['expires']);
+                $now = time();
+                if ($expires > $now) {
+                    $ttl = $expires - $now;
+                    $verified = true;
+                }
+            }
+            $status['nginxVerified'] = $verified;
+            if ($verified) {
+                $status['settings']['browserCacheEnabled'] = true;
+                $status['settings']['browserCacheTTL'] = $ttl;
+                $status['rulesPresent'] = true;
+                $status['rules'] = '';
+            } else {
+                $status['settings']['browserCacheEnabled'] = false;
+                $status['settings']['browserCacheTTL'] = 31536000;
+                $status['rulesPresent'] = false;
+                $status['rules'] = Cache_Hive_Browser_Cache::generate_nginx_rules(['browserCacheTTL' => 31536000]);
             }
         }
         return new WP_REST_Response($status, 200);
@@ -573,15 +594,43 @@ final class Cache_Hive_REST_API {
     }
 
     /**
-     * Verify Nginx browser cache rules (stub).
+     * Verify Nginx browser cache rules (real check).
      *
      * @since 1.0.0
      * @param WP_REST_Request $request
      * @return WP_REST_Response
      */
     public static function verify_nginx_browser_cache(WP_REST_Request $request) {
-        // TODO: Implement actual verification logic
-        return new WP_REST_Response(['verified' => false, 'message' => 'Verification not implemented.'], 200);
+        $test_url = site_url('/wp-includes/css/dashicons.min.css');
+        $response = wp_remote_head($test_url, ['timeout' => 5]);
+        $ttl = 0;
+        $verified = false;
+        $message = '';
+        if (!is_wp_error($response) && isset($response['headers']['cache-control'])) {
+            $cc = $response['headers']['cache-control'];
+            if (preg_match('/max-age=(\d+)/', $cc, $m)) {
+                $ttl = (int)$m[1];
+                $verified = true;
+                $message = 'Browser cache detected (max-age=' . $ttl . ' seconds).';
+            }
+        }
+        if (!is_wp_error($response) && isset($response['headers']['expires']) && !$verified) {
+            $expires = strtotime($response['headers']['expires']);
+            $now = time();
+            if ($expires > $now) {
+                $ttl = $expires - $now;
+                $verified = true;
+                $message = 'Browser cache detected (Expires header, TTL=' . $ttl . ' seconds).';
+            }
+        }
+        if (!$verified) {
+            $message = 'Browser cache headers not detected. Please add the recommended Nginx config.';
+        }
+        return new WP_REST_Response([
+            'verified' => $verified,
+            'ttl' => $ttl,
+            'message' => $message,
+        ], 200);
     }
 
     /**
