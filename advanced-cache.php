@@ -113,12 +113,20 @@ class Cache_Hive_Advanced_Cache {
         }
 
         $mobile_user_agents = $this->settings['mobileUserAgents'];
-        $user_agents = array_filter( array_map( 'trim', explode( "\n", $mobile_user_agents ) ) );
+        $user_agents = array_filter(array_map('trim', explode("\n", $mobile_user_agents)), function($ua) {
+            return $ua !== '';
+        });
         
         if ( empty($user_agents) ) {
+            // Optionally, add a debug header to help diagnose
+            header('X-Cache-Hive-Mobile-Regex: empty');
             return false;
         }
-        $regex = '/' . implode( '|', $user_agents ) . '/i';
+        // Escape each user agent string for regex safety, specifying delimiter
+        $escaped_agents = array_map(function($ua) { return preg_quote($ua, '/'); }, $user_agents);
+        $regex = '/' . implode('|', $escaped_agents) . '/i';
+        // Optionally, add a debug header to help diagnose
+        header('X-Cache-Hive-Mobile-Regex: ' . $regex);
         return (bool) preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
     }
 
