@@ -465,6 +465,7 @@ final class Cache_Hive_REST_API {
             'nginxVerified' => null,
             'rules' => '',
             'rulesPresent' => false,
+            'rulesMatchSettings' => false,
         ];
         if ($server === 'apache' || $server === 'litespeed') {
             if (!function_exists('get_home_path')) {
@@ -475,10 +476,29 @@ final class Cache_Hive_REST_API {
             $rules = Cache_Hive_Browser_Cache::generate_htaccess_rules($settings);
             $status['rules'] = $rules;
             $status['rulesPresent'] = false;
+            $status['rulesMatchSettings'] = false;
             if (file_exists($htaccess_file)) {
                 $contents = @file_get_contents($htaccess_file);
-                if ($contents && strpos($contents, '# BEGIN Cache Hive Browser Cache') !== false && strpos($contents, '# END Cache Hive Browser Cache') !== false) {
+                $hasBlock = $contents && strpos($contents, '# BEGIN Cache Hive Browser Cache') !== false && strpos($contents, '# END Cache Hive Browser Cache') !== false;
+                if ($hasBlock) {
                     $status['rulesPresent'] = true;
+                    $ttl = Cache_Hive_Browser_Cache::parse_htaccess_ttl($contents);
+                    $rulesMatch = $ttl && $settings['browserCacheEnabled'] && $settings['browserCacheTTL'] == $ttl;
+                    $status['rulesMatchSettings'] = $rulesMatch;
+                    // If rules present but backend out of sync, sync backend to rules
+                    if ($status['htaccessWritable'] && $ttl && (!$settings['browserCacheEnabled'] || $settings['browserCacheTTL'] != $ttl)) {
+                        $settings['browserCacheEnabled'] = true;
+                        $settings['browserCacheTTL'] = $ttl;
+                        update_option('cache_hive_settings', $settings);
+                        Cache_Hive_Disk::create_config_file($settings);
+                        $status['settings']['browserCacheEnabled'] = true;
+                        $status['settings']['browserCacheTTL'] = $ttl;
+                    }
+                    // If rules present but backend is off, treat as active (manual)
+                    if (!$status['htaccessWritable'] && $ttl) {
+                        $status['settings']['browserCacheEnabled'] = true;
+                        $status['settings']['browserCacheTTL'] = $ttl;
+                    }
                 }
             }
             // If not present and not writable, provide default rules (1 year)
@@ -491,7 +511,6 @@ final class Cache_Hive_REST_API {
             $rules = Cache_Hive_Browser_Cache::generate_nginx_rules($settings);
             $status['rules'] = $rules;
             $status['nginxVerified'] = false;
-            // For Nginx, you could add a similar check for rules presence if you have a way to verify
             $status['rulesPresent'] = !empty($rules); // Always true if rules generated
             if (!$status['rulesPresent']) {
                 $default_settings = $settings;

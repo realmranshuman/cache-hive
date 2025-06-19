@@ -148,4 +148,20 @@ final class Cache_Hive_Browser_Cache {
         }
         return true;
     }
+
+    /**
+     * Parse TTL from .htaccess rules (if present)
+     * @param string $htaccess_contents
+     * @return int|null TTL in seconds, or null if not found
+     */
+    public static function parse_htaccess_ttl($htaccess_contents) {
+        if (preg_match('/ExpiresDefault\s+\"access plus (\d+) seconds\"/', $htaccess_contents, $m)) {
+            return (int)$m[1];
+        }
+        // Try to match any ExpiresByType as fallback
+        if (preg_match('/ExpiresByType [^\s]+ \"access plus (\d+) seconds\"/', $htaccess_contents, $m)) {
+            return (int)$m[1];
+        }
+        return null;
+    }
 }

@@ -111,12 +111,97 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
   }
 
   // Apache/LiteSpeed: .htaccess not writable and rules not present (initial load, not after save)
-  if (status && (status.server === 'apache' || status.server === 'litespeed') && status.htaccessWritable === false && status.rulesPresent === false) {
+  if (
+    status &&
+    (status.server === 'apache' || status.server === 'litespeed') &&
+    status.htaccessWritable === false && status.rulesPresent === false
+  ) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-100 text-red-800 p-3 rounded">.htaccess is not writable and does not contain browser cache rules. Please add the following rules manually:</div>
+        <div className="bg-red-100 text-red-800 p-3 rounded">
+          .htaccess is not writable and does not contain browser cache rules. Please add the following rules manually:
+        </div>
         <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
         <Button onClick={() => handleCopy(status.rules)}>Copy</Button>
+      </div>
+    );
+  }
+
+  // Apache/LiteSpeed: rules present (writable or not)
+  if (
+    status &&
+    (status.server === 'apache' || status.server === 'litespeed') &&
+    status.rulesPresent === true
+  ) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-green-100 text-green-800 p-3 rounded">
+          Browser cache is <b>active</b> (rules detected in <code>.htaccess</code>).<br />
+          TTL: <b>{status.settings.browserCacheTTL}</b> seconds.<br />
+          {status.htaccessWritable === false ? (
+            <>
+              The toggle is disabled because <code>.htaccess</code> is not writable.<br />
+              To disable browser cache, remove the rules manually from <code>.htaccess</code>.
+            </>
+          ) : (
+            <>
+              The toggle and TTL are now synced with the rules in <code>.htaccess</code>.<br />
+              You can edit settings below, or edit/remove the rules directly in <code>.htaccess</code>.
+            </>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1">Active .htaccess rules:</label>
+          <pre className="bg-gray-100 text-xs p-2 rounded overflow-x-auto select-text whitespace-pre-wrap" style={{ userSelect: 'text' }}>{status.rules}</pre>
+        </div>
+        <Form {...form}>
+          <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+            <FormField
+              control={form.control}
+              name="browserCacheEnabled"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between">
+                  <FormLabel>Browser Cache</FormLabel>
+                  <FormControl>
+                    <Switch checked={field.value} disabled={status.htaccessWritable === false} onCheckedChange={field.onChange} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="browserCacheTTL"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Browser Cache TTL (seconds)</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      id="browser-cache-ttl"
+                      type="number"
+                      min={14400}
+                      max={63072000}
+                      step={1}
+                      placeholder="31536000"
+                      disabled={status.htaccessWritable === false}
+                      value={typeof field.value === 'number' || typeof field.value === 'string' ? field.value : ''}
+                      onChange={e => field.onChange(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {status.htaccessWritable !== false && (
+              <div className="flex justify-end">
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            )}
+          </form>
+        </Form>
       </div>
     );
   }
