@@ -112,8 +112,10 @@ class Cache_Hive_REST_ObjectCache {
         // Only update settings, write to config.php, and regenerate drop-in
         update_option( 'cache_hive_settings', $new_settings, 'yes' );
         Cache_Hive_Disk::create_config_file( $new_settings );
-        Cache_Hive_Object_Cache::manage_dropin( $new_settings );
-
+        // Always regenerate the object-cache.php drop-in when settings are saved
+        if ( class_exists( 'Cache_Hive_Object_Cache' ) ) {
+            Cache_Hive_Object_Cache::manage_dropin( $new_settings );
+        }
         // Return the latest settings and status
         $response_data = self::get_object_cache_settings()->get_data();
         return new WP_REST_Response( $response_data, 200 );

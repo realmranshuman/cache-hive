@@ -53,6 +53,13 @@ require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-media-optimi
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-object-cache.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/interface-backend.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-phpredis.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-predis.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-credis.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-memcached.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-array.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/factory.php';
 
 // Register hooks for cache purging on logout
 if ( class_exists('Cache_Hive_Disk') ) {

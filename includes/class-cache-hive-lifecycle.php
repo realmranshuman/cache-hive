@@ -95,6 +95,12 @@ final class Cache_Hive_Lifecycle {
         
         // This will remove advanced-cache.php, the WP_CACHE constant, and the config file.
         Cache_Hive_Disk::cleanup_environment();
+        
+        // Remove object-cache.php drop-in if it exists
+        $dropin = defined('WP_CONTENT_DIR') ? WP_CONTENT_DIR . '/object-cache.php' : false;
+        if ( $dropin && file_exists( $dropin ) ) {
+            @unlink( $dropin );
+        }
     }
     
     /**
@@ -111,6 +117,12 @@ final class Cache_Hive_Lifecycle {
         
         // Physically remove the entire cache directory.
         self::delete_cache_directory();
+        
+        // Remove object-cache.php drop-in if it exists (redundant, but ensures cleanup)
+        $dropin = defined('WP_CONTENT_DIR') ? WP_CONTENT_DIR . '/object-cache.php' : false;
+        if ( $dropin && file_exists( $dropin ) ) {
+            @unlink( $dropin );
+        }
     }
     
     /**
