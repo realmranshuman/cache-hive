@@ -52,6 +52,7 @@ require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-js-optimizer
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-media-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
+require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-object-cache.php';
 
 // Register hooks for cache purging on logout
 if ( class_exists('Cache_Hive_Disk') ) {
@@ -138,6 +139,15 @@ add_action('admin_enqueue_scripts', function($hook) {
         );
     }
 }, 100);
+
+add_action('plugins_loaded', 'cache_hive_init');
+
+function cache_hive_init() {
+    // Initialize object cache if the class exists
+    if (class_exists('Cache_Hive_Object_Cache')) {
+        Cache_Hive_Object_Cache::init();
+    }
+}
 
 /**
  * Begins execution of the plugin.
