@@ -1,0 +1,6 @@
+{
+    "require": {
+        "predis/predis": "^3.0",
+        "colinmollenhour/credis": "^1.17"
+    }
+}
