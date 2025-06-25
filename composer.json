@@ -1,0 +1,32 @@
+{
+    "name": "realmranshuman/cache-hive",
+    "description": "A high-performance caching plugin for WordPress.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "realmranshuman",
+            "email": "buddhabhog@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "predis/predis": "^3.0",
+        "colinmollenhour/credis": "^1.17"
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "*",
+        "wp-coding-standards/wpcs": "^3.0",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpcompatibility/phpcompatibility-wp": "*"
+    },
+    "scripts": {
+        "lint": "vendor/bin/phpcs --standard=phpcs.ruleset.xml .",
+        "fix": "vendor/bin/phpcbf --standard=phpcs.ruleset.xml ."
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}
