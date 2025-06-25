@@ -55,7 +55,7 @@ final class Cache_Hive_Disk {
 			return false;
 		}
 		// Path to the template drop-in file inside your plugin.
-		$advanced_cache_source_file = CACHE_HIVE_DIR . 'advanced-cache.php';
+		$advanced_cache_source_file = CACHE_HIVE_DIR . 'class-cache-hive-advanced-cache.php';
 		// Destination path for the drop-in.
 		$advanced_cache_destination_file = WP_CONTENT_DIR . '/advanced-cache.php';
 		if ( ! is_readable( $advanced_cache_source_file ) ) {

@@ -45,7 +45,7 @@
 	that was causing the original problem.
 	-->
 	<rule ref="WordPress.Security.ValidatedSanitizedInput">
-		<exclude-pattern>*/advanced-cache.php</exclude-pattern>
+		<exclude-pattern>*/class-cache-hive-advanced-cache.php</exclude-pattern>
 		<severity>10</severity>
 	</rule>
 
