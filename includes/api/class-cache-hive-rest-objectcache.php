@@ -180,7 +180,6 @@ class Cache_Hive_REST_ObjectCache {
 
 		$settings_to_save = array_merge( $current_settings, $user_intent, $final_config );
 
-		require_once CACHE_HIVE_DIR . 'includes/object-cache/factory.php';
 		$live_status_info = array(
 			'status' => 'Disabled',
 			'client' => 'Drop-in not active.',

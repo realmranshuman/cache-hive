@@ -32,6 +32,13 @@ define( 'CACHE_HIVE_VITE_DEV_SERVER', 'http://localhost:5173' );
 define( 'CACHE_HIVE_VITE_ENTRY_POINT', 'src/index.tsx' );
 
 // =========================================================================
+// BOOTSTRAP COMPOSER AUTOLOADER
+// =========================================================================
+if ( file_exists( CACHE_HIVE_DIR . 'vendor/autoload.php' ) ) {
+	require_once CACHE_HIVE_DIR . 'vendor/autoload.php';
+}
+
+// =========================================================================
 // PLUGIN LIFECYCLE HOOKS
 // =========================================================================
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
@@ -55,12 +62,12 @@ require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-object-cache.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/interface-backend.php';
-require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-phpredis.php';
-require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-predis.php';
-require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-credis.php';
-require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-memcached.php';
-require_once CACHE_HIVE_DIR . 'includes/object-cache/backend-array.php';
-require_once CACHE_HIVE_DIR . 'includes/object-cache/factory.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-predis-backend.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-credis-backend.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-memcached-backend.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-array-backend.php';
+require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-object-cache-factory.php';
 
 // Register hooks for cache purging on logout.
 if ( class_exists( 'Cache_Hive_Disk' ) ) {

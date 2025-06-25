@@ -10,13 +10,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-require_once __DIR__ . '/api/cache.php';
-require_once __DIR__ . '/api/ttl.php';
-require_once __DIR__ . '/api/autopurge.php';
-require_once __DIR__ . '/api/exclusions.php';
-require_once __DIR__ . '/api/object-cache.php';
-require_once __DIR__ . '/api/browser-cache.php';
-require_once __DIR__ . '/api/roles.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-cache.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-ttl.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-autopurge.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-exclusions.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-objectcache.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-browsercache.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-roles.php';
 
 /**
  * Final class for managing all REST API endpoints for Cache Hive.

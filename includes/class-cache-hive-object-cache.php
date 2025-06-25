@@ -2,7 +2,7 @@
 /**
  * Handles object cache settings and integration for Cache Hive.
  *
- * @package CacheHive
+ * @package Cache_Hive
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -106,7 +106,7 @@ final class Cache_Hive_Object_Cache {
 			return false;
 		}
 		$content = @file_get_contents( self::$dropin_path, false, null, 0, 100 );
-		return $content && strpos( $content, self::DROPIN_MARKER ) !== false;
+		return $content && false !== strpos( $content, self::DROPIN_MARKER );
 	}
 
 	/**
@@ -147,6 +147,12 @@ final class Cache_Hive_Object_Cache {
  */
 if ( defined( 'WP_CACHE_HIVE_OBJECT_CACHE_LOADED' ) ) { return; }
 
+// Bootstrap Composer autoloader to make Predis/Credis available.
+\$autoloader = WP_CONTENT_DIR . '/plugins/cache-hive/vendor/autoload.php';
+if ( file_exists( \$autoloader ) ) {
+	require_once \$autoloader;
+}
+
 function wp_cache_add(\$key, \$data, \$group = 'default', \$expire = 0) { if (!isset(\$GLOBALS['wp_object_cache'])) { wp_cache_init(); } return \$GLOBALS['wp_object_cache']->add(\$key, \$data, \$group, (int) \$expire); }
 function wp_cache_close() { if (!isset(\$GLOBALS['wp_object_cache'])) { return true; } return \$GLOBALS['wp_object_cache']->close(); }
 function wp_cache_decr(\$key, \$offset = 1, \$group = 'default') { if (!isset(\$GLOBALS['wp_object_cache'])) { wp_cache_init(); } return \$GLOBALS['wp_object_cache']->decr(\$key, \$offset, \$group); }
@@ -169,7 +175,7 @@ final class WP_Object_Cache {
     public function __construct() {
         \$this->config = {$config_exported};
         \$plugin_path = WP_CONTENT_DIR . "/plugins/cache-hive/";
-        \$files = [ 'includes/object-cache/interface-backend.php', 'includes/object-cache/backend-phpredis.php', 'includes/object-cache/backend-predis.php', 'includes/object-cache/backend-credis.php', 'includes/object-cache/backend-memcached.php', 'includes/object-cache/backend-array.php', 'includes/object-cache/factory.php' ];
+        \$files = [ 'includes/object-cache/interface-backend.php', 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php', 'includes/object-cache/class-cache-hive-redis-predis-backend.php', 'includes/object-cache/class-cache-hive-redis-credis-backend.php', 'includes/object-cache/class-cache-hive-memcached-backend.php', 'includes/object-cache/class-cache-hive-array-backend.php', 'includes/object-cache/class-cache-hive-object-cache-factory.php' ];
         foreach (\$files as \$file) { if (file_exists(\$plugin_path . \$file)) { require_once \$plugin_path . \$file; } }
         if (class_exists('Cache_Hive_Object_Cache_Factory')) { \$this->backend = Cache_Hive_Object_Cache_Factory::create(\$this->config); } else { \$this->backend = new Cache_Hive_Array_Backend(\$this->config); }
         \$this->multisite = is_multisite(); \$this->blog_prefix = \$this->multisite ? get_current_blog_id() . ':' : '';
@@ -186,7 +192,6 @@ final class WP_Object_Cache {
     public function get_multiple(\$keys, \$group = 'default') { if (\$this->is_non_persistent_group(\$group)) return []; \$prefixed_keys = []; foreach((array) \$keys as \$key) { \$prefixed_keys[\$this->get_key(\$key, \$group)] = \$key; } \$values = \$this->backend->get_multiple(array_keys(\$prefixed_keys)); \$result = []; foreach (\$values as \$prefixed_key => \$value) { if (isset(\$prefixed_keys[\$prefixed_key])) { \$result[\$prefixed_keys[\$prefixed_key]] = \$value; } } return \$result; }
     public function delete(\$key, \$group = 'default') { \$cache_key = \$this->get_key(\$key, \$group); unset(\$this->cache[\$cache_key]); if (\$this->is_non_persistent_group(\$group)) return true; return \$this->backend->delete(\$cache_key); }
     
-    // --- THIS IS THE FIX ---
     public function incr(\$key, \$offset = 1, \$group = 'default') {
         \$cache_key = \$this->get_key(\$key, \$group);
         if (\$this->is_non_persistent_group(\$group)) {
@@ -211,7 +216,6 @@ final class WP_Object_Cache {
         unset(\$this->cache[\$cache_key]);
         return \$this->backend->decrement(\$cache_key, \$offset);
     }
-    // --- END FIX ---
     
     public function flush() { \$this->cache = []; return \$this->backend->flush(\$this->config['flush_async']); }
     public function close() { return \$this->backend->close(); }
