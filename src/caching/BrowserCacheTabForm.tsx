@@ -152,7 +152,7 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
         </div>
         <div>
           <label className="block text-xs font-semibold mb-1">Active .htaccess rules:</label>
-          <pre className="bg-gray-100 text-xs p-2 rounded overflow-x-auto select-text whitespace-pre-wrap" style={{ userSelect: 'text' }}>{status.rules}</pre>
+          <pre className="bg-gray-100 text-xs p-2 rounded overflow-x-auto select-text whitespace-pre-wrap font-mono text-black dark:bg-gray-900 dark:text-white" style={{ userSelect: 'text' }}>{status.rules}</pre>
         </div>
         <Form {...form}>
           <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
