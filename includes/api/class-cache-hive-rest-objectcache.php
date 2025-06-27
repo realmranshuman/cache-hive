@@ -73,6 +73,7 @@ class Cache_Hive_REST_ObjectCache {
 			'objectCacheLifetime'             => $settings['objectCacheLifetime'] ?? 3600,
 			'objectCacheUsername'             => $settings['objectCacheUsername'] ?? '',
 			'objectCachePassword'             => $settings['objectCachePassword'] ?? '',
+			'objectCacheKey'                  => $settings['objectCacheKey'] ?? '',
 			'objectCacheGlobalGroups'         => $settings['objectCacheGlobalGroups'] ?? array(),
 			'objectCacheNoCacheGroups'        => $settings['objectCacheNoCacheGroups'] ?? array(),
 			'objectCachePersistentConnection' => $settings['objectCachePersistentConnection'] ?? false,
@@ -201,6 +202,12 @@ class Cache_Hive_REST_ObjectCache {
 					400
 				);
 			}
+			// Generate and add the unique cache key.
+			// This ensures a new salt is created every time the cache is enabled or settings are saved while it's enabled.
+			$settings_to_save['objectCacheKey'] = 'ch-' . wp_generate_password( 10, false );
+		} else {
+			// If disabling, clear the key.
+			$settings_to_save['objectCacheKey'] = '';
 		}
 
 		if ( ( $user_intent['objectCacheMethod'] !== $old_method ) && function_exists( 'wp_cache_flush' ) ) {
@@ -229,6 +236,7 @@ class Cache_Hive_REST_ObjectCache {
 			array(
 				'liveStatus'         => $live_status_info,
 				'serverCapabilities' => self::get_server_capabilities(),
+				'objectCacheKey'     => $settings_to_save['objectCacheKey'],
 			)
 		);
 

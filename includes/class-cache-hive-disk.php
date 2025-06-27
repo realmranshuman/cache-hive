@@ -99,6 +99,13 @@ final class Cache_Hive_Disk {
 		$config_file = CACHE_HIVE_CONFIG_DIR . '/config.php';
 		$contents    = '<?php return ' . var_export( $settings, true ) . ';';
 		file_put_contents( $config_file, $contents, LOCK_EX );
+
+		// Invalidate OPcache for the config file.
+		if ( function_exists( 'opcache_invalidate' ) && ini_get( 'opcache.enable' ) ) {
+			if ( ! opcache_invalidate( $config_file, true ) ) {
+				error_log( "[Cache Hive] Failed to invalidate OPcache for: {$config_file}. Maybe OPCache is disabled?" );
+			}
+		}
 	}
 
 	/**

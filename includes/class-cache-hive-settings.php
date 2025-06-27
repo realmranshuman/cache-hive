@@ -121,6 +121,7 @@ final class Cache_Hive_Settings {
 			'objectCacheLifetime'             => '3600',
 			'objectCacheUsername'             => '',
 			'objectCachePassword'             => '',
+			'objectCacheKey'                  => '',
 			'objectCacheGlobalGroups'         => array(),
 			'objectCacheNoCacheGroups'        => array(),
 			'objectCachePersistentConnection' => false,

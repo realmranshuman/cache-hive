@@ -76,6 +76,14 @@ final class Cache_Hive_Object_Cache {
 		if ( false === $result ) {
 			return false;
 		}
+
+		// Invalidate OPcache for the drop-in file.
+		if ( function_exists( 'opcache_invalidate' ) && ini_get( 'opcache.enable' ) ) {
+			if ( ! opcache_invalidate( self::$dropin_path, true ) ) {
+				error_log( '[Cache Hive] Failed to invalidate OPcache for: ' . self::$dropin_path . '. Maybe OPcache is disabled?' );
+			}
+		}
+
 		if ( file_exists( self::$dropin_path ) && function_exists( 'wp_is_writable' ) && ! wp_is_writable( self::$dropin_path ) ) {
 			if ( false === chmod( self::$dropin_path, 0644 ) ) {
 				// Optionally log or handle chmod failure here.
@@ -134,6 +142,7 @@ final class Cache_Hive_Object_Cache {
 			'serializer'      => $settings['serializer'] ?? 'php',
 			'compression'     => $settings['compression'] ?? 'none',
 			'flush_async'     => ! empty( $settings['flush_async'] ),
+			'objectCacheKey'  => $settings['objectCacheKey'] ?? '',
 		);
 
 		$generation_date = gmdate( 'Y-m-d H:i:s T' );
@@ -181,7 +190,7 @@ final class WP_Object_Cache {
         \$this->multisite = is_multisite(); \$this->blog_prefix = \$this->multisite ? get_current_blog_id() . ':' : '';
         if (\$this->config['prefetch'] && (is_admin() || defined('WP_CLI'))) { \$this->prefetch_options(); }
     }
-    private function get_key(\$key, \$group) { if (empty(\$group)) { \$group = 'default'; } \$prefix = in_array(\$group, \$this->config['global_groups'], true) ? '' : \$this->blog_prefix; return "{\$prefix}{\$group}:{\$key}"; }
+    private function get_key(\$key, \$group) { if (empty(\$group)) { \$group = 'default'; } \$salt = \$this->config['objectCacheKey'] ?? ''; \$prefix = in_array(\$group, \$this->config['global_groups'], true) ? '' : \$this->blog_prefix; return (\$salt ? \$salt . ':' : '') . "{\$prefix}{\$group}:{\$key}"; }
     private function is_non_persistent_group(\$group) { if (empty(\$group) || empty(\$this->config['no_cache_groups'])) return false; foreach (\$this->config['no_cache_groups'] as \$no_cache_group) { if (str_starts_with(\$group, \$no_cache_group)) return true; } return false; }
     private function prefetch_options() { if (\$this->prefetched) return; \$alloptions_key = \$this->get_key('alloptions', 'options'); \$alloptions = \$this->backend->get(\$alloptions_key, \$found); if (\$found && is_array(\$alloptions)) { foreach (\$alloptions as \$name => \$value) { \$this->cache[\$this->get_key(\$name, 'options')] = \$value; } \$this->prefetched = true; } }
     
