@@ -1,6 +1,9 @@
 <?php
 /**
  * Class for handling the core caching engine operations.
+ *
+ * @since 1.0.0
+ * @package Cache_Hive
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -12,9 +15,25 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Cache_Hive_Engine {
 
+	/**
+	 * Whether the engine has started.
+	 *
+	 * @var bool
+	 */
 	public static $started = false;
+
+	/**
+	 * Plugin settings array.
+	 *
+	 * @var array
+	 */
 	public static $settings;
 
+	/**
+	 * Starts the Cache Hive engine if conditions are met.
+	 *
+	 * @return bool True if started, false otherwise.
+	 */
 	public static function start() {
 		if ( self::should_start() ) {
 			self::$started = true;
@@ -23,6 +42,9 @@ final class Cache_Hive_Engine {
 		return self::$started;
 	}
 
+	/**
+	 * Constructor. Initializes settings and hooks.
+	 */
 	private function __construct() {
 		self::$settings = Cache_Hive_Settings::get_settings();
 
@@ -33,6 +55,11 @@ final class Cache_Hive_Engine {
 		add_action( 'template_redirect', array( __CLASS__, 'start_buffering' ), 1 );
 	}
 
+	/**
+	 * Determines if the engine should start.
+	 *
+	 * @return bool
+	 */
 	public static function should_start() {
 		if ( self::$started ) {
 			return false;
@@ -40,7 +67,9 @@ final class Cache_Hive_Engine {
 		if ( is_admin() || defined( 'DOING_CRON' ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) || defined( 'XMLRPC_REQUEST' ) ) {
 			return false;
 		}
-		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : 'GET';
+		if ( 'GET' !== $request_method ) {
 			return false;
 		}
 		if ( ! ( Cache_Hive_Settings::get( 'enableCache' ) ?? false ) ) {
@@ -71,15 +100,18 @@ final class Cache_Hive_Engine {
 			header( 'X-Cache-Hive: Miss (Engine)' );
 			return;
 		}
-		
+
 		if ( class_exists( 'Cache_Hive_Browser_Cache' ) ) {
 			Cache_Hive_Browser_Cache::send_headers( self::$settings );
 		}
-		
+
 		readfile( $cache_file );
 		exit;
 	}
 
+	/**
+	 * Starts output buffering to capture the page if no cache was delivered.
+	 */
 	public static function start_buffering() {
 		if ( self::bypass_cache() ) {
 			return;
@@ -87,6 +119,12 @@ final class Cache_Hive_Engine {
 		ob_start( array( __CLASS__, 'end_buffering' ) );
 	}
 
+	/**
+	 * Callback for output buffering. Caches the page if cacheable.
+	 *
+	 * @param string $buffer The output buffer contents.
+	 * @return string
+	 */
 	private static function end_buffering( $buffer ) {
 		if ( ! self::is_cacheable( $buffer ) || self::bypass_cache() ) {
 			return $buffer;
@@ -95,6 +133,12 @@ final class Cache_Hive_Engine {
 		return $buffer;
 	}
 
+	/**
+	 * Determines if the buffer is cacheable HTML output.
+	 *
+	 * @param string $buffer The output buffer contents.
+	 * @return bool
+	 */
 	public static function is_cacheable( $buffer ) {
 		if ( strlen( $buffer ) < 255 ) {
 			return false;

@@ -24,22 +24,30 @@ if ( ! defined( 'WP_CACHE' ) || ! WP_CACHE ) {
 class Cache_Hive_Advanced_Cache {
 
 	/**
-	 * @var array|false The loaded settings.
+	 * The loaded settings array or false if not loaded.
+	 *
+	 * @var array|false
 	 */
 	private $settings;
 
 	/**
-	 * @var bool Whether the request is from a mobile device.
+	 * Whether the request is from a mobile device.
+	 *
+	 * @var bool
 	 */
 	private $is_mobile = false;
 
 	/**
-	 * @var bool Whether a 'wordpress_logged_in' cookie is present.
+	 * Whether a 'wordpress_logged_in' cookie is present.
+	 *
+	 * @var bool
 	 */
 	private $is_logged_in = false;
 
 	/**
-	 * @var int The User ID extracted from the login cookie.
+	 * The User ID extracted from the login cookie.
+	 *
+	 * @var int
 	 */
 	private $user_id = 0;
 
@@ -129,8 +137,15 @@ class Cache_Hive_Advanced_Cache {
 		$exclude_uris = $this->settings['excludeUris'] ?? array();
 		if ( ! empty( $exclude_uris ) ) {
 			foreach ( $exclude_uris as $pattern ) {
-				if ( ! empty( $pattern ) && @preg_match( '#' . $pattern . '#i', $request_uri ) ) {
-					return true;
+				if ( ! empty( $pattern ) ) {
+					$result = preg_match( '#' . $pattern . '#i', $request_uri );
+					if ( false === $result ) {
+						// Invalid regex, skip.
+						continue;
+					}
+					if ( $result ) {
+						return true;
+					}
 				}
 			}
 		}
@@ -143,8 +158,14 @@ class Cache_Hive_Advanced_Cache {
 				$query_keys = array_keys( $query_params );
 				foreach ( $query_keys as $key ) {
 					foreach ( $exclude_qs as $pattern ) {
-						if ( ! empty( $pattern ) && @preg_match( '#' . $pattern . '#i', $key ) ) {
-							return true;
+						if ( ! empty( $pattern ) ) {
+							$result = preg_match( '#' . $pattern . '#i', $key );
+							if ( false === $result ) {
+								continue;
+							}
+							if ( $result ) {
+								return true;
+							}
 						}
 					}
 				}
@@ -157,8 +178,14 @@ class Cache_Hive_Advanced_Cache {
 			$cookie_keys = array_keys( $_COOKIE );
 			foreach ( $cookie_keys as $key ) {
 				foreach ( $exclude_cookies as $pattern ) {
-					if ( ! empty( $pattern ) && @preg_match( '#' . $pattern . '#i', $key ) ) {
-						return true;
+					if ( ! empty( $pattern ) ) {
+						$result = preg_match( '#' . $pattern . '#i', $key );
+						if ( false === $result ) {
+							continue;
+						}
+						if ( $result ) {
+							return true;
+						}
 					}
 				}
 			}
@@ -181,8 +208,12 @@ class Cache_Hive_Advanced_Cache {
 			return false;
 		}
 		// Use preg_quote to safely handle special characters in user agent strings.
-		$regex = '/' . implode( '|', array_map( 'preg_quote', $user_agents, array_fill( 0, count( $user_agents ), '/' ) ) ) . '/i';
-		return (bool) @preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
+		$regex  = '/' . implode( '|', array_map( 'preg_quote', $user_agents, array_fill( 0, count( $user_agents ), '/' ) ) ) . '/i';
+		$result = preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
+		if ( false === $result ) {
+			return false;
+		}
+		return (bool) $result;
 	}
 
 	/**

@@ -22,6 +22,7 @@ final class Cache_Hive_Settings {
 
 	/**
 	 * The array of plugin settings.
+	 *
 	 * @var array
 	 */
 	private static $settings;
@@ -75,21 +76,61 @@ final class Cache_Hive_Settings {
 	 */
 	public static function get_default_settings() {
 		// All multi-line textareas are now defined as arrays by default.
-		$default_mobile_agents = array( 'Mobile', 'Android', 'Silk/', 'Kindle', 'BlackBerry', 'Opera Mini', 'Opera Mobi', 'iPhone', 'iPad' );
-		$default_exclude_uris = array( '/wp-admin/', '/wp-login.php', '/cart/', '/checkout/', '/my-account/.*' );
+		$default_mobile_agents   = array( 'Mobile', 'Android', 'Silk/', 'Kindle', 'BlackBerry', 'Opera Mini', 'Opera Mobi', 'iPhone', 'iPad' );
+		$default_exclude_uris    = array( '/wp-admin/', '/wp-login.php', '/cart/', '/checkout/', '/my-account/.*' );
 		$default_exclude_queries = array( 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'preview', 'edit', '_ga' );
 		$default_exclude_cookies = array( 'wordpress_logged_in', 'wp-postpass', 'woocommerce_cart_hash', 'comment_author_' );
-		$default_custom_hooks = array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' );
+		$default_custom_hooks    = array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' );
 
 		// The rest of your defaults...
 		return array(
-			'enableCache' => true, 'cacheLoggedUsers' => false, 'cacheCommenters' => true, 'cacheRestApi' => false, 'cacheMobile' => true, 'mobileUserAgents' => $default_mobile_agents,
-			'publicCacheTTL' => 604800, 'privateCacheTTL' => 1800, 'frontPageTTL' => 604800, 'feedTTL' => 604800, 'restTTL' => 604800,
-			'autoPurgeEntireSite' => false, 'autoPurgeFrontPage' => true, 'autoPurgeHomePage' => false, 'autoPurgePages' => true, 'autoPurgeAuthorArchive' => false, 'autoPurgePostTypeArchive' => true, 'autoPurgeYearlyArchive' => false, 'autoPurgeMonthlyArchive' => false, 'autoPurgeDailyArchive' => false, 'autoPurgeTermArchive' => true, 'purgeOnUpgrade' => true, 'serveStale' => false, 'customPurgeHooks' => $default_custom_hooks,
-			'excludeUris' => $default_exclude_uris, 'excludeQueryStrings' => $default_exclude_queries, 'excludeCookies' => $default_exclude_cookies, 'excludeRoles' => array(),
-			'browserCacheEnabled' => true, 'browserCacheTTL' => 604800,
-			'objectCacheEnabled' => false, 'objectCacheMethod' => 'memcached', 'objectCacheHost' => 'localhost', 'objectCachePort' => '11211', 'objectCacheLifetime' => '3600', 'objectCacheUsername' => '', 'objectCachePassword' => '', 'objectCacheGlobalGroups' => array(), 'objectCacheNoCacheGroups' => array(), 'objectCachePersistentConnection' => false,
-			'cloudflare_enabled' => false, 'cloudflare_api_method' => 'token', 'cloudflare_api_key' => '', 'cloudflare_api_token' => '', 'cloudflare_email' => '', 'cloudflare_domain' => '', 'cloudflare_zone_id' => '',
+			'enableCache'                     => true,
+			'cacheLoggedUsers'                => false,
+			'cacheCommenters'                 => true,
+			'cacheRestApi'                    => false,
+			'cacheMobile'                     => true,
+			'mobileUserAgents'                => $default_mobile_agents,
+			'publicCacheTTL'                  => 604800,
+			'privateCacheTTL'                 => 1800,
+			'frontPageTTL'                    => 604800,
+			'feedTTL'                         => 604800,
+			'restTTL'                         => 604800,
+			'autoPurgeEntireSite'             => false,
+			'autoPurgeFrontPage'              => true,
+			'autoPurgeHomePage'               => false,
+			'autoPurgePages'                  => true,
+			'autoPurgeAuthorArchive'          => false,
+			'autoPurgePostTypeArchive'        => true,
+			'autoPurgeYearlyArchive'          => false,
+			'autoPurgeMonthlyArchive'         => false,
+			'autoPurgeDailyArchive'           => false,
+			'autoPurgeTermArchive'            => true,
+			'purgeOnUpgrade'                  => true,
+			'serveStale'                      => false,
+			'customPurgeHooks'                => $default_custom_hooks,
+			'excludeUris'                     => $default_exclude_uris,
+			'excludeQueryStrings'             => $default_exclude_queries,
+			'excludeCookies'                  => $default_exclude_cookies,
+			'excludeRoles'                    => array(),
+			'browserCacheEnabled'             => true,
+			'browserCacheTTL'                 => 604800,
+			'objectCacheEnabled'              => false,
+			'objectCacheMethod'               => 'memcached',
+			'objectCacheHost'                 => 'localhost',
+			'objectCachePort'                 => '11211',
+			'objectCacheLifetime'             => '3600',
+			'objectCacheUsername'             => '',
+			'objectCachePassword'             => '',
+			'objectCacheGlobalGroups'         => array(),
+			'objectCacheNoCacheGroups'        => array(),
+			'objectCachePersistentConnection' => false,
+			'cloudflare_enabled'              => false,
+			'cloudflare_api_method'           => 'token',
+			'cloudflare_api_key'              => '',
+			'cloudflare_api_token'            => '',
+			'cloudflare_email'                => '',
+			'cloudflare_domain'               => '',
+			'cloudflare_zone_id'              => '',
 		);
 	}
 

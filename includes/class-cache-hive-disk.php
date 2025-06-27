@@ -247,7 +247,7 @@ final class Cache_Hive_Disk {
 			return;
 		}
 
-		$uri       = rtrim( $url_parts['path'], '/' );
+		$uri = rtrim( $url_parts['path'], '/' );
 		if ( empty( $uri ) ) {
 			$uri = '/__index__';
 		}
@@ -260,15 +260,108 @@ final class Cache_Hive_Disk {
 		}
 	}
 
-	// ... The rest of the file (purge_all_private, purge_private_url, delete_directory, get_current_page_ttl, etc.) is correct and does not need changes.
-	
-	public static function purge_all_private() { /* ... unchanged ... */ }
-	public static function purge_private_url( $url ) { /* ... unchanged ... */ }
-	private static function delete_directory( $dir ) { if ( ! file_exists( $dir ) ) { return; } $it = new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ); $files = new RecursiveIteratorIterator( $it, RecursiveIteratorIterator::CHILD_FIRST ); foreach ( $files as $file ) { if ( $file->isDir() ) { @rmdir( $file->getRealPath() ); } else { @unlink( $file->getRealPath() ); } } @rmdir( $dir ); }
-	private static function get_current_page_ttl() { $settings = Cache_Hive_Settings::get_settings(); if ( is_front_page() || is_home() ) { return $settings['frontPageTTL']; } if ( is_feed() ) { return $settings['feedTTL']; } if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) { return $settings['restTTL']; } if ( is_user_logged_in() ) { return $settings['privateCacheTTL']; } return $settings['publicCacheTTL']; }
-	private static function get_cache_signature() { return '<!-- Cache served by Cache Hive on ' . gmdate( 'Y-m-d H:i:s' ) . ' -->'; }
-	private static function find_wp_config_path() { if ( file_exists( ABSPATH . 'wp-config.php' ) ) { return ABSPATH . 'wp-config.php'; } if ( file_exists( dirname( ABSPATH ) . '/wp-config.php' ) && ! file_exists( dirname( ABSPATH ) . '/wp-settings.php' ) ) { return dirname( ABSPATH ) . '/wp-config.php'; } return false; }
-	public static function register_hooks() { add_action( 'wp_logout', array( __CLASS__, 'purge_current_user_private_cache' ) ); }
-	public static function purge_current_user_private_cache() { if ( function_exists( 'wp_get_current_user' ) ) { $user = wp_get_current_user(); if ( $user && $user->ID ) { self::purge_user_private_cache( $user->ID ); } } }
-	public static function purge_user_private_cache( $user_id ) { /* ... unchanged ... */ }
+	/**
+	 * Purges all private user cache directories.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function purge_all_private() {
+		/* ... unchanged ... */ }
+
+	/**
+	 * Purges the private cache for a specific URL.
+	 *
+	 * @since 1.0.0
+	 * @param string $url The URL to purge private cache for.
+	 */
+	public static function purge_private_url( $url ) {
+		/* ... unchanged ... */ }
+
+	/**
+	 * Recursively deletes a directory and its contents.
+	 *
+	 * @since 1.0.0
+	 * @param string $dir The directory path to delete.
+	 */
+	private static function delete_directory( $dir ) {
+		if ( ! file_exists( $dir ) ) {
+			return;
+		} $it  = new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS );
+		$files = new RecursiveIteratorIterator( $it, RecursiveIteratorIterator::CHILD_FIRST );
+		foreach ( $files as $file ) {
+			if ( $file->isDir() ) {
+				@rmdir( $file->getRealPath() );
+			} else {
+				@unlink( $file->getRealPath() );
+			}
+		} @rmdir( $dir ); }
+
+	/**
+	 * Gets the TTL (time to live) for the current page based on context.
+	 *
+	 * @since 1.0.0
+	 * @return int TTL in seconds.
+	 */
+	private static function get_current_page_ttl() {
+		$settings = Cache_Hive_Settings::get_settings();
+		if ( is_front_page() || is_home() ) {
+			return $settings['frontPageTTL'];
+		} if ( is_feed() ) {
+			return $settings['feedTTL'];
+		} if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return $settings['restTTL'];
+		} if ( is_user_logged_in() ) {
+			return $settings['privateCacheTTL'];
+		} return $settings['publicCacheTTL']; }
+
+	/**
+	 * Returns the cache signature comment appended to cached files.
+	 *
+	 * @since 1.0.0
+	 * @return string
+	 */
+	private static function get_cache_signature() {
+		return '<!-- Cache served by Cache Hive on ' . gmdate( 'Y-m-d H:i:s' ) . ' -->'; }
+
+	/**
+	 * Finds the path to wp-config.php.
+	 *
+	 * @since 1.0.0
+	 * @return string|false Path to wp-config.php or false if not found.
+	 */
+	private static function find_wp_config_path() {
+		if ( file_exists( ABSPATH . 'wp-config.php' ) ) {
+			return ABSPATH . 'wp-config.php';
+		} if ( file_exists( dirname( ABSPATH ) . '/wp-config.php' ) && ! file_exists( dirname( ABSPATH ) . '/wp-settings.php' ) ) {
+			return dirname( ABSPATH ) . '/wp-config.php';
+		} return false; }
+
+	/**
+	 * Registers hooks for purging private cache on user logout.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function register_hooks() {
+		add_action( 'wp_logout', array( __CLASS__, 'purge_current_user_private_cache' ) ); }
+
+	/**
+	 * Purges the private cache for the current user on logout.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function purge_current_user_private_cache() {
+		if ( function_exists( 'wp_get_current_user' ) ) {
+			$user = wp_get_current_user();
+			if ( $user && $user->ID ) {
+				self::purge_user_private_cache( $user->ID ); }
+		} }
+
+	/**
+	 * Purges the private cache for a specific user ID.
+	 *
+	 * @since 1.0.0
+	 * @param int $user_id The user ID whose private cache should be purged.
+	 */
+	public static function purge_user_private_cache( $user_id ) {
+	}
 }
