@@ -14,7 +14,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// If WP_CACHE is not enabled, do nothing.
 if ( ! defined( 'WP_CACHE' ) || ! WP_CACHE ) {
 	return;
 }
@@ -24,11 +23,29 @@ if ( ! defined( 'WP_CACHE' ) || ! WP_CACHE ) {
  */
 class Cache_Hive_Advanced_Cache {
 
+	/**
+	 * @var array|false The loaded settings.
+	 */
 	private $settings;
-	private $is_mobile = false;
-	private $is_logged_in = false;
-	private $is_commenter = false;
 
+	/**
+	 * @var bool Whether the request is from a mobile device.
+	 */
+	private $is_mobile = false;
+
+	/**
+	 * @var bool Whether a 'wordpress_logged_in' cookie is present.
+	 */
+	private $is_logged_in = false;
+
+	/**
+	 * @var int The User ID extracted from the login cookie.
+	 */
+	private $user_id = 0;
+
+	/**
+	 * Constructor.
+	 */
 	public function __construct() {
 		$this->settings = $this->get_settings();
 
@@ -36,70 +53,115 @@ class Cache_Hive_Advanced_Cache {
 			return;
 		}
 
-		// Run pre-checks to determine user status FIRST.
-		$this->pre_checks();
-
-		// If this request type should never be cached, bail.
-		if ( $this->should_bypass_request_type() ) {
+		// Perform initial checks for request type, user status, and basic exclusions.
+		if ( $this->should_bypass_early() ) {
 			return;
 		}
-		
-		// Determine mobile status.
+
 		$this->is_mobile = $this->check_if_mobile();
 
-		// Attempt to deliver cache. This now respects user/mobile status.
+		// Perform more specific exclusion checks now that we have user/mobile context.
+		if ( $this->should_bypass_exclusions() ) {
+			return;
+		}
+
 		$this->deliver_cache();
 	}
 
+	/**
+	 * Loads settings from the config file.
+	 *
+	 * @return array|false
+	 */
 	private function get_settings() {
 		$config_file = WP_CONTENT_DIR . '/cache-hive-config/config.php';
 		if ( @is_readable( $config_file ) ) {
 			return include $config_file;
 		}
-		return array();
+		return false;
 	}
 
 	/**
-	 * Checks user status based on cookies. This is crucial for path generation.
-	 */
-	private function pre_checks() {
-		if ( ! empty( $_COOKIE ) ) {
-			foreach ( $_COOKIE as $name => $value ) {
-				if ( strpos( $name, 'wordpress_logged_in' ) === 0 ) {
-					$this->is_logged_in = true;
-					break; // Found it, no need to continue.
-				}
-			}
-			if ( defined( 'COOKIEHASH' ) && ! empty( $_COOKIE[ 'comment_author_' . COOKIEHASH ] ) ) {
-				$this->is_commenter = true;
-			}
-		}
-	}
-
-	/**
-	 * Performs very early, essential checks for request types that should NEVER be cached.
+	 * Performs very early checks for request method and user status.
 	 *
-	 * @return bool True to bypass, false to continue.
+	 * @return bool True if caching should be bypassed.
 	 */
-	private function should_bypass_request_type() {
-		// Only cache GET requests.
-		if ( ! isset( $_SERVER['REQUEST_METHOD'] ) || 'GET' !== $_SERVER['REQUEST_METHOD'] ) {
+	private function should_bypass_early() {
+		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
 			return true;
 		}
 
-		// Don't serve cache for logged-in users if the setting is disabled.
+		if ( ! empty( $_COOKIE ) ) {
+			$cookie_hash = defined( 'COOKIEHASH' ) ? COOKIEHASH : '';
+			foreach ( $_COOKIE as $name => $value ) {
+				if ( strpos( $name, 'wordpress_logged_in' ) === 0 ) {
+					$this->is_logged_in = true;
+					// SOLID FIX: Reliably extract User ID from the cookie.
+					$parts         = explode( '|', $value );
+					$this->user_id = (int) end( $parts ); // The last part is the user_id.
+					break;
+				}
+			}
+			if ( ! empty( $_COOKIE[ 'wp-postpass_' . $cookie_hash ] ) ) {
+				return true;
+			}
+			if ( ! ( $this->settings['cacheCommenters'] ?? false ) && ! empty( $_COOKIE[ 'comment_author_' . $cookie_hash ] ) ) {
+				return true;
+			}
+		}
+
 		if ( $this->is_logged_in && ! ( $this->settings['cacheLoggedUsers'] ?? false ) ) {
 			return true;
 		}
 
-		// Don't serve cache for commenters if the setting is disabled.
-		if ( $this->is_commenter && ! ( $this->settings['cacheCommenters'] ?? false ) ) {
-			return true;
+		return false;
+	}
+
+	/**
+	 * Performs exclusion checks based on settings.
+	 *
+	 * @return bool True if caching should be bypassed.
+	 */
+	private function should_bypass_exclusions() {
+		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+
+		// Exclude URIs.
+		$exclude_uris = $this->settings['excludeUris'] ?? array();
+		if ( ! empty( $exclude_uris ) ) {
+			foreach ( $exclude_uris as $pattern ) {
+				if ( ! empty( $pattern ) && @preg_match( '#' . $pattern . '#i', $request_uri ) ) {
+					return true;
+				}
+			}
 		}
 
-		// Check for WordPress post password cookie.
-		if ( defined( 'COOKIEHASH' ) && ! empty( $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] ) ) {
-			return true;
+		// Exclude Query Strings.
+		if ( ! empty( $_SERVER['QUERY_STRING'] ) ) {
+			$exclude_qs = $this->settings['excludeQueryStrings'] ?? array();
+			if ( ! empty( $exclude_qs ) ) {
+				parse_str( $_SERVER['QUERY_STRING'], $query_params );
+				$query_keys = array_keys( $query_params );
+				foreach ( $query_keys as $key ) {
+					foreach ( $exclude_qs as $pattern ) {
+						if ( ! empty( $pattern ) && @preg_match( '#' . $pattern . '#i', $key ) ) {
+							return true;
+						}
+					}
+				}
+			}
+		}
+
+		// Exclude Cookies.
+		$exclude_cookies = $this->settings['excludeCookies'] ?? array();
+		if ( ! empty( $exclude_cookies ) ) {
+			$cookie_keys = array_keys( $_COOKIE );
+			foreach ( $cookie_keys as $key ) {
+				foreach ( $exclude_cookies as $pattern ) {
+					if ( ! empty( $pattern ) && @preg_match( '#' . $pattern . '#i', $key ) ) {
+						return true;
+					}
+				}
+			}
 		}
 
 		return false;
@@ -111,28 +173,16 @@ class Cache_Hive_Advanced_Cache {
 	 * @return bool
 	 */
 	private function check_if_mobile() {
-		if ( ! ( $this->settings['cacheMobile'] ?? false ) || ! isset( $_SERVER['HTTP_USER_AGENT'] ) ) {
+		if ( ! ( $this->settings['cacheMobile'] ?? false ) || empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
 			return false;
 		}
-		
-		// This now correctly reads the array from the settings.
 		$user_agents = $this->settings['mobileUserAgents'] ?? array();
-
 		if ( empty( $user_agents ) ) {
 			return false;
 		}
-
-		// Escape each user agent string for regex safety.
-		$escaped_agents = array_map(
-			function ( $ua ) {
-				return preg_quote( $ua, '/' );
-			},
-			$user_agents
-		);
-		$regex = '/' . implode( '|', $escaped_agents ) . '/i';
-		
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
-		return (bool) preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
+		// Use preg_quote to safely handle special characters in user agent strings.
+		$regex = '/' . implode( '|', array_map( 'preg_quote', $user_agents, array_fill( 0, count( $user_agents ), '/' ) ) ) . '/i';
+		return (bool) @preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
 	}
 
 	/**
@@ -140,21 +190,45 @@ class Cache_Hive_Advanced_Cache {
 	 */
 	private function deliver_cache() {
 		$cache_file = $this->get_cache_file_path();
-
-		// Check validity.
-		if ( ! $this->is_cache_valid( $cache_file ) ) {
-			@unlink( $cache_file );
-			@unlink( $cache_file . '.meta' );
-			if ( ( $this->settings['serveStale'] ?? false ) && @is_readable( $cache_file ) ) {
-				header( 'X-Cache-Hive: Stale (Advanced)' );
-			} else {
-				return; // No valid or stale cache to serve.
-			}
-		} else {
+		if ( $this->is_cache_valid( $cache_file ) ) {
 			header( 'X-Cache-Hive: Hit (Advanced)' );
+			$this->serve_file( $cache_file );
 		}
-		
-		// Add browser caching headers if enabled.
+	}
+
+	/**
+	 * Constructs the full path to the potential cache file.
+	 *
+	 * @return string The cache file path.
+	 */
+	private function get_cache_file_path() {
+		$uri = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
+		$uri = rtrim( $uri, '/' );
+		if ( empty( $uri ) ) {
+			$uri = '/__index__';
+		}
+
+		$host     = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
+		$dir_path = WP_CONTENT_DIR . '/cache/cache-hive/' . $host . $uri;
+
+		// Append user-specific hash for private cache.
+		if ( $this->is_logged_in && $this->user_id > 0 && ( $this->settings['cacheLoggedUsers'] ?? false ) ) {
+			$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive';
+			$user_hash = 'user_' . md5( $this->user_id . $auth_key );
+			$dir_path .= '/' . $user_hash;
+		}
+
+		// SOLID FIX: Determine filename based on mobile status.
+		$file_name = $this->is_mobile ? 'index-mobile.html' : 'index.html';
+		return $dir_path . '/' . $file_name;
+	}
+
+	/**
+	 * Serves the file with appropriate headers.
+	 *
+	 * @param string $file_path The full path to the cache file.
+	 */
+	private function serve_file( $file_path ) {
 		if ( $this->settings['browserCacheEnabled'] ?? false ) {
 			$ttl = absint( $this->settings['browserCacheTTL'] ?? 0 );
 			if ( $ttl > 0 ) {
@@ -162,71 +236,29 @@ class Cache_Hive_Advanced_Cache {
 				header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + $ttl ) . ' GMT' );
 			}
 		}
-
-		if ( @is_readable( $cache_file ) ) {
-			@readfile( $cache_file );
-			exit;
-		}
+		@readfile( $file_path );
+		exit;
 	}
 
 	/**
-	 * Constructs the full path to the potential cache file.
-	 * This logic now correctly mirrors the logic in Cache_Hive_Disk.
+	 * Checks if a cache file is valid (exists and is not expired).
 	 *
-	 * @return string The cache file path.
+	 * @param string $cache_file The full path to the cache file.
+	 * @return bool
 	 */
-	private function get_cache_file_path() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
-		$uri = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
-		$uri = rtrim( $uri, '/' );
-		if ( empty( $uri ) ) {
-			$uri = '/__index__';
-		}
-
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
-		$host     = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
-		$dir_path = WP_CONTENT_DIR . '/cache/cache-hive/' . $host . $uri;
-
-		// SOLID FIX: Correctly append user hash to the directory path for private cache.
-		if ( $this->is_logged_in && ( $this->settings['cacheLoggedUsers'] ?? false ) ) {
-			foreach ( $_COOKIE as $name => $value ) {
-				if ( strpos( $name, 'wordpress_logged_in' ) === 0 ) {
-					// We don't have user ID here, so we must rely on hashing the cookie value itself
-					// which is less secure but the only option in the drop-in. Let's use the token.
-					$parts = explode( '|', $value );
-					$token = $parts[2] ?? ''; // The session token.
-					if ( $token && defined('AUTH_KEY') ) {
-						// Hashing the token provides a unique value per session.
-						// This hash must match the one generated in Cache_Hive_Disk.
-						$user_hash = 'user_' . md5( $token . AUTH_KEY );
-						$dir_path .= '/' . $user_hash;
-					}
-					break;
-				}
-			}
-		}
-
-		$file_name = $this->is_mobile ? 'index-mobile.html' : 'index.html';
-		return $dir_path . '/' . $file_name;
-	}
-
 	private function is_cache_valid( $cache_file ) {
 		$meta_file = $cache_file . '.meta';
 		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
 			return false;
 		}
-		$meta_data_json = @file_get_contents( $meta_file );
-		if ( ! $meta_data_json ) {
-			return false;
-		}
-		$meta_data = json_decode( $meta_data_json, true );
-		if ( ! $meta_data || ! isset( $meta_data['created'], $meta_data['ttl'] ) ) {
+		$meta_data = json_decode( @file_get_contents( $meta_file ), true );
+		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
 			return false;
 		}
 		if ( 0 === (int) $meta_data['ttl'] ) {
 			return true;
 		}
-		return ( $meta_data['created'] + $meta_data['ttl'] ) > time();
+		return ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time();
 	}
 }
 
