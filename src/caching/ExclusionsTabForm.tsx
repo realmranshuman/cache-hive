@@ -18,10 +18,11 @@ import { wrapPromise } from "@/utils/wrapPromise";
 import { getRoles } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
 
+// Schemas expect arrays from the start.
 const exclusionsSchema = z.object({
-  excludeUris: z.string().optional(),
-  excludeQueryStrings: z.string().optional(),
-  excludeCookies: z.string().optional(),
+  excludeUris: z.array(z.string()).optional(),
+  excludeQueryStrings: z.array(z.string()).optional(),
+  excludeCookies: z.array(z.string()).optional(),
   excludeRoles: z.array(z.string()).optional(),
 });
 
@@ -67,13 +68,9 @@ function ExclusionsRolesField({
                         checked={field.value?.includes(role.id) || false}
                         onCheckedChange={(checked) => {
                           const currentValue = field.value || [];
-                          if (checked) {
-                            field.onChange([...currentValue, role.id]);
-                          } else {
-                            field.onChange(
-                              currentValue.filter((r: string) => r !== role.id)
-                            );
-                          }
+                          return checked
+                            ? field.onChange([...currentValue, role.id])
+                            : field.onChange(currentValue.filter((r) => r !== role.id));
                         }}
                         disabled={isSaving}
                       />
@@ -104,29 +101,24 @@ export function ExclusionsTabForm({
   const form = useForm<ExclusionsFormData>({
     resolver: zodResolver(exclusionsSchema),
     defaultValues: {
-      excludeUris: initial.excludeUris ?? "",
-      excludeQueryStrings: initial.excludeQueryStrings ?? "",
-      excludeCookies: initial.excludeCookies ?? "",
+      excludeUris: initial.excludeUris ?? [],
+      excludeQueryStrings: initial.excludeQueryStrings ?? [],
+      excludeCookies: initial.excludeCookies ?? [],
       excludeRoles: initial.excludeRoles ?? [],
     },
   });
 
   React.useEffect(() => {
-    form.reset({
-      excludeUris: initial.excludeUris || "",
-      excludeQueryStrings: initial.excludeQueryStrings || "",
-      excludeCookies: initial.excludeCookies || "",
-      excludeRoles: initial.excludeRoles || [],
-    });
-  }, [initial, form.reset]);
+    form.reset(initial);
+  }, [initial, form]);
 
-  async function handleSubmit(data: ExclusionsFormData) {
+  const handleSubmit = (data: ExclusionsFormData) => {
     const payload = {
       ...data,
       excludeRoles: data.excludeRoles || [],
     };
-    await onSubmit(payload);
-  }
+    return onSubmit(payload);
+  };
 
   return (
     <Form {...form}>
@@ -140,13 +132,10 @@ export function ExclusionsTabForm({
               <FormControl>
                 <Textarea
                   id="exclude-uris"
-                  placeholder={`Enter one URI pattern per line:
-/wp-admin/
-/my-account/.*
-/cart/
-/checkout/`}
+                  placeholder={`Enter one URI pattern per line:\n/wp-admin/\n/my-account/.*\n/cart/\n/checkout/`}
                   rows={4}
-                  {...field}
+                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
+                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
                   disabled={isSaving}
                   className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
@@ -164,13 +153,10 @@ export function ExclusionsTabForm({
               <FormControl>
                 <Textarea
                   id="exclude-query-strings"
-                  placeholder={`Enter one query string key per line:
-preview
-edit
-_ga
-fbclid`}
+                  placeholder={`Enter one query string key per line:\npreview\nedit\n_ga\nfbclid`}
                   rows={4}
-                  {...field}
+                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
+                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
                   disabled={isSaving}
                   className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
@@ -188,13 +174,10 @@ fbclid`}
               <FormControl>
                 <Textarea
                   id="exclude-cookies"
-                  placeholder={`Enter one cookie name (or partial name) per line:
-wordpress_logged_in
-comment_author_
-woocommerce_cart_
-wp-postpass_`}
+                  placeholder={`Enter one cookie name (or partial name) per line:\nwordpress_logged_in\ncomment_author_\nwoocommerce_cart_\nwp-postpass_`}
                   rows={4}
-                  {...field}
+                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
+                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
                   disabled={isSaving}
                   className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />

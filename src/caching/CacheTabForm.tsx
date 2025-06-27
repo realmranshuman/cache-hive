@@ -14,13 +14,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
+// Schema now expects an array of strings from the start. No transformation needed.
 const cacheSchema = z.object({
   enableCache: z.boolean(),
   cacheLoggedUsers: z.boolean(),
   cacheCommenters: z.boolean(),
   cacheRestApi: z.boolean(),
   cacheMobile: z.boolean(),
-  mobileUserAgents: z.string().optional(),
+  mobileUserAgents: z.array(z.string()).optional(),
 });
 
 export type CacheFormData = z.infer<typeof cacheSchema>;
@@ -32,15 +33,17 @@ interface CacheTabFormProps {
 }
 
 export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps) {
+  // The form is now typed with the final data shape.
   const form = useForm<CacheFormData>({
     resolver: zodResolver(cacheSchema),
+    // `initial` data is already in the correct format from the API.
     defaultValues: {
       enableCache: initial.enableCache ?? false,
       cacheLoggedUsers: initial.cacheLoggedUsers ?? false,
       cacheCommenters: initial.cacheCommenters ?? false,
       cacheRestApi: initial.cacheRestApi ?? false,
       cacheMobile: initial.cacheMobile ?? false,
-      mobileUserAgents: initial.mobileUserAgents ?? "",
+      mobileUserAgents: initial.mobileUserAgents ?? [],
     },
   });
 
@@ -49,17 +52,16 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
     name: "cacheMobile",
   });
 
+  // useEffect now correctly resets the form with the API data structure.
   React.useEffect(() => {
     form.reset(initial);
-  }, [initial, form.reset]);
-
-  async function handleSubmit(data: CacheFormData) {
-    await onSubmit(data);
-  }
+  }, [initial, form]);
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+      {/* The `handleSubmit` call is now simple and type-safe. */}
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        {/* ... other FormFields are unchanged ... */}
         <FormField
           control={form.control}
           name="enableCache"
@@ -156,7 +158,10 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
                   <Textarea
                     placeholder={`Enter one user agent per line:\nMobile\nAndroid\niPhone\niPad`}
                     rows={4}
-                    {...field}
+                    // SOLID FIX: Transform the array to a string for display.
+                    value={Array.isArray(field.value) ? field.value.join('\n') : ''}
+                    // SOLID FIX: Transform the string back to an array on change.
+                    onChange={(e) => field.onChange(e.target.value.split('\n'))}
                     disabled={isSaving}
                     className="bg-white text-black dark:bg-gray-900 dark:text-white"
                   />

@@ -22,7 +22,6 @@ final class Cache_Hive_Settings {
 
 	/**
 	 * The array of plugin settings.
-	 *
 	 * @var array
 	 */
 	private static $settings;
@@ -36,8 +35,21 @@ final class Cache_Hive_Settings {
 	 */
 	public static function get_settings( $force_refresh = false ) {
 		if ( ! isset( self::$settings ) || $force_refresh ) {
-			$db_settings    = get_option( 'cache_hive_settings', array() );
-			self::$settings = wp_parse_args( $db_settings, self::get_default_settings() );
+			$db_settings = get_option( 'cache_hive_settings', array() );
+			$defaults    = self::get_default_settings();
+
+			// Merge DB settings with defaults to ensure all keys exist.
+			$merged_settings = wp_parse_args( $db_settings, $defaults );
+
+			// Self-correction for migrating old string values to arrays.
+			foreach ( $merged_settings as $key => &$value ) {
+				// If a default exists, is an array, and the current value is a string, convert it.
+				if ( isset( $defaults[ $key ] ) && is_array( $defaults[ $key ] ) && is_string( $value ) ) {
+					$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
+				}
+			}
+
+			self::$settings = $merged_settings;
 		}
 		return self::$settings;
 	}
@@ -62,155 +74,59 @@ final class Cache_Hive_Settings {
 	 * @return array The default settings.
 	 */
 	public static function get_default_settings() {
-		// Define the multiline values first for readability.
-		$default_mobile_agents = array(
-			'Mobile',
-			'Android',
-			'Silk/',
-			'Kindle',
-			'BlackBerry',
-			'Opera Mini',
-			'Opera Mobi',
+		// All multi-line textareas are now defined as arrays by default.
+		$default_mobile_agents = array( 'Mobile', 'Android', 'Silk/', 'Kindle', 'BlackBerry', 'Opera Mini', 'Opera Mobi', 'iPhone', 'iPad' );
+		$default_exclude_uris = array( '/wp-admin/', '/wp-login.php', '/cart/', '/checkout/', '/my-account/.*' );
+		$default_exclude_queries = array( 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'preview', 'edit', '_ga' );
+		$default_exclude_cookies = array( 'wordpress_logged_in', 'wp-postpass', 'woocommerce_cart_hash', 'comment_author_' );
+		$default_custom_hooks = array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' );
+
+		// The rest of your defaults...
+		return array(
+			'enableCache' => true, 'cacheLoggedUsers' => false, 'cacheCommenters' => true, 'cacheRestApi' => false, 'cacheMobile' => true, 'mobileUserAgents' => $default_mobile_agents,
+			'publicCacheTTL' => 604800, 'privateCacheTTL' => 1800, 'frontPageTTL' => 604800, 'feedTTL' => 604800, 'restTTL' => 604800,
+			'autoPurgeEntireSite' => false, 'autoPurgeFrontPage' => true, 'autoPurgeHomePage' => false, 'autoPurgePages' => true, 'autoPurgeAuthorArchive' => false, 'autoPurgePostTypeArchive' => true, 'autoPurgeYearlyArchive' => false, 'autoPurgeMonthlyArchive' => false, 'autoPurgeDailyArchive' => false, 'autoPurgeTermArchive' => true, 'purgeOnUpgrade' => true, 'serveStale' => false, 'customPurgeHooks' => $default_custom_hooks,
+			'excludeUris' => $default_exclude_uris, 'excludeQueryStrings' => $default_exclude_queries, 'excludeCookies' => $default_exclude_cookies, 'excludeRoles' => array(),
+			'browserCacheEnabled' => true, 'browserCacheTTL' => 604800,
+			'objectCacheEnabled' => false, 'objectCacheMethod' => 'memcached', 'objectCacheHost' => 'localhost', 'objectCachePort' => '11211', 'objectCacheLifetime' => '3600', 'objectCacheUsername' => '', 'objectCachePassword' => '', 'objectCacheGlobalGroups' => array(), 'objectCacheNoCacheGroups' => array(), 'objectCachePersistentConnection' => false,
+			'cloudflare_enabled' => false, 'cloudflare_api_method' => 'token', 'cloudflare_api_key' => '', 'cloudflare_api_token' => '', 'cloudflare_email' => '', 'cloudflare_domain' => '', 'cloudflare_zone_id' => '',
 		);
-
-		$default_exclude_uris = array(
-			'/wp-admin/',
-			'/wp-login.php',
-			'/cart/',
-			'/checkout/',
-		);
-
-		$default_exclude_queries = array(
-			'utm_source',
-			'utm_medium',
-			'utm_campaign',
-			'fbclid',
-		);
-
-		$default_exclude_cookies = array(
-			'wordpress_logged_in',
-			'wp-postpass',
-			'woocommerce_cart_hash',
-		);
-
-		$defaults = array(
-			// --- Cache Tab ---
-			'enableCache'                     => true,
-			'cacheLoggedUsers'                => false,
-			'cacheCommenters'                 => true,
-			'cacheRestApi'                    => false,
-			'cacheMobile'                     => true,
-			'mobileUserAgents'                => implode( "\n", $default_mobile_agents ),
-
-			// --- TTL Tab ---
-			'publicCacheTTL'                  => 604800, // 7 days in seconds.
-			'privateCacheTTL'                 => 1800,  // 30 minutes in seconds.
-			'frontPageTTL'                    => 604800,
-			'feedTTL'                         => 604800,
-			'restTTL'                         => 604800,
-
-			// --- Auto Purge Tab ---
-			'autoPurgeEntireSite'             => false, // Default to false.
-			'autoPurgeFrontPage'              => true,
-			'autoPurgeHomePage'               => false,
-			'autoPurgePages'                  => true,
-			'autoPurgeAuthorArchive'          => false,
-			'autoPurgePostTypeArchive'        => true,
-			'autoPurgeYearlyArchive'          => false,
-			'autoPurgeMonthlyArchive'         => false,
-			'autoPurgeDailyArchive'           => false,
-			'autoPurgeTermArchive'            => true,
-			'purgeOnUpgrade'                  => true,
-			'serveStale'                      => false,
-			'customPurgeHooks'                => "switch_theme\ndeactivated_plugin\nactivated_plugin\nwp_update_nav_menu\nwp_update_nav_menu_item",
-
-			// --- Exclusions Tab ---
-			'excludeUris'                     => implode( "\n", $default_exclude_uris ),
-			'excludeQueryStrings'             => implode( "\n", $default_exclude_queries ),
-			'excludeCookies'                  => implode( "\n", $default_exclude_cookies ),
-			'excludeRoles'                    => array(),
-
-			// --- Browser Cache Tab ---
-			'browserCacheEnabled'             => true,
-			'browserCacheTTL'                 => 604800, // 7 days in seconds.
-
-			// --- Object Cache Tab ---
-			'objectCacheEnabled'              => false,
-			'objectCacheMethod'               => 'memcached',
-			'objectCacheHost'                 => 'localhost',
-			'objectCachePort'                 => '11211',
-			'objectCacheLifetime'             => '3600',
-			'objectCacheUsername'             => '',
-			'objectCachePassword'             => '',
-			'objectCacheGlobalGroups'         => '', // New: textarea, newline-delimited.
-			'objectCacheNoCacheGroups'        => '', // New: textarea, newline-delimited.
-			'objectCachePersistentConnection' => false, // New: boolean.
-
-			// --- Cloudflare Integration ---
-			'cloudflare_enabled'              => false,
-			'cloudflare_api_method'           => 'token',
-			'cloudflare_api_key'              => '',
-			'cloudflare_api_token'            => '',
-			'cloudflare_email'                => '',
-			'cloudflare_domain'               => '',
-			'cloudflare_zone_id'              => '',
-		);
-
-		return apply_filters( 'cache_hive_default_settings', $defaults );
 	}
 
 	/**
 	 * Sanitizes settings received from the REST API.
 	 *
 	 * @since 1.0.0
-	 * @param array $input The raw settings array.
-	 * @return array The sanitized settings array.
+	 * @param array $input The raw settings array from a specific form.
+	 * @return array The fully merged and sanitized settings array.
 	 */
 	public static function sanitize_settings( $input ) {
+		// Start with the current complete settings to preserve unsent data.
+		$sanitized = self::get_settings( true ); // Force refresh from DB.
 		$defaults  = self::get_default_settings();
-		$sanitized = array();
-		// Only allow keys that exist in defaults.
-		foreach ( $defaults as $key => $default_value ) {
-			if ( isset( $input[ $key ] ) ) {
-				$value = $input[ $key ];
+
+		// Iterate over the INPUT from the form, not the defaults.
+		foreach ( $input as $key => $value ) {
+			// Only process keys that are defined in our default settings.
+			if ( array_key_exists( $key, $defaults ) ) {
+				$default_value = $defaults[ $key ];
+
 				if ( is_bool( $default_value ) ) {
 					$sanitized[ $key ] = (bool) $value;
 				} elseif ( is_int( $default_value ) ) {
 					$sanitized[ $key ] = absint( $value );
 				} elseif ( is_array( $default_value ) ) {
-					$sanitized[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : array();
-				} else {
-					// Handle textarea fields that need to preserve line breaks.
-					if ( in_array( $key, array( 'objectCacheGlobalGroups', 'objectCacheNoCacheGroups' ), true ) ) {
-						if ( is_array( $value ) ) {
-							// Sanitize each value and remove empties.
-							$lines             = array_filter( array_map( 'sanitize_text_field', $value ) );
-							$sanitized[ $key ] = array_values( $lines );
-						} else {
-							// Accept string, split by newline, trim, sanitize, remove empties.
-							$lines             = explode( "\n", $value );
-							$lines             = array_filter( array_map( 'trim', $lines ) );
-							$lines             = array_filter( array_map( 'sanitize_text_field', $lines ) );
-							$sanitized[ $key ] = array_values( $lines );
-						}
-					} elseif ( in_array( $key, array( 'mobileUserAgents', 'excludeUris', 'excludeQueryStrings', 'excludeCookies', 'customPurgeHooks' ), true ) ) {
-						$lines             = explode( "\n", $value );
-						$lines             = array_filter( array_map( 'trim', $lines ) );
-						$sanitized[ $key ] = implode( "\n", $lines );
+					if ( is_array( $value ) ) {
+						$sanitized[ $key ] = array_values( array_filter( array_map( 'sanitize_text_field', $value ) ) );
 					} else {
-						$sanitized[ $key ] = sanitize_text_field( $value );
+						$sanitized[ $key ] = array(); // Default to empty array if non-array is passed.
 					}
-				}
-			} else {
-				// If a boolean key is missing from input, set it to false.
-				if ( is_bool( $default_value ) ) {
-					$sanitized[ $key ] = false;
 				} else {
-					$sanitized[ $key ] = $default_value;
+					$sanitized[ $key ] = sanitize_text_field( $value );
 				}
 			}
 		}
-		// Remove any legacy keys from input.
+
 		return $sanitized;
 	}
 }

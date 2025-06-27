@@ -212,13 +212,13 @@ final class Cache_Hive_Engine {
 		}
 
 		// Don't cache for logged-in users unless explicitly enabled.
-		if ( ! self::$settings['cacheLoggedUsers'] && is_user_logged_in() ) {
+		if ( ! ( self::$settings['cacheLoggedUsers'] ?? false ) && is_user_logged_in() ) {
 			error_log( '[Cache Hive] Bypassing due to logged-in user' );
 			return true;
 		}
 
 		// Don't cache for users who have commented, unless enabled.
-		if ( ! self::$settings['cacheCommenters'] && isset( $_COOKIE[ 'comment_author_' . COOKIEHASH ] ) ) {
+		if ( ! ( self::$settings['cacheCommenters'] ?? false ) && isset( $_COOKIE[ 'comment_author_' . COOKIEHASH ] ) ) {
 			error_log( '[Cache Hive] Bypassing due to commenter' );
 			return true;
 		}
@@ -232,10 +232,10 @@ final class Cache_Hive_Engine {
 			}
 		}
 
-		// Check for excluded URIs - each line is a separate pattern.
+		// Check for excluded URIs.
 		if ( ! empty( self::$settings['excludeUris'] ) && isset( $_SERVER['REQUEST_URI'] ) ) {
 			$request_uri = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) );
-			$patterns    = array_filter( array_map( 'trim', explode( "\n", self::$settings['excludeUris'] ) ) );
+			$patterns    = self::$settings['excludeUris'];
 			foreach ( $patterns as $pattern ) {
 				if ( ! empty( $pattern ) ) {
 					try {
@@ -250,12 +250,12 @@ final class Cache_Hive_Engine {
 			}
 		}
 
-		// Check for excluded Query Strings - each line is a separate pattern.
+		// Check for excluded Query Strings.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! empty( $_GET ) && ! empty( self::$settings['excludeQueryStrings'] ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$get_keys = array_keys( $_GET );
-			$patterns = array_filter( array_map( 'trim', explode( "\n", self::$settings['excludeQueryStrings'] ) ) );
+			$patterns = self::$settings['excludeQueryStrings'];
 			foreach ( $get_keys as $query_key ) {
 				foreach ( $patterns as $pattern ) {
 					if ( ! empty( $pattern ) ) {
@@ -272,9 +272,9 @@ final class Cache_Hive_Engine {
 			}
 		}
 
-		// Check for excluded Cookies - each line is a separate pattern.
+		// Check for excluded Cookies.
 		if ( ! empty( $_COOKIE ) && ! empty( self::$settings['excludeCookies'] ) ) {
-			$patterns = array_filter( array_map( 'trim', explode( "\n", self::$settings['excludeCookies'] ) ) );
+			$patterns = self::$settings['excludeCookies'];
 			foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
 				foreach ( $patterns as $pattern ) {
 					if ( ! empty( $pattern ) ) {
@@ -315,12 +315,11 @@ final class Cache_Hive_Engine {
 			return false;
 		}
 
-		if ( ! self::$settings['cacheMobile'] ) {
+		if ( ! ( self::$settings['cacheMobile'] ?? false ) ) {
 			return false;
 		}
 
-		$mobile_user_agents = self::$settings['mobileUserAgents'];
-		$user_agents        = array_filter( array_map( 'trim', explode( "\n", $mobile_user_agents ) ) );
+		$user_agents = self::$settings['mobileUserAgents'] ?? array();
 
 		if ( empty( $user_agents ) ) {
 			return false;
@@ -330,7 +329,7 @@ final class Cache_Hive_Engine {
 		foreach ( $user_agents as $pattern ) {
 			if ( ! empty( $pattern ) ) {
 				try {
-					if ( preg_match( '#' . $pattern . '#i', $user_agent ) ) {
+					if ( preg_match( '#' . preg_quote( $pattern, '#' ) . '#i', $user_agent ) ) {
 						error_log( '[Cache Hive] Detected mobile device matching pattern: ' . $pattern );
 						return true;
 					}

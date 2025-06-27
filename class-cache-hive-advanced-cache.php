@@ -123,17 +123,9 @@ class Cache_Hive_Advanced_Cache {
 			return false;
 		}
 
-		$mobile_user_agents = $this->settings['mobileUserAgents'];
-		$user_agents        = array_filter(
-			array_map( 'trim', explode( "\n", $mobile_user_agents ) ),
-			function ( $ua ) {
-				return '' !== $ua;
-			}
-		);
+		$user_agents = isset( $this->settings['mobileUserAgents'] ) && is_array( $this->settings['mobileUserAgents'] ) ? $this->settings['mobileUserAgents'] : array();
 
 		if ( empty( $user_agents ) ) {
-			// Optionally, add a debug header to help diagnose.
-			header( 'X-Cache-Hive-Mobile-Regex: empty' );
 			return false;
 		}
 		// Escape each user agent string for regex safety, specifying delimiter.
@@ -144,8 +136,6 @@ class Cache_Hive_Advanced_Cache {
 			$user_agents
 		);
 		$regex          = '/' . implode( '|', $escaped_agents ) . '/i';
-		// Optionally, add a debug header to help diagnose.
-		header( 'X-Cache-Hive-Mobile-Regex: ' . $regex );
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
 		return (bool) preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
 	}
@@ -206,7 +196,7 @@ class Cache_Hive_Advanced_Cache {
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.InputNotUnslashed
 		$http_host  = isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
 		$host       = strtolower( $http_host );
-		$path_parts = array( $host );
+		$dir_path  = WP_CONTENT_DIR . '/cache/cache-hive/' . $host . $uri;
 
 		// Private cache for logged-in users if enabled.
 		if (
@@ -217,12 +207,12 @@ class Cache_Hive_Advanced_Cache {
 				if ( strpos( $name, 'wordpress_logged_in' ) === 0 ) {
 					// Hash user folder for privacy (same as class-cache-hive-disk.php).
 					if ( defined( 'AUTH_KEY' ) ) {
-						// Extract user ID from cookie value (format: user_login|user_id|...).
+						// Extract user ID from cookie value (format: user_login|expiration|token|user_id).
 						$parts   = explode( '|', $value );
-						$user_id = isset( $parts[1] ) ? $parts[1] : '';
-						if ( '' !== $user_id ) {
-							$user_hash    = 'user_' . md5( $user_id . AUTH_KEY );
-							$path_parts[] = $user_hash;
+						$user_id = end( $parts ); // User ID is usually last after WP 5.
+						if ( is_numeric( $user_id ) ) {
+							$user_hash = 'user_' . md5( $user_id . AUTH_KEY );
+							$dir_path .= '/' . $user_hash;
 						}
 					}
 					break;
@@ -230,7 +220,6 @@ class Cache_Hive_Advanced_Cache {
 			}
 		}
 
-		$dir_path  = WP_CONTENT_DIR . '/cache/cache-hive/' . implode( '/', $path_parts ) . $uri;
 		$file_name = $this->is_mobile ? 'index-mobile.html' : 'index.html';
 		return $dir_path . '/' . $file_name;
 	}

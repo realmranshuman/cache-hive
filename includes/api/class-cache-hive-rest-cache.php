@@ -27,7 +27,7 @@ class Cache_Hive_REST_Cache {
 			'cacheCommenters'  => $settings['cacheCommenters'] ?? false,
 			'cacheRestApi'     => $settings['cacheRestApi'] ?? false,
 			'cacheMobile'      => $settings['cacheMobile'] ?? false,
-			'mobileUserAgents' => $settings['mobileUserAgents'] ?? '',
+			'mobileUserAgents' => $settings['mobileUserAgents'] ?? array(),
 		);
 		return new WP_REST_Response( $cache_settings, 200 );
 	}
@@ -54,7 +54,11 @@ class Cache_Hive_REST_Cache {
 					$updated_settings[ $key ] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
 					break;
 				case 'mobileUserAgents':
-					$updated_settings[ $key ] = sanitize_textarea_field( $value );
+					if ( is_array( $value ) ) {
+						$updated_settings[ $key ] = array_map( 'sanitize_text_field', $value );
+					} else {
+						$updated_settings[ $key ] = array();
+					}
 					break;
 				default:
 					continue 2;
@@ -72,7 +76,7 @@ class Cache_Hive_REST_Cache {
 			'cacheCommenters'  => $new_settings['cacheCommenters'] ?? false,
 			'cacheRestApi'     => $new_settings['cacheRestApi'] ?? false,
 			'cacheMobile'      => $new_settings['cacheMobile'] ?? false,
-			'mobileUserAgents' => $new_settings['mobileUserAgents'] ?? '',
+			'mobileUserAgents' => $new_settings['mobileUserAgents'] ?? array(),
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}

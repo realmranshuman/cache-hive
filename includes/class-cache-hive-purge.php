@@ -41,9 +41,8 @@ final class Cache_Hive_Purge {
 
 		// Register custom purge hooks from settings.
 		$custom_hooks = Cache_Hive_Settings::get( 'customPurgeHooks' );
-		if ( ! empty( $custom_hooks ) ) {
-			$hooks = array_filter( array_map( 'trim', explode( "\n", $custom_hooks ) ) );
-			foreach ( $hooks as $hook ) {
+		if ( ! empty( $custom_hooks ) && is_array( $custom_hooks ) ) {
+			foreach ( $custom_hooks as $hook ) {
 				add_action( $hook, array( __CLASS__, 'purge_all' ) );
 			}
 		}

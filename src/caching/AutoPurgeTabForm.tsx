@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea"; // Import Textarea
 import {
   Form,
   FormControl,
@@ -14,6 +15,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
+// Schema now expects an array.
 const autoPurgeSchema = z.object({
   autoPurgeEntireSite: z.boolean().optional(),
   autoPurgeFrontPage: z.boolean(),
@@ -27,7 +29,7 @@ const autoPurgeSchema = z.object({
   autoPurgeTermArchive: z.boolean(),
   purgeOnUpgrade: z.boolean().optional(),
   serveStale: z.boolean().optional(),
-  customPurgeHooks: z.string().optional(),
+  customPurgeHooks: z.array(z.string()).optional(),
 });
 
 export type AutoPurgeFormData = z.infer<typeof autoPurgeSchema>;
@@ -38,7 +40,6 @@ interface AutoPurgeTabFormProps {
   isSaving: boolean;
 }
 
-// Helper to generate labels from camelCase
 const formatLabel = (key: string) => {
   const result = key.replace('autoPurge', '').replace(/([A-Z])/g, " $1");
   return result.charAt(0).toUpperCase() + result.slice(1).trim();
@@ -48,7 +49,7 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
   const form = useForm<AutoPurgeFormData>({
     resolver: zodResolver(autoPurgeSchema),
     defaultValues: {
-      autoPurgeEntireSite: initial.autoPurgeEntireSite ?? false, // Default to false if not set
+      autoPurgeEntireSite: initial.autoPurgeEntireSite ?? false,
       autoPurgeFrontPage: initial.autoPurgeFrontPage ?? false,
       autoPurgeHomePage: initial.autoPurgeHomePage ?? false,
       autoPurgePages: initial.autoPurgePages ?? false,
@@ -60,31 +61,30 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
       autoPurgeTermArchive: initial.autoPurgeTermArchive ?? false,
       purgeOnUpgrade: initial.purgeOnUpgrade ?? false,
       serveStale: initial.serveStale ?? false,
-      customPurgeHooks: initial.customPurgeHooks ?? `switch_theme\ndeactivated_plugin\nactivated_plugin\nwp_update_nav_menu\nwp_update_nav_menu_item`,
+      customPurgeHooks: initial.customPurgeHooks ?? [],
     },
   });
 
   React.useEffect(() => {
     form.reset(initial);
-  }, [initial, form.reset]);
+  }, [initial, form]);
 
-  async function handleSubmit(data: AutoPurgeFormData) {
-    // Ensure all boolean keys are present, even if false
+  const handleSubmit = (data: AutoPurgeFormData) => {
     const allKeys = [
       "autoPurgeEntireSite", "autoPurgeFrontPage", "autoPurgeHomePage", "autoPurgePages",
       "autoPurgeAuthorArchive", "autoPurgePostTypeArchive", "autoPurgeYearlyArchive",
       "autoPurgeMonthlyArchive", "autoPurgeDailyArchive", "autoPurgeTermArchive",
       "purgeOnUpgrade", "serveStale"
     ];
-    const completeData: AutoPurgeFormData = { ...data };
+    const completeData = { ...data };
     allKeys.forEach((key) => {
       if (typeof completeData[key as keyof AutoPurgeFormData] !== "boolean") {
         // If missing, set to false
         (completeData as any)[key] = false;
       }
     });
-    await onSubmit(completeData);
-  }
+    return onSubmit(completeData);
+  };
 
   // Define which keys are part of the "Auto Purge Rules For Publish/Update" group
   const autoPurgeRuleKeys = [
@@ -97,20 +97,20 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        {/* ... other FormFields are unchanged ... */}
         <FormField
           control={form.control}
           name="purgeOnUpgrade"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Purge All Cache on Plugin/Theme/Core Upgrade</FormLabel> {/* Updated Label */}
+              <FormLabel>Purge All Cache on Plugin/Theme/Core Upgrade</FormLabel>
               <FormControl>
-                <Switch checked={field.value || false} onCheckedChange={field.onChange} disabled={isSaving}/>
+                <Switch checked={field.value ?? false} onCheckedChange={field.onChange} disabled={isSaving}/>
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-        
         <div className="space-y-3 pt-4">
           <span className="text-base font-medium block border-b pb-2 mb-3">Auto Purge Rules for Publish/Update Actions</span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -130,7 +130,7 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
                       />
                     </FormControl>
                     <FormLabel htmlFor={key} className="text-sm font-normal cursor-pointer flex-grow">
-                      {formatLabel(key.replace('EntireSite', 'Entire Site Cache'))} {/* Use helper for label, with special case */}
+                      {formatLabel(key.replace('EntireSite', 'Entire Site Cache'))}
                     </FormLabel>
                     <FormMessage />
                   </FormItem>
@@ -139,8 +139,6 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
             ))}
           </div>
         </div>
-
-        {/* Custom Purge Hooks Textarea */}
         <FormField
           control={form.control}
           name="customPurgeHooks"
@@ -148,10 +146,11 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
             <FormItem className="pt-4">
               <FormLabel>Custom Purge Hooks</FormLabel>
               <FormControl>
-                <textarea
+                <Textarea
                   className="w-full min-h-[80px] border rounded-md p-2 font-mono text-xs bg-white text-black dark:bg-gray-900 dark:text-white"
                   placeholder="Enter one hook per line (e.g. switch_theme)"
-                  {...field}
+                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
+                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
                   disabled={isSaving}
                 />
               </FormControl>
@@ -164,12 +163,12 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
         />
         <FormField
           control={form.control}
-          name="serveStale" // Corrected name
+          name="serveStale"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between pt-4">
-              <FormLabel>Serve Stale Cache While Regenerating</FormLabel> {/* Updated Label */}
+              <FormLabel>Serve Stale Cache While Regenerating</FormLabel>
               <FormControl>
-                <Switch checked={field.value || false} onCheckedChange={field.onChange} disabled={isSaving} />
+                <Switch checked={field.value ?? false} onCheckedChange={field.onChange} disabled={isSaving} />
               </FormControl>
               <FormMessage />
             </FormItem>

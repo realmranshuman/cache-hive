@@ -34,7 +34,7 @@ class Cache_Hive_REST_AutoPurge {
 			'autoPurgeTermArchive'     => $settings['autoPurgeTermArchive'] ?? false,
 			'purgeOnUpgrade'           => $settings['purgeOnUpgrade'] ?? false,
 			'serveStale'               => $settings['serveStale'] ?? false,
-			'customPurgeHooks'         => $settings['customPurgeHooks'] ?? '',
+			'customPurgeHooks'         => $settings['customPurgeHooks'] ?? array(),
 		);
 		return new WP_REST_Response( $autopurge_settings, 200 );
 	}
@@ -68,7 +68,11 @@ class Cache_Hive_REST_AutoPurge {
 					$updated_settings[ $key ] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
 					break;
 				case 'customPurgeHooks':
-					$updated_settings[ $key ] = sanitize_textarea_field( $value );
+					if ( is_array( $value ) ) {
+						$updated_settings[ $key ] = array_map( 'sanitize_text_field', $value );
+					} else {
+						$updated_settings[ $key ] = array();
+					}
 					break;
 				default:
 					continue 2;
@@ -93,7 +97,7 @@ class Cache_Hive_REST_AutoPurge {
 			'autoPurgeTermArchive'     => $new_settings['autoPurgeTermArchive'] ?? false,
 			'purgeOnUpgrade'           => $new_settings['purgeOnUpgrade'] ?? false,
 			'serveStale'               => $new_settings['serveStale'] ?? false,
-			'customPurgeHooks'         => $new_settings['customPurgeHooks'] ?? '',
+			'customPurgeHooks'         => $new_settings['customPurgeHooks'] ?? array(),
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}

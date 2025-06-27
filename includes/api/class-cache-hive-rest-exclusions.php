@@ -22,9 +22,9 @@ class Cache_Hive_REST_Exclusions {
 	public static function get_exclusions_settings() {
 		$settings            = Cache_Hive_Settings::get_settings();
 		$exclusions_settings = array(
-			'excludeUris'         => $settings['excludeUris'] ?? '',
-			'excludeQueryStrings' => $settings['excludeQueryStrings'] ?? '',
-			'excludeCookies'      => $settings['excludeCookies'] ?? '',
+			'excludeUris'         => $settings['excludeUris'] ?? array(),
+			'excludeQueryStrings' => $settings['excludeQueryStrings'] ?? array(),
+			'excludeCookies'      => $settings['excludeCookies'] ?? array(),
 			'excludeRoles'        => $settings['excludeRoles'] ?? array(),
 		);
 		return new WP_REST_Response( $exclusions_settings, 200 );
@@ -47,8 +47,6 @@ class Cache_Hive_REST_Exclusions {
 				case 'excludeUris':
 				case 'excludeQueryStrings':
 				case 'excludeCookies':
-					$updated_settings[ $key ] = sanitize_textarea_field( $value );
-					break;
 				case 'excludeRoles':
 					if ( is_array( $value ) ) {
 						$updated_settings[ $key ] = array_map( 'sanitize_text_field', $value );
@@ -67,9 +65,9 @@ class Cache_Hive_REST_Exclusions {
 
 		// Manually build the response from the known fresh data.
 		$response_data = array(
-			'excludeUris'         => $new_settings['excludeUris'] ?? '',
-			'excludeQueryStrings' => $new_settings['excludeQueryStrings'] ?? '',
-			'excludeCookies'      => $new_settings['excludeCookies'] ?? '',
+			'excludeUris'         => $new_settings['excludeUris'] ?? array(),
+			'excludeQueryStrings' => $new_settings['excludeQueryStrings'] ?? array(),
+			'excludeCookies'      => $new_settings['excludeCookies'] ?? array(),
 			'excludeRoles'        => $new_settings['excludeRoles'] ?? array(),
 		);
 		return new WP_REST_Response( $response_data, 200 );
