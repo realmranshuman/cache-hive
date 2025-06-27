@@ -123,8 +123,11 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 
 		$stats            = $this->mc->getStats();
-		$is_unix_socket   = ( isset( $config['port'] ) && 0 === (int) $config['port'] ) || str_starts_with( $config['host'], '/' );
-		$this->server_key = $is_unix_socket ? $config['host'] . ':11211' : $config['host'] . ':' . $config['port'];
+		$is_unix_socket   = ( isset( $config['port'] ) && 0 === (int) $config['port'] ) || ( is_string( $config['host'] ) && str_starts_with( $config['host'], '/' ) );
+		$this->server_key = $is_unix_socket ? $config['host'] . ':0' : $config['host'] . ':' . $config['port'];
+		if ( ':0' === $this->server_key ) { // Handle default unix socket case.
+			$this->server_key = '/var/run/memcached/memcached.sock:0';
+		}
 
 		if ( is_array( $stats ) && isset( $stats[ $this->server_key ] ) && $stats[ $this->server_key ]['pid'] > 0 ) {
 			$this->connected = true;
@@ -139,7 +142,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 *
 	 * @return int The namespace version.
 	 */
-	private function get_ns_version() {
+	public function get_ns_version() {
 		if ( null !== $this->ns_version ) {
 			return $this->ns_version;
 		}
@@ -148,7 +151,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			$version = time();
 			$this->mc->set( $this->ns_version_key, $version, 0 );
 		}
-		$this->ns_version = $version;
+		$this->ns_version = (int) $version;
 		return $this->ns_version;
 	}
 
@@ -159,13 +162,15 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return string The namespaced key.
 	 */
 	private function get_namespaced_key( $key ) {
-		return "{$this->get_ns_version()}:{$key}";
+		$prefix = $this->get_ns_version() . ':';
+		if ( is_string( $key ) && str_starts_with( $key, $prefix ) ) {
+			return $key;
+		}
+		return $prefix . $key;
 	}
 
 	/**
 	 * Encodes a value for storage.
-	 *
-	 * Applies compression and serialization.
 	 *
 	 * @param mixed $data The data to encode.
 	 * @return string The encoded value.
@@ -183,8 +188,6 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 
 	/**
 	 * Decodes a value from storage.
-	 *
-	 * Decompresses and unserializes the data.
 	 *
 	 * @param string|false $value The value from Memcached.
 	 * @return mixed The decoded data, or false on failure.
@@ -221,12 +224,14 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 
 		$value = $this->mc->get( $this->get_namespaced_key( $key ) );
-		$found = ( \Memcached::RES_SUCCESS === $this->mc->getResultCode() );
 
-		if ( $found ) {
+		if ( \Memcached::RES_SUCCESS === $this->mc->getResultCode() ) {
+			$found = true;
 			++$this->stats['hits'];
 			return $this->decode_value( $value );
 		}
+
+		$found = false;
 		++$this->stats['misses'];
 		return false;
 	}
@@ -238,21 +243,26 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return array Array of found key-value pairs.
 	 */
 	public function get_multiple( $keys ) {
-		if ( ! $this->is_connected() || empty( $keys ) ) {
+		if ( ! $this->is_connected() || empty( $keys ) || ! is_array( $keys ) ) {
 			return array();
 		}
+
 		$namespaced_keys = array_map( array( $this, 'get_namespaced_key' ), $keys );
 		$results         = $this->mc->getMulti( $namespaced_keys );
 		$final_results   = array();
-		if ( is_array( $results ) ) {
-			$ns_version_len = strlen( $this->get_ns_version() . ':' );
+
+		if ( is_array( $results ) && ! empty( $results ) ) {
+			$ns_version_str = $this->get_ns_version() . ':';
+			$ns_version_len = strlen( $ns_version_str );
+
 			foreach ( $results as $ns_key => $value ) {
-				// The main WP_Object_Cache class now handles re-mapping, so we just return what we found.
-				// This backend is simpler and doesn't need to know about groups.
-				$final_results[ $ns_key ] = $this->decode_value( $value );
+				// Strip the internal namespace to get the key the drop-in expects.
+				$original_key                   = substr( $ns_key, $ns_version_len );
+				$final_results[ $original_key ] = $this->decode_value( $value );
 				++$this->stats['hits'];
 			}
 		}
+
 		$this->stats['misses'] += ( count( $keys ) - count( $final_results ) );
 		return $final_results;
 	}
@@ -347,7 +357,15 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		return $this->mc->increment( $this->get_namespaced_key( $key ), $offset );
+		$namespaced_key = $this->get_namespaced_key( $key );
+		$new_value      = $this->mc->increment( $namespaced_key, $offset );
+		// If the key didn't exist, Memcached::increment returns false. We must add it first.
+		if ( false === $new_value ) {
+			if ( $this->mc->add( $namespaced_key, $offset, 0 ) ) {
+				return $offset;
+			}
+		}
+		return $new_value;
 	}
 
 	/**
@@ -361,13 +379,19 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		return $this->mc->decrement( $this->get_namespaced_key( $key ), $offset );
+		$namespaced_key = $this->get_namespaced_key( $key );
+		$new_value      = $this->mc->decrement( $namespaced_key, $offset );
+		// If the key didn't exist, Memcached::decrement returns false. We should initialize it to 0.
+		if ( false === $new_value ) {
+			if ( $this->mc->add( $namespaced_key, 0, 0 ) ) {
+				return 0;
+			}
+		}
+		return $new_value;
 	}
 
 	/**
 	 * Closes the connection to the cache.
-	 *
-	 * Only closes non-persistent connections.
 	 *
 	 * @return bool Always returns true.
 	 */

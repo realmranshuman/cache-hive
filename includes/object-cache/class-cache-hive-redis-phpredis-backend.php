@@ -39,16 +39,12 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		private $connected = false;
 
 		/**
-		 * The key used to signal that a background flush of old keys is needed.
-		 */
-		const FLUSH_PENDING_KEY = 'ch:flush_pending';
-
-		/**
 		 * Cache_Hive_Redis_PhpRedis_Backend constructor.
 		 *
 		 * Initializes the Redis connection.
 		 *
 		 * @param array $config The Redis connection configuration.
+		 * @throws \RedisException If connection or authentication fails.
 		 */
 		public function __construct( $config ) {
 			$this->config = $config;
@@ -59,8 +55,9 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 
 			$this->redis = new \Redis();
 
-			// Using the robust connection logic from your file.
 			try {
+				$timeout = (float) ( $config['timeout'] ?? 1.0 );
+
 				if ( isset( $config['scheme'] ) && 'unix' === $config['scheme'] ) {
 					if ( ! empty( $config['persistent'] ) ) {
 						$this->redis->pconnect( $config['host'] );
@@ -71,7 +68,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					$this->redis->pconnect(
 						$config['host'],
 						(int) $config['port'],
-						(float) ( $config['timeout'] ?? 1.0 ),
+						$timeout,
 						'ch-pconn-' . ( $config['database'] ?? 0 )
 					);
 				} else {
@@ -87,7 +84,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					$this->redis->connect(
 						$config['host'],
 						(int) $config['port'],
-						(float) ( $config['timeout'] ?? 1.0 ),
+						$timeout,
 						null,
 						0,
 						0.0,
@@ -95,15 +92,19 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					);
 				}
 
-				$password = $config['objectCachePassword'] ?? ( $config['pass'] ?? null );
-				$username = $config['objectCacheUsername'] ?? ( $config['user'] ?? null );
+				$password = $config['pass'] ?? null;
+				$username = $config['user'] ?? null;
 				if ( ! empty( $password ) ) {
 					$auth = ! empty( $username ) ? array( $username, $password ) : $password;
-					$this->redis->auth( $auth );
+					if ( ! $this->redis->auth( $auth ) ) {
+						throw new \RedisException( 'Redis authentication failed.' );
+					}
 				}
 
 				if ( ! empty( $config['database'] ) && (int) $config['database'] > 0 ) {
-					$this->redis->select( (int) $config['database'] );
+					if ( ! $this->redis->select( (int) $config['database'] ) ) {
+						throw new \RedisException( 'Redis database selection failed.' );
+					}
 				}
 
 				if ( 0 === strcasecmp( 'igbinary', $config['serializer'] ?? '' ) && defined( 'Redis::SERIALIZER_IGBINARY' ) ) {
@@ -118,8 +119,9 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'lzf'  => defined( 'Redis::COMPRESSION_LZF' ) ? \Redis::COMPRESSION_LZF : null,
 				);
 
-				if ( isset( $config['compression'] ) && isset( $compression_map[ $config['compression'] ] ) ) {
-					$this->redis->setOption( \Redis::OPT_COMPRESSION, $compression_map[ $config['compression'] ] );
+				$compression_setting = $config['compression'] ?? 'none';
+				if ( 'none' !== $compression_setting && isset( $compression_map[ $compression_setting ] ) ) {
+					$this->redis->setOption( \Redis::OPT_COMPRESSION, $compression_map[ $compression_setting ] );
 				}
 
 				$ping            = $this->redis->ping();
@@ -161,7 +163,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		 * @return array An associative array of found items. Returns an empty array on error.
 		 */
 		public function get_multiple( $keys ) {
-			if ( empty( $keys ) ) {
+			if ( empty( $keys ) || ! is_array( $keys ) ) {
 				return array();
 			}
 			try {
@@ -346,12 +348,9 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		}
 
 		/**
-		 * Implements the "smart" async flush.
+		 * Flushes the cache.
 		 *
-		 * Instead of a full flush, it increments the global version prefix,
-		 * instantly invalidating old keys, and sets a flag for background cleanup.
-		 *
-		 * @param bool $async When true, perform a "smart" async flush. When false, performs a standard blocking flush.
+		 * @param bool $async When true, performs a non-blocking flush. When false, performs a standard blocking flush.
 		 * @return bool True on success, false on failure.
 		 */
 		public function flush( $async ) {
@@ -359,17 +358,10 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				if ( ! $this->is_connected() ) {
 					return false;
 				}
-				if ( $async ) {
-					// Get the current prefix version before we change it.
-					$old_prefix = $this->redis->get( 'ch:global_prefix' );
-					// Immediately increment the prefix, making all old keys inaccessible.
-					$this->redis->incr( 'ch:global_prefix' );
-					// Set the pending flag with the old prefix info for the cron job. TTL of 5 minutes.
-					$this->redis->setex( self::FLUSH_PENDING_KEY, 300, $old_prefix );
-					return true;
+				// Use the native asynchronous flush command if available and requested.
+				if ( $async && method_exists( $this->redis, 'flushDb' ) ) {
+					return $this->redis->flushDb( true );
 				}
-
-				// For a synchronous flush, do a standard full flush.
 				return $this->redis->flushDB();
 			} catch ( \RedisException $e ) {
 				error_log( 'Cache Hive Redis flush Error: ' . $e->getMessage() );
@@ -409,7 +401,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					}
 				}
 
-				$return_info = array(
+				return array(
 					'status'         => 'Connected',
 					'client'         => 'PhpRedis',
 					'host'           => $this->config['host'],
@@ -423,13 +415,6 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'persistent'     => ! empty( $this->config['persistent'] ),
 					'prefetch'       => ! empty( $this->config['prefetch'] ),
 				);
-
-				// Check for the async flush flag and add it to the info array.
-				if ( $this->redis->exists( self::FLUSH_PENDING_KEY ) ) {
-					$return_info['flush_pending'] = true;
-				}
-
-				return $return_info;
 			} catch ( \RedisException $e ) {
 				error_log( 'Cache Hive Redis get_info Error: ' . $e->getMessage() );
 				$this->connected = false;
