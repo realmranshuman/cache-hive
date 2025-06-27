@@ -1,9 +1,6 @@
 <?php
 /**
  * Class for handling the core caching engine operations.
- *
- * @since 1.0.0
- * @package Cache_Hive
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -12,35 +9,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * The core Cache Hive engine.
- *
- * This class hooks into WordPress to serve cached pages and to capture
- * new pages into the cache. It contains the main logic for determining
- * when and what to cache.
- *
- * @since 1.0.0
  */
 final class Cache_Hive_Engine {
 
-	/**
-	 * Whether the cache engine is started.
-	 *
-	 * @var bool
-	 */
 	public static $started = false;
-
-	/**
-	 * Plugin settings from the disk or database.
-	 *
-	 * @var array
-	 */
 	public static $settings;
 
-	/**
-	 * Start the cache engine.
-	 *
-	 * @since 1.0.0
-	 * @return bool True if the cache engine was started.
-	 */
 	public static function start() {
 		if ( self::should_start() ) {
 			self::$started = true;
@@ -49,141 +23,85 @@ final class Cache_Hive_Engine {
 		return self::$started;
 	}
 
-	/**
-	 * Constructor. Hooks into WordPress to control caching.
-	 *
-	 * @since 1.0.0
-	 */
 	private function __construct() {
 		self::$settings = Cache_Hive_Settings::get_settings();
 
-		// Hook in early to deliver a cached file if it exists and is valid.
+		// This hook is for when the drop-in misses, but WordPress can still serve cache.
 		add_action( 'template_redirect', array( __CLASS__, 'deliver_cache' ), 0 );
 
 		// If no cache was delivered, start output buffering to capture the page.
 		add_action( 'template_redirect', array( __CLASS__, 'start_buffering' ), 1 );
 	}
 
-	/**
-	 * Determines if the cache engine should start.
-	 *
-	 * @since 1.0.0
-	 * @return bool
-	 */
 	public static function should_start() {
 		if ( self::$started ) {
-			error_log( '[Cache Hive] Engine already started' );
 			return false;
 		}
-
-		// Don't run on admin pages, during cron, or for non-GET requests.
 		if ( is_admin() || defined( 'DOING_CRON' ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) || defined( 'XMLRPC_REQUEST' ) ) {
-			error_log( '[Cache Hive] Bypassing due to admin/cron/ajax/xmlrpc request' );
 			return false;
 		}
-
-		if ( ! isset( $_SERVER['REQUEST_METHOD'] ) || 'GET' !== $_SERVER['REQUEST_METHOD'] ) {
-			error_log( '[Cache Hive] Bypassing due to non-GET request' );
+		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
 			return false;
 		}
-
-		// Main switch from settings.
-		if ( ! Cache_Hive_Settings::get( 'enableCache' ) ) {
-			error_log( '[Cache Hive] Caching is disabled in settings' );
+		if ( ! ( Cache_Hive_Settings::get( 'enableCache' ) ?? false ) ) {
 			return false;
 		}
-
-		// Handle REST API caching based on settings.
-		if ( defined( 'REST_REQUEST' ) && REST_REQUEST && ! Cache_Hive_Settings::get( 'cacheRestApi' ) ) {
-			error_log( '[Cache Hive] Bypassing REST request - REST caching disabled' );
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST && ! ( Cache_Hive_Settings::get( 'cacheRestApi' ) ?? false ) ) {
 			return false;
 		}
-
-		error_log( '[Cache Hive] Engine starting - all checks passed' );
 		return true;
 	}
 
 	/**
-	 * Deliver the cached page for the current request if valid.
-	 *
-	 * @since 1.0.0
+	 * Tries to deliver a cached page if the drop-in didn't.
 	 */
 	public static function deliver_cache() {
 		if ( self::bypass_cache() ) {
-			header( 'X-Cache-Hive: Bypassed' );
+			header( 'X-Cache-Hive: Bypassed (Engine)' );
 			return;
 		}
 
 		$cache_file = Cache_Hive_Disk::get_cache_file_path();
 
 		if ( Cache_Hive_Disk::is_cache_valid( $cache_file ) ) {
-			header( 'X-Cache-Hive: Hit' );
-		} elseif ( isset( self::$settings['serveStale'] ) && self::$settings['serveStale'] && file_exists( $cache_file ) ) {
-			header( 'X-Cache-Hive: Stale' );
+			header( 'X-Cache-Hive: Hit (Engine)' );
+		} elseif ( ( self::$settings['serveStale'] ?? false ) && file_exists( $cache_file ) ) {
+			header( 'X-Cache-Hive: Stale (Engine)' );
 		} else {
-			header( 'X-Cache-Hive: Miss' );
-			return; // No valid or stale cache to serve.
+			header( 'X-Cache-Hive: Miss (Engine)' );
+			return;
 		}
-
-		// Add browser caching headers if enabled.
+		
 		if ( class_exists( 'Cache_Hive_Browser_Cache' ) ) {
 			Cache_Hive_Browser_Cache::send_headers( self::$settings );
 		}
-
-		// Deliver the file.
+		
 		readfile( $cache_file );
 		exit;
 	}
 
-	/**
-	 * Start the output buffering.
-	 *
-	 * @since 1.0.0
-	 */
 	public static function start_buffering() {
-		// Final check before starting buffer.
 		if ( self::bypass_cache() ) {
 			return;
 		}
 		ob_start( array( __CLASS__, 'end_buffering' ) );
 	}
 
-	/**
-	 * End the output buffering and maybe cache the page.
-	 *
-	 * @since 1.0.0
-	 * @param string $buffer The output buffer contents.
-	 * @return string The buffer.
-	 */
 	private static function end_buffering( $buffer ) {
-		// A final, late-stage check for cacheability.
 		if ( ! self::is_cacheable( $buffer ) || self::bypass_cache() ) {
 			return $buffer;
 		}
-
-		// Page Optimization logic would go here. For now, it's skipped.
-
 		Cache_Hive_Disk::cache_page( $buffer );
-
 		return $buffer;
 	}
 
-	/**
-	 * Check if the buffer content is a valid, cacheable HTML page.
-	 *
-	 * @since 1.0.0
-	 * @param string $buffer The output buffer.
-	 * @return bool
-	 */
 	public static function is_cacheable( $buffer ) {
 		if ( strlen( $buffer ) < 255 ) {
 			return false;
 		}
-		// Is it a valid HTML page?
 		if ( ! preg_match( '/<html|<!DOCTYPE/i', $buffer ) ) {
 			return false;
 		}
-		// Avoid caching XML-like files (e.g., sitemaps).
 		if ( preg_match( '/<?xml/i', $buffer ) && ! preg_match( '/<!DOCTYPE/i', $buffer ) ) {
 			return false;
 		}
@@ -191,121 +109,68 @@ final class Cache_Hive_Engine {
 	}
 
 	/**
-	 * Determines if the current request should be explicitly excluded from caching.
-	 * This is the master list of exclusion rules.
-	 *
-	 * @since 1.0.0
-	 * @return bool True if the request should be bypassed.
+	 * The master list of exclusion rules checked during a full WordPress load.
 	 */
 	private static function bypass_cache() {
-		// WordPress native conditions that should always bypass cache.
-		if ( is_404() || is_search() || is_preview() || is_trackback() || is_feed() || post_password_required() ) {
-			error_log(
-				'[Cache Hive] Bypassing due to WordPress condition: ' .
-				( is_404() ? '404' :
-				( is_search() ? 'search' :
-				( is_preview() ? 'preview' :
-				( is_trackback() ? 'trackback' :
-				( is_feed() ? 'feed' : 'password required' ) ) ) ) )
-			);
+		if ( is_404() || is_search() || is_preview() || is_trackback() || post_password_required() ) {
+			return true;
+		}
+		// Special handling for feeds, which have their own TTL.
+		if ( is_feed() && ( self::$settings['feedTTL'] ?? 604800 ) <= 0 ) {
 			return true;
 		}
 
-		// Don't cache for logged-in users unless explicitly enabled.
 		if ( ! ( self::$settings['cacheLoggedUsers'] ?? false ) && is_user_logged_in() ) {
-			error_log( '[Cache Hive] Bypassing due to logged-in user' );
 			return true;
 		}
-
-		// Don't cache for users who have commented, unless enabled.
 		if ( ! ( self::$settings['cacheCommenters'] ?? false ) && isset( $_COOKIE[ 'comment_author_' . COOKIEHASH ] ) ) {
-			error_log( '[Cache Hive] Bypassing due to commenter' );
 			return true;
 		}
 
-		// Check for excluded user roles.
 		if ( is_user_logged_in() && ! empty( self::$settings['excludeRoles'] ) ) {
 			$user = wp_get_current_user();
 			if ( ! empty( array_intersect( (array) $user->roles, self::$settings['excludeRoles'] ) ) ) {
-				error_log( '[Cache Hive] Bypassing due to excluded user role' );
 				return true;
 			}
 		}
 
-		// Check for excluded URIs.
-		if ( ! empty( self::$settings['excludeUris'] ) && isset( $_SERVER['REQUEST_URI'] ) ) {
-			$request_uri = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) );
-			$patterns    = self::$settings['excludeUris'];
-			foreach ( $patterns as $pattern ) {
-				if ( ! empty( $pattern ) ) {
-					try {
-						if ( preg_match( '#' . $pattern . '#i', $request_uri ) ) {
-							error_log( '[Cache Hive] Bypassing due to excluded URI pattern: ' . $pattern );
-							return true;
-						}
-					} catch ( \Exception $e ) {
-						error_log( '[Cache Hive] Invalid URI pattern: ' . $pattern );
-					}
+		$request_uri = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ) );
+		if ( ! empty( self::$settings['excludeUris'] ) ) {
+			foreach ( self::$settings['excludeUris'] as $pattern ) {
+				if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $request_uri ) ) {
+					return true;
 				}
 			}
 		}
 
-		// Check for excluded Query Strings.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! empty( $_GET ) && ! empty( self::$settings['excludeQueryStrings'] ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$get_keys = array_keys( $_GET );
-			$patterns = self::$settings['excludeQueryStrings'];
 			foreach ( $get_keys as $query_key ) {
-				foreach ( $patterns as $pattern ) {
-					if ( ! empty( $pattern ) ) {
-						try {
-							if ( preg_match( '#' . $pattern . '#i', $query_key ) ) {
-								error_log( '[Cache Hive] Bypassing due to excluded query string: ' . $query_key . ' matching pattern: ' . $pattern );
-								return true;
-							}
-						} catch ( \Exception $e ) {
-							error_log( '[Cache Hive] Invalid query string pattern: ' . $pattern );
-						}
+				foreach ( self::$settings['excludeQueryStrings'] as $pattern ) {
+					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $query_key ) ) {
+						return true;
 					}
 				}
 			}
 		}
 
-		// Check for excluded Cookies.
 		if ( ! empty( $_COOKIE ) && ! empty( self::$settings['excludeCookies'] ) ) {
-			$patterns = self::$settings['excludeCookies'];
 			foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
-				foreach ( $patterns as $pattern ) {
-					if ( ! empty( $pattern ) ) {
-						try {
-							if ( preg_match( '#' . $pattern . '#i', $cookie_name ) ) {
-								error_log( '[Cache Hive] Bypassing due to excluded cookie: ' . $cookie_name . ' matching pattern: ' . $pattern );
-								return true;
-							}
-						} catch ( \Exception $e ) {
-							error_log( '[Cache Hive] Invalid cookie pattern: ' . $pattern );
-						}
+				foreach ( self::$settings['excludeCookies'] as $pattern ) {
+					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $cookie_name ) ) {
+						return true;
 					}
 				}
 			}
 		}
 
-		/**
-		 * Final filter to allow developers to bypass the cache.
-		 *
-		 * @since 1.0.0
-		 * @param bool false Default bypass status.
-		 */
-		$bypass = apply_filters( 'cache_hive_bypass_cache', false );
-		if ( $bypass ) {
-			error_log( '[Cache Hive] Bypassing due to cache_hive_bypass_cache filter' );
-		}
-		return $bypass;
+		return (bool) apply_filters( 'cache_hive_bypass_cache', false );
 	}
 
 	/**
-	 * Checks if the current visitor is a mobile device based on User Agent.
+	 * Checks if the current visitor is a mobile device.
 	 *
 	 * @since 1.0.0
 	 * @return bool
@@ -314,13 +179,11 @@ final class Cache_Hive_Engine {
 		if ( empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
 			return false;
 		}
-
 		if ( ! ( self::$settings['cacheMobile'] ?? false ) ) {
 			return false;
 		}
 
 		$user_agents = self::$settings['mobileUserAgents'] ?? array();
-
 		if ( empty( $user_agents ) ) {
 			return false;
 		}
@@ -328,13 +191,9 @@ final class Cache_Hive_Engine {
 		$user_agent = sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) );
 		foreach ( $user_agents as $pattern ) {
 			if ( ! empty( $pattern ) ) {
-				try {
-					if ( preg_match( '#' . preg_quote( $pattern, '#' ) . '#i', $user_agent ) ) {
-						error_log( '[Cache Hive] Detected mobile device matching pattern: ' . $pattern );
-						return true;
-					}
-				} catch ( \Exception $e ) {
-					error_log( '[Cache Hive] Invalid mobile user agent pattern: ' . $pattern );
+				// SOLID FIX: Use preg_quote to escape special regex characters in user agent strings.
+				if ( preg_match( '#' . preg_quote( $pattern, '#' ) . '#i', $user_agent ) ) {
+					return true;
 				}
 			}
 		}
