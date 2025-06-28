@@ -28,7 +28,7 @@ final class Cache_Hive_Settings {
 	private static $settings;
 
 	/**
-	 * Get all settings, merged with defaults.
+	 * Get all settings, merged with defaults and wp-config.php overrides.
 	 *
 	 * @since 1.0.0
 	 * @param bool $force_refresh Whether to force a refresh from the database.
@@ -39,20 +39,79 @@ final class Cache_Hive_Settings {
 			$db_settings = get_option( 'cache_hive_settings', array() );
 			$defaults    = self::get_default_settings();
 
-			// Merge DB settings with defaults to ensure all keys exist.
+			// Base settings: DB values parsed over defaults.
 			$merged_settings = wp_parse_args( $db_settings, $defaults );
 
 			// Self-correction for migrating old string values to arrays.
 			foreach ( $merged_settings as $key => &$value ) {
-				// If a default exists, is an array, and the current value is a string, convert it.
 				if ( isset( $defaults[ $key ] ) && is_array( $defaults[ $key ] ) && is_string( $value ) ) {
 					$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
 				}
 			}
 
+			// Get wp-config.php overrides and merge them on top. They have the final say.
+			$wp_config_overrides = self::get_wp_config_overrides();
+			$merged_settings     = array_merge( $merged_settings, $wp_config_overrides );
+
 			self::$settings = $merged_settings;
 		}
 		return self::$settings;
+	}
+
+	/**
+	 * Gathers all defined object cache constants from wp-config.php.
+	 *
+	 * @since 1.1.0
+	 * @return array An array of settings defined in wp-config.php.
+	 */
+	private static function get_wp_config_overrides() {
+		$overrides = array();
+		$constants = array(
+			// General.
+			'objectCacheMethod'               => 'CACHE_HIVE_OBJECT_CACHE_METHOD', // redis or memcached.
+			'client'                          => 'CACHE_HIVE_OBJECT_CACHE_CLIENT', // phpredis, predis, credis.
+			'objectCacheHost'                 => 'CACHE_HIVE_OBJECT_CACHE_HOST',
+			'objectCachePort'                 => 'CACHE_HIVE_OBJECT_CACHE_PORT',
+			'objectCacheLifetime'             => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
+			'timeout'                         => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
+			'objectCachePersistentConnection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
+
+			// Redis Specific.
+			'database'                        => 'CACHE_HIVE_REDIS_DATABASE',
+			'objectCacheUsername'             => 'CACHE_HIVE_REDIS_USERNAME',
+			'objectCachePassword'             => 'CACHE_HIVE_REDIS_PASSWORD',
+
+			// Memcached Specific.
+			'memcached_user'                  => 'CACHE_HIVE_MEMCACHED_USERNAME',
+			'memcached_pass'                  => 'CACHE_HIVE_MEMCACHED_PASSWORD',
+
+			// Advanced TLS Options for Redis.
+			'tls_options'                     => array(
+				'ca_cert'     => 'CACHE_HIVE_REDIS_TLS_CA_CERT',
+				'local_cert'  => 'CACHE_HIVE_REDIS_TLS_LOCAL_CERT',
+				'local_pk'    => 'CACHE_HIVE_REDIS_TLS_LOCAL_PK',
+				'passphrase'  => 'CACHE_HIVE_REDIS_TLS_PASSPHRASE',
+				'verify_peer' => 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER',
+			),
+		);
+
+		foreach ( $constants as $setting_key => $constant_name ) {
+			if ( is_array( $constant_name ) ) {
+				// Handle nested options like tls_options.
+				foreach ( $constant_name as $nested_key => $nested_constant ) {
+					if ( defined( $nested_constant ) ) {
+						if ( ! isset( $overrides[ $setting_key ] ) ) {
+							$overrides[ $setting_key ] = array();
+						}
+						$overrides[ $setting_key ][ $nested_key ] = constant( $nested_constant );
+					}
+				}
+			} elseif ( defined( $constant_name ) ) {
+				$overrides[ $setting_key ] = constant( $constant_name );
+			}
+		}
+
+		return $overrides;
 	}
 
 	/**
@@ -82,7 +141,6 @@ final class Cache_Hive_Settings {
 		$default_exclude_cookies = array( 'wordpress_logged_in', 'wp-postpass', 'woocommerce_cart_hash', 'comment_author_' );
 		$default_custom_hooks    = array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' );
 
-		// The rest of your defaults...
 		return array(
 			'enableCache'                     => true,
 			'cacheLoggedUsers'                => false,
@@ -115,10 +173,10 @@ final class Cache_Hive_Settings {
 			'browserCacheEnabled'             => true,
 			'browserCacheTTL'                 => 604800,
 			'objectCacheEnabled'              => false,
-			'objectCacheMethod'               => 'memcached',
-			'objectCacheHost'                 => 'localhost',
-			'objectCachePort'                 => '11211',
-			'objectCacheLifetime'             => '3600',
+			'objectCacheMethod'               => 'redis',
+			'objectCacheHost'                 => '127.0.0.1',
+			'objectCachePort'                 => 6379,
+			'objectCacheLifetime'             => 3600,
 			'objectCacheUsername'             => '',
 			'objectCachePassword'             => '',
 			'objectCacheKey'                  => '',
@@ -147,22 +205,15 @@ final class Cache_Hive_Settings {
 		$sanitized = self::get_settings( true ); // Force refresh from DB.
 		$defaults  = self::get_default_settings();
 
-		// Iterate over the INPUT from the form, not the defaults.
 		foreach ( $input as $key => $value ) {
-			// Only process keys that are defined in our default settings.
 			if ( array_key_exists( $key, $defaults ) ) {
 				$default_value = $defaults[ $key ];
-
 				if ( is_bool( $default_value ) ) {
 					$sanitized[ $key ] = (bool) $value;
 				} elseif ( is_int( $default_value ) ) {
 					$sanitized[ $key ] = absint( $value );
 				} elseif ( is_array( $default_value ) ) {
-					if ( is_array( $value ) ) {
-						$sanitized[ $key ] = array_values( array_filter( array_map( 'sanitize_text_field', $value ) ) );
-					} else {
-						$sanitized[ $key ] = array(); // Default to empty array if non-array is passed.
-					}
+					$sanitized[ $key ] = is_array( $value ) ? array_values( array_filter( array_map( 'sanitize_text_field', $value ) ) ) : array();
 				} else {
 					$sanitized[ $key ] = sanitize_text_field( $value );
 				}

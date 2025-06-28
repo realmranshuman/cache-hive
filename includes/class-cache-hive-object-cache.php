@@ -27,7 +27,7 @@ final class Cache_Hive_Object_Cache {
 	 *
 	 * @var string
 	 */
-	private const DROPIN_MARKER = 'Cache Hive Object Cache Drop-in v2';
+	private const DROPIN_MARKER = 'Cache Hive Object Cache Drop-in v3';
 
 	/**
 	 * Initialize the drop-in path.
@@ -46,6 +46,7 @@ final class Cache_Hive_Object_Cache {
 			return;
 		}
 		if ( is_null( $settings ) ) {
+			// Get the final, authoritative settings.
 			$settings = Cache_Hive_Settings::get_settings( true );
 		}
 		if ( ! empty( $settings['objectCacheEnabled'] ) ) {
@@ -85,9 +86,7 @@ final class Cache_Hive_Object_Cache {
 		}
 
 		if ( file_exists( self::$dropin_path ) && function_exists( 'wp_is_writable' ) && ! wp_is_writable( self::$dropin_path ) ) {
-			if ( false === chmod( self::$dropin_path, 0644 ) ) {
-				// Optionally log or handle chmod failure here.
-			}
+			chmod( self::$dropin_path, 0644 );
 		}
 		return self::is_dropin_active();
 	}
@@ -120,38 +119,45 @@ final class Cache_Hive_Object_Cache {
 	/**
 	 * Generate the content for the object-cache.php drop-in.
 	 *
-	 * @param array $settings Settings array.
+	 * @param array $settings The final, authoritative settings array.
 	 * @return string The drop-in PHP code.
 	 */
 	private static function get_dropin_content( $settings ) {
-		$config = array(
+		// This class no longer builds the config. It receives the final, unified
+		// config from the API controller and simply embeds it. This prevents logic duplication.
+		$config_to_embed = array(
+			// Core.
+			'objectCacheKey'  => $settings['objectCacheKey'] ?? '',
 			'client'          => $settings['client'] ?? 'phpredis',
-			'host'            => $settings['objectCacheHost'] ?? '127.0.0.1',
-			'port'            => $settings['objectCachePort'] ?? 6379,
+			'host'            => $settings['host'] ?? '127.0.0.1',
+			'port'            => $settings['port'] ?? 6379,
 			'scheme'          => $settings['scheme'] ?? 'tcp',
 			'timeout'         => $settings['timeout'] ?? 2.0,
-			'database'        => $settings['database'] ?? 0,
-			'lifetime'        => $settings['objectCacheLifetime'] ?? 3600,
-			'user'            => $settings['objectCacheUsername'] ?? '',
-			'pass'            => $settings['objectCachePassword'] ?? '',
 			'persistent'      => ! empty( $settings['persistent'] ),
-			'tls_enabled'     => ! empty( $settings['tls_enabled'] ),
+			// Auth.
+			'user'            => $settings['user'] ?? '',
+			'pass'            => $settings['pass'] ?? '',
+			// Redis specific.
+			'database'        => $settings['database'] ?? 0,
+			'serializer'      => $settings['serializer'] ?? 'php',
+			'compression'     => $settings['compression'] ?? 'none',
+			// Features.
+			'lifetime'        => $settings['objectCacheLifetime'] ?? 3600,
 			'global_groups'   => $settings['objectCacheGlobalGroups'] ?? array(),
 			'no_cache_groups' => $settings['objectCacheNoCacheGroups'] ?? array(),
 			'prefetch'        => ! empty( $settings['prefetch'] ),
-			'serializer'      => $settings['serializer'] ?? 'php',
-			'compression'     => $settings['compression'] ?? 'none',
 			'flush_async'     => ! empty( $settings['flush_async'] ),
-			'objectCacheKey'  => $settings['objectCacheKey'] ?? '',
+			// TLS options.
+			'tls_options'     => $settings['tls_options'] ?? array(),
 		);
 
 		$generation_date = gmdate( 'Y-m-d H:i:s T' );
-		$config_exported = var_export( $config, true );
+		$config_exported = var_export( $config_to_embed, true );
 
 		return <<<PHP
 <?php
 /**
- * Cache Hive Object Cache Drop-in v2
+ * Cache Hive Object Cache Drop-in v3
  * Generated: {$generation_date}
  */
 if ( defined( 'WP_CACHE_HIVE_OBJECT_CACHE_LOADED' ) ) { return; }
@@ -193,10 +199,8 @@ final class WP_Object_Cache {
     public function get(\$key, \$group = 'default', \$force = false, &\$found = null) { \$cache_key = \$this->get_key(\$key, \$group); if (!\$force && isset(\$this->cache[\$cache_key])) { \$found = true; return is_object(\$this->cache[\$cache_key]) ? clone \$this->cache[\$cache_key] : \$this->cache[\$cache_key]; } if (\$this->is_non_persistent_group(\$group)) { \$found = false; return false; } \$value = \$this->backend->get(\$cache_key, \$found); if ((\$key === 'alloptions') && \$found && !is_array(\$value)) { \$found = false; return false; } if (\$found) { \$this->cache[\$cache_key] = \$value; } return is_object(\$value) ? clone \$value : \$value; }
     public function get_multiple(\$keys, \$group = 'default') { if (\$this->is_non_persistent_group(\$group)) return []; \$prefixed_keys = []; \$cached_results = []; foreach((array) \$keys as \$key) { \$cache_key = \$this->get_key(\$key, \$group); if (isset(\$this->cache[\$cache_key])) { \$cached_results[\$key] = \$this->cache[\$cache_key]; } else { \$prefixed_keys[\$cache_key] = \$key; } } if (empty(\$prefixed_keys)) { return \$cached_results; } \$values = \$this->backend->get_multiple(array_keys(\$prefixed_keys)); \$result = []; foreach (\$values as \$prefixed_key => \$value) { if (isset(\$prefixed_keys[\$prefixed_key])) { \$original_key = \$prefixed_keys[\$prefixed_key]; \$result[\$original_key] = \$value; \$this->cache[\$prefixed_key] = \$value; } } return array_merge(\$cached_results, \$result); }
     public function delete(\$key, \$group = 'default') { \$cache_key = \$this->get_key(\$key, \$group); unset(\$this->cache[\$cache_key]); if (\$this->is_non_persistent_group(\$group)) return true; return \$this->backend->delete(\$cache_key); }
-    
     public function incr(\$key, \$offset = 1, \$group = 'default') { \$cache_key = \$this->get_key(\$key, \$group); unset(\$this->cache[\$cache_key]); if (\$this->is_non_persistent_group(\$group)) { return false; } \$new_value = \$this->backend->increment(\$cache_key, \$offset); if (false !== \$new_value) { \$this->cache[\$cache_key] = \$new_value; } return \$new_value; }
     public function decr(\$key, \$offset = 1, \$group = 'default') { \$cache_key = \$this->get_key(\$key, \$group); unset(\$this->cache[\$cache_key]); if (\$this->is_non_persistent_group(\$group)) { return false; } \$new_value = \$this->backend->decrement(\$cache_key, \$offset); if (false !== \$new_value) { \$this->cache[\$cache_key] = \$new_value; } return \$new_value; }
-    
     public function reset() { \$this->cache = []; \$this->prefetched = false; }
     public function flush() { \$this->reset(); return \$this->backend->flush(\$this->config['flush_async']); }
     public function close() { return \$this->backend->close(); }

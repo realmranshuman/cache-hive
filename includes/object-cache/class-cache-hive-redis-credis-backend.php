@@ -13,8 +13,6 @@ require_once __DIR__ . '/interface-backend.php';
 
 /**
  * Credis backend for the Cache Hive object cache.
- *
- * @package Cache_Hive
  */
 class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	/**
@@ -49,28 +47,38 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 			$this->connected = false;
 			return;
 		}
+
 		try {
-			$host = $config['host'];
-			$port = $config['port'];
-			if ( isset( $config['scheme'] ) ) {
-				if ( 'unix' === $config['scheme'] ) {
-					$port = null;
-				} elseif ( 'tls' === $config['scheme'] ) {
-					$host = 'tls://' . $host;
-				}
+			$host = $this->config['host'];
+			$port = $this->config['port'];
+
+			if ( 'unix' === $this->config['scheme'] ) {
+				$port = null; // Credis uses null port for unix sockets.
+			} elseif ( 'tls' === $this->config['scheme'] ) {
+				$host = 'tls://' . $host;
 			}
-			$this->client = new Credis_Client( $host, $port, $config['timeout'], '', $config['database'], $config['pass'] );
-			if ( ! empty( $config['persistent'] ) ) {
-				$this->client->setPersistent( 'ch-pconn-' . $config['database'] );
+
+			// Note: Credis doesn't support a rich context array for TLS like PhpRedis/Predis.
+			// The `tls://` scheme is the primary method.
+			$this->client = new Credis_Client( $host, $port, $this->config['timeout'], '', $this->config['database'], null );
+
+			if ( ! empty( $this->config['persistent'] ) ) {
+				$this->client->setPersistent( 'ch-pconn-' . $this->config['database'] );
 			}
-			if ( ! empty( $config['user'] ) && ! empty( $config['pass'] ) ) {
-				$this->client->auth( $config['user'] . ':' . $config['pass'] );
-			} elseif ( ! empty( $config['pass'] ) ) {
-				$this->client->auth( $config['pass'] );
+
+			$this->client->connect();
+
+			// Handle authentication.
+			$password = $this->config['pass'] ?? null;
+			$username = $this->config['user'] ?? null;
+			if ( ! empty( $password ) ) {
+				$auth_params = empty( $username ) ? array( $password ) : array( $username, $password );
+				$this->client->__call( 'auth', $auth_params );
 			}
-				$this->client->connect();
-				$this->connected = $this->client->isConnected();
+
+			$this->connected = $this->client->isConnected();
 		} catch ( Exception $e ) {
+			error_log( 'Cache Hive Credis Connection Error: ' . $e->getMessage() );
 			$this->connected = false;
 		}
 	}
@@ -78,13 +86,11 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	/**
 	 * Unserializes a value from Redis.
 	 *
-	 * Handles non-serialized values gracefully.
-	 *
 	 * @param mixed $value The value to unserialize.
 	 * @return mixed The unserialized value.
 	 */
 	private function unserialize_value( $value ) {
-		if ( is_null( $value ) || is_bool( $value ) || is_int( $value ) ) {
+		if ( is_null( $value ) || is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
 			return $value;
 		}
 		$unserialized = @unserialize( $value );
@@ -99,9 +105,12 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return mixed The value of the item, or false on failure.
 	 */
 	public function get( $key, &$found ) {
+		$found = false;
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
 		$value = $this->client->get( $key );
 		if ( false === $value || null === $value ) {
-			$found = false;
 			return false;
 		}
 		$found = true;
@@ -115,7 +124,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return array Array of found key-value pairs.
 	 */
 	public function get_multiple( $keys ) {
-		if ( empty( $keys ) ) {
+		if ( empty( $keys ) || ! $this->is_connected() ) {
 			return array();
 		}
 		$values = $this->client->mget( $keys );
@@ -137,11 +146,15 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function set( $key, $value, $ttl ) {
-		return $this->client->setex( $key, $ttl, serialize( $value ) );
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
+		$serialized_value = serialize( $value );
+		return $this->client->setex( $key, $ttl, $serialized_value );
 	}
 
 	/**
-	 * Adds an item to the cache, but only if the key does not exist.
+	 * Adds an item to the cache if it does not already exist.
 	 *
 	 * @param string $key   The key under which to store the value.
 	 * @param mixed  $value The value to store.
@@ -149,6 +162,9 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function add( $key, $value, $ttl ) {
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
 		return $this->client->set(
 			$key,
 			serialize( $value ),
@@ -168,6 +184,9 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function replace( $key, $value, $ttl ) {
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
 		return $this->client->set(
 			$key,
 			serialize( $value ),
@@ -185,17 +204,17 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function delete( $key ) {
-		return $this->client->del( $key ) > 0;
+		return $this->is_connected() ? $this->client->del( $key ) > 0 : false;
 	}
 
 	/**
-	 * Flushes the entire cache for the current database.
+	 * Flushes the cache database.
 	 *
-	 * @param bool $async Whether to perform the flush asynchronously.
+	 * @param bool $async Whether to flush asynchronously.
 	 * @return bool True on success, false on failure.
 	 */
 	public function flush( $async ) {
-		return $async ? $this->client->flushdb( true ) : $this->client->flushdb();
+		return $this->is_connected() ? $this->client->flushdb( $async ) : false;
 	}
 
 	/**
@@ -206,7 +225,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return int|false The new value on success, false on failure.
 	 */
 	public function increment( $key, $offset ) {
-		return $this->client->incrby( $key, $offset );
+		return $this->is_connected() ? $this->client->incrby( $key, $offset ) : false;
 	}
 
 	/**
@@ -217,7 +236,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return int|false The new value on success, false on failure.
 	 */
 	public function decrement( $key, $offset ) {
-		return $this->client->decrby( $key, $offset );
+		return $this->is_connected() ? $this->client->decrby( $key, $offset ) : false;
 	}
 
 	/**
@@ -229,6 +248,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		if ( $this->client && $this->client->isConnected() ) {
 			$this->client->close();
 		}
+		$this->connected = false;
 		return true;
 	}
 
@@ -253,20 +273,26 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 				'client' => 'Credis',
 			);
 		}
-		$info = $this->client->info();
-		return array(
-			'status'         => 'Connected',
-			'client'         => 'Credis',
-			'host'           => $this->config['host'],
-			'port'           => $this->config['port'],
-			'database'       => $this->config['database'],
-			'server_version' => $info['redis_version'] ?? 'N/A',
-			'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
-			'uptime'         => $info['uptime_in_seconds'] ?? 'N/A',
-			'persistent'     => ! empty( $this->config['persistent'] ),
-			'prefetch'       => ! empty( $this->config['prefetch'] ),
-			'serializer'     => $this->config['serializer'] ?? 'php',
-			'compression'    => $this->config['compression'] ?? 'none',
-		);
+		try {
+			$info = $this->client->info();
+			return array(
+				'status'         => 'Connected',
+				'client'         => 'Credis',
+				'host'           => $this->config['host'],
+				'port'           => $this->config['port'],
+				'scheme'         => $this->config['scheme'],
+				'database'       => $this->config['database'],
+				'server_version' => $info['redis_version'] ?? 'N/A',
+				'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
+				'uptime'         => $info['uptime_in_seconds'] ?? 'N/A',
+				'persistent'     => ! empty( $this->config['persistent'] ),
+			);
+		} catch ( Exception $e ) {
+			return array(
+				'status' => 'Connection Error',
+				'client' => 'Credis',
+				'error'  => $e->getMessage(),
+			);
+		}
 	}
 }

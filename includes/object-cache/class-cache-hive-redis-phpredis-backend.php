@@ -5,18 +5,15 @@
  * @package CacheHive
  */
 
-/**
- * Class Cache_Hive_Redis_PhpRedis_Backend
- *
- * Handles PhpRedis object cache implementation logic for Cache Hive.
- */
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 require_once __DIR__ . '/interface-backend.php';
 
 if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 	/**
 	 * PhpRedis backend for Cache Hive.
-	 *
-	 * This class provides a Redis-based caching backend using the PhpRedis extension.
 	 */
 	class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface {
 		/**
@@ -41,10 +38,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		/**
 		 * Cache_Hive_Redis_PhpRedis_Backend constructor.
 		 *
-		 * Initializes the Redis connection.
-		 *
 		 * @param array $config The Redis connection configuration.
-		 * @throws \RedisException If connection or authentication fails.
 		 */
 		public function __construct( $config ) {
 			$this->config = $config;
@@ -56,83 +50,112 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 			$this->redis = new \Redis();
 
 			try {
-				$timeout = (float) ( $config['timeout'] ?? 1.0 );
-
-				if ( isset( $config['scheme'] ) && 'unix' === $config['scheme'] ) {
-					if ( ! empty( $config['persistent'] ) ) {
-						$this->redis->pconnect( $config['host'] );
-					} else {
-						$this->redis->connect( $config['host'] );
-					}
-				} elseif ( ! empty( $config['persistent'] ) ) {
-					$this->redis->pconnect(
-						$config['host'],
-						(int) $config['port'],
-						$timeout,
-						'ch-pconn-' . ( $config['database'] ?? 0 )
-					);
-				} else {
-					$context = array();
-					if ( ! empty( $config['tls_enabled'] ) ) {
-						$context = array(
-							'ssl' => array(
-								'verify_peer'      => false,
-								'verify_peer_name' => false,
-							),
-						);
-					}
-					$this->redis->connect(
-						$config['host'],
-						(int) $config['port'],
-						$timeout,
-						null,
-						0,
-						0.0,
-						$context
-					);
-				}
-
-				$password = $config['pass'] ?? null;
-				$username = $config['user'] ?? null;
-				if ( ! empty( $password ) ) {
-					$auth = ! empty( $username ) ? array( $username, $password ) : $password;
-					if ( ! $this->redis->auth( $auth ) ) {
-						throw new \RedisException( 'Redis authentication failed.' );
-					}
-				}
-
-				if ( ! empty( $config['database'] ) && (int) $config['database'] > 0 ) {
-					if ( ! $this->redis->select( (int) $config['database'] ) ) {
-						throw new \RedisException( 'Redis database selection failed.' );
-					}
-				}
-
-				if ( 0 === strcasecmp( 'igbinary', $config['serializer'] ?? '' ) && defined( 'Redis::SERIALIZER_IGBINARY' ) ) {
-					$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_IGBINARY );
-				} else {
-					$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP );
-				}
-
-				$compression_map = array(
-					'zstd' => defined( 'Redis::COMPRESSION_ZSTD' ) ? \Redis::COMPRESSION_ZSTD : null,
-					'lz4'  => defined( 'Redis::COMPRESSION_LZ4' ) ? \Redis::COMPRESSION_LZ4 : null,
-					'lzf'  => defined( 'Redis::COMPRESSION_LZF' ) ? \Redis::COMPRESSION_LZF : null,
-				);
-
-				$compression_setting = $config['compression'] ?? 'none';
-				if ( 'none' !== $compression_setting && isset( $compression_map[ $compression_setting ] ) ) {
-					$this->redis->setOption( \Redis::OPT_COMPRESSION, $compression_map[ $compression_setting ] );
-				}
+				$this->establish_connection();
+				$this->authenticate();
+				$this->select_database();
+				$this->configure_client();
 
 				$ping            = $this->redis->ping();
 				$this->connected = ( '+PONG' === $ping || true === $ping );
 
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis Connection Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis Connection Error: ' . $e->getMessage() );
 				$this->connected = false;
 			}
 		}
 
+		/**
+		 * Establishes the physical connection to the Redis server.
+		 *
+		 * @throws \RedisException If connection fails.
+		 */
+		private function establish_connection() {
+			$host    = $this->config['host'];
+			$port    = (int) $this->config['port'];
+			$timeout = (float) $this->config['timeout'];
+
+			if ( 'unix' === $this->config['scheme'] ) {
+				$this->redis->connect( $host );
+				return;
+			}
+
+			if ( 'tls' === $this->config['scheme'] ) {
+				$host = 'tls://' . $host;
+			}
+
+			$context = array();
+			if ( ! empty( $this->config['tls_options'] ) ) {
+				$context['ssl'] = array(
+					'cafile'      => $this->config['tls_options']['ca_cert'] ?? null,
+					'local_cert'  => $this->config['tls_options']['local_cert'] ?? null,
+					'local_pk'    => $this->config['tls_options']['local_pk'] ?? null,
+					'passphrase'  => $this->config['tls_options']['passphrase'] ?? null,
+					'verify_peer' => $this->config['tls_options']['verify_peer'] ?? true,
+					'SNI_enabled' => true,
+					'peer_name'   => $this->config['host'],
+				);
+			}
+
+			if ( ! empty( $this->config['persistent'] ) ) {
+				$this->redis->pconnect( $host, $port, $timeout, 'ch-pconn-' . $this->config['database'], 0, 0.0, $context );
+			} else {
+				$this->redis->connect( $host, $port, $timeout, null, 0, 0.0, $context );
+			}
+		}
+
+		/**
+		 * Handles authentication with the Redis server.
+		 *
+		 * @throws \RedisException If authentication fails.
+		 */
+		private function authenticate() {
+			$password = $this->config['pass'] ?? null;
+			$username = $this->config['user'] ?? null;
+
+			if ( empty( $password ) ) {
+				return;
+			}
+
+			$auth = ! empty( $username ) ? array( $username, $password ) : $password;
+
+			if ( ! $this->redis->auth( $auth ) ) {
+				throw new \RedisException( 'Redis authentication failed.' );
+			}
+		}
+
+		/**
+		 * Selects the Redis database.
+		 *
+		 * @throws \RedisException If database selection fails.
+		 */
+		private function select_database() {
+			if ( ! empty( $this->config['database'] ) && (int) $this->config['database'] > 0 ) {
+				if ( ! $this->redis->select( (int) $this->config['database'] ) ) {
+					throw new \RedisException( 'Redis database selection failed.' );
+				}
+			}
+		}
+
+		/**
+		 * Configures serializer and compression options.
+		 */
+		private function configure_client() {
+			if ( 0 === strcasecmp( 'igbinary', $this->config['serializer'] ?? '' ) && defined( 'Redis::SERIALIZER_IGBINARY' ) ) {
+				$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_IGBINARY );
+			} else {
+				$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP );
+			}
+
+			$compression_map     = array(
+				'zstd' => defined( 'Redis::COMPRESSION_ZSTD' ) ? \Redis::COMPRESSION_ZSTD : null,
+				'lz4'  => defined( 'Redis::COMPRESSION_LZ4' ) ? \Redis::COMPRESSION_LZ4 : null,
+				'lzf'  => defined( 'Redis::COMPRESSION_LZF' ) ? \Redis::COMPRESSION_LZF : null,
+			);
+			$compression_setting = $this->config['compression'] ?? 'none';
+			if ( 'none' !== $compression_setting && isset( $compression_map[ $compression_setting ] ) ) {
+				$this->redis->setOption( \Redis::OPT_COMPRESSION, $compression_map[ $compression_setting ] );
+			}
+		}
 		/**
 		 * Retrieves an item from the cache.
 		 *
@@ -150,7 +173,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				$found = false !== $value;
 				return $value;
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis get Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis GET Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -181,7 +204,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				}
 				return $result;
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis get_multiple Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis MGET Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return array();
 			}
@@ -200,12 +223,9 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				if ( ! $this->is_connected() ) {
 					return false;
 				}
-				if ( $ttl > 0 ) {
-					return $this->redis->setex( $key, $ttl, $value );
-				}
-				return $this->redis->set( $key, $value );
+				return $ttl > 0 ? $this->redis->setex( $key, $ttl, $value ) : $this->redis->set( $key, $value );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis set Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis SET Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -220,17 +240,17 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		 * @return bool True on success, false on failure.
 		 */
 		public function add( $key, $value, $ttl ) {
-			$options = array( 'nx' );
-			if ( $ttl > 0 ) {
-				$options['ex'] = $ttl;
-			}
 			try {
 				if ( ! $this->is_connected() ) {
 					return false;
 				}
+				$options = array( 'nx' );
+				if ( $ttl > 0 ) {
+					$options['ex'] = $ttl;
+				}
 				return $this->redis->set( $key, $value, $options );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis add Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis ADD Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -245,17 +265,17 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		 * @return bool True on success, false on failure.
 		 */
 		public function replace( $key, $value, $ttl ) {
-			$options = array( 'xx' );
-			if ( $ttl > 0 ) {
-				$options['ex'] = $ttl;
-			}
 			try {
 				if ( ! $this->is_connected() ) {
 					return false;
 				}
+				$options = array( 'xx' );
+				if ( $ttl > 0 ) {
+					$options['ex'] = $ttl;
+				}
 				return $this->redis->set( $key, $value, $options );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis replace Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis REPLACE Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -274,7 +294,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				}
 				return (bool) $this->redis->del( $key );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis delete Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis DEL Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -294,7 +314,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				}
 				return $this->redis->incrBy( $key, $offset );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis increment Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis INCR Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -314,7 +334,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				}
 				return $this->redis->decrBy( $key, $offset );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis decrement Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis DECR Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -330,8 +350,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				try {
 					$this->redis->close();
 				} catch ( \RedisException $e ) {
-					// A failed close is not critical, but we should log it.
-					error_log( 'Cache Hive Redis close Error: ' . $e->getMessage() );
+					error_log( 'Cache Hive PhpRedis CLOSE Error: ' . $e->getMessage() );
 				}
 			}
 			$this->connected = false;
@@ -358,13 +377,9 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				if ( ! $this->is_connected() ) {
 					return false;
 				}
-				// Use the native asynchronous flush command if available and requested.
-				if ( $async && method_exists( $this->redis, 'flushDb' ) ) {
-					return $this->redis->flushDb( true );
-				}
-				return $this->redis->flushDB();
+				return $this->redis->flushDb( $async );
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis flush Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis FLUSH Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return false;
 			}
@@ -382,23 +397,20 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'client' => 'PhpRedis',
 				);
 			}
-
 			try {
 				$info       = $this->redis->info();
 				$serializer = 'php';
 				if ( defined( 'Redis::SERIALIZER_IGBINARY' ) && \Redis::SERIALIZER_IGBINARY === $this->redis->getOption( \Redis::OPT_SERIALIZER ) ) {
 					$serializer = 'igbinary';
 				}
-				$compression = 'none';
-				if ( defined( 'Redis::OPT_COMPRESSION' ) ) {
-					$current_compression = $this->redis->getOption( \Redis::OPT_COMPRESSION );
-					if ( defined( 'Redis::COMPRESSION_ZSTD' ) && \Redis::COMPRESSION_ZSTD === $current_compression ) {
-						$compression = 'zstd';
-					} elseif ( defined( 'Redis::COMPRESSION_LZ4' ) && \Redis::COMPRESSION_LZ4 === $current_compression ) {
-						$compression = 'lz4';
-					} elseif ( defined( 'Redis::COMPRESSION_LZF' ) && \Redis::COMPRESSION_LZF === $current_compression ) {
-						$compression = 'lzf';
-					}
+				$compression         = 'none';
+				$compression_current = $this->redis->getOption( \Redis::OPT_COMPRESSION );
+				if ( defined( 'Redis::COMPRESSION_ZSTD' ) && \Redis::COMPRESSION_ZSTD === $compression_current ) {
+					$compression = 'zstd';
+				} elseif ( defined( 'Redis::COMPRESSION_LZ4' ) && \Redis::COMPRESSION_LZ4 === $compression_current ) {
+					$compression = 'lz4';
+				} elseif ( defined( 'Redis::COMPRESSION_LZF' ) && \Redis::COMPRESSION_LZF === $compression_current ) {
+					$compression = 'lzf';
 				}
 
 				return array(
@@ -406,6 +418,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'client'         => 'PhpRedis',
 					'host'           => $this->config['host'],
 					'port'           => $this->config['port'],
+					'scheme'         => $this->config['scheme'],
 					'database'       => $this->config['database'] ?? 0,
 					'server_version' => $info['redis_version'] ?? 'N/A',
 					'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
@@ -413,10 +426,9 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'serializer'     => $serializer,
 					'compression'    => $compression,
 					'persistent'     => ! empty( $this->config['persistent'] ),
-					'prefetch'       => ! empty( $this->config['prefetch'] ),
 				);
 			} catch ( \RedisException $e ) {
-				error_log( 'Cache Hive Redis get_info Error: ' . $e->getMessage() );
+				error_log( 'Cache Hive PhpRedis INFO Error: ' . $e->getMessage() );
 				$this->connected = false;
 				return array(
 					'status' => 'Connection Error',

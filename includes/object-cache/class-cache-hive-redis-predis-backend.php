@@ -2,8 +2,6 @@
 /**
  * Predis backend for Cache Hive object cache.
  *
- * This file contains the implementation of the Predis backend for the Cache Hive object cache plugin.
- *
  * @package Cache
  */
 
@@ -20,7 +18,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	/**
 	 * The Predis client instance.
 	 *
-	 * @var Predis\Client
+	 * @var \Predis\ClientInterface|null
 	 */
 	private $client;
 	/**
@@ -43,26 +41,27 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 */
 	public function __construct( $config ) {
 		$this->config = $config;
-		if ( false === class_exists( 'Predis\\Client' ) ) {
+		if ( ! class_exists( 'Predis\\Client' ) ) {
 			$this->connected = false;
 			return;
 		}
 
 		try {
 			$parameters = array(
-				'scheme'   => isset( $config['scheme'] ) ? $config['scheme'] : 'tcp',
-				'host'     => $config['host'],
-				'port'     => $config['port'],
-				'database' => $config['database'],
-				'timeout'  => $config['timeout'],
+				'scheme'   => $this->config['scheme'],
+				'host'     => $this->config['host'],
+				'port'     => $this->config['port'],
+				'database' => $this->config['database'],
+				'timeout'  => $this->config['timeout'],
 			);
-			if ( isset( $config['user'] ) && ! empty( $config['user'] ) ) {
-				$parameters['username'] = $config['user'];
+
+			if ( ! empty( $this->config['user'] ) ) {
+				$parameters['username'] = $this->config['user'];
 			}
-			if ( isset( $config['pass'] ) && ! empty( $config['pass'] ) ) {
-				$parameters['password'] = $config['pass'];
+			if ( ! empty( $this->config['pass'] ) ) {
+				$parameters['password'] = $this->config['pass'];
 			}
-			if ( isset( $config['persistent'] ) && ! empty( $config['persistent'] ) ) {
+			if ( ! empty( $this->config['persistent'] ) ) {
 				$parameters['persistent'] = true;
 			}
 
@@ -71,10 +70,19 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 				unset( $parameters['host'], $parameters['port'] );
 			}
 
+			if ( 'tls' === $parameters['scheme'] && ! empty( $this->config['tls_options'] ) ) {
+				$parameters['ssl'] = array(
+					'cafile'      => $this->config['tls_options']['ca_cert'] ?? null,
+					'local_cert'  => $this->config['tls_options']['local_cert'] ?? null,
+					'verify_peer' => $this->config['tls_options']['verify_peer'] ?? true,
+				);
+			}
+
 			$this->client = new Predis\Client( $parameters );
 			$this->client->connect();
 			$this->connected = $this->client->isConnected();
 		} catch ( Exception $e ) {
+			error_log( 'Cache Hive Predis Connection Error: ' . $e->getMessage() );
 			$this->connected = false;
 		}
 	}
@@ -86,9 +94,10 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return mixed The unserialized value or the original value.
 	 */
 	private function unserialize_value( $value ) {
-		if ( null === $value || is_bool( $value ) || is_int( $value ) ) {
+		if ( is_null( $value ) || is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
 			return $value;
 		}
+		// Predis returns strings. Serializer is handled by drop-in, so we must unserialize here.
 		$unserialized = @unserialize( $value );
 		return ( false !== $unserialized || 'b:0;' === $value ) ? $unserialized : $value;
 	}
@@ -101,9 +110,12 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return mixed The cached data, or false if not found or on error.
 	 */
 	public function get( $key, &$found ) {
+		$found = false;
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
 		$value = $this->client->get( $key );
 		if ( null === $value ) {
-			$found = false;
 			return false;
 		}
 		$found = true;
@@ -117,7 +129,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return array An associative array of found items. Returns an empty array on error.
 	 */
 	public function get_multiple( $keys ) {
-		if ( empty( $keys ) ) {
+		if ( empty( $keys ) || ! $this->is_connected() ) {
 			return array();
 		}
 		$values = $this->client->mget( $keys );
@@ -139,8 +151,12 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function set( $key, $value, $ttl ) {
-		$ttl = $ttl > 0 ? $ttl : ( isset( $this->config['lifetime'] ) ? $this->config['lifetime'] : 3600 );
-		return 'OK' === $this->client->setex( $key, $ttl, serialize( $value ) )->getPayload();
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
+		$ttl              = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
+		$serialized_value = serialize( $value );
+		return 'OK' === $this->client->setex( $key, $ttl, $serialized_value )->getPayload();
 	}
 
 	/**
@@ -152,8 +168,12 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function add( $key, $value, $ttl ) {
-		$ttl = $ttl > 0 ? $ttl : ( isset( $this->config['lifetime'] ) ? $this->config['lifetime'] : 3600 );
-		return (bool) $this->client->set( $key, serialize( $value ), 'EX', $ttl, 'NX' );
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
+		$ttl              = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
+		$serialized_value = serialize( $value );
+		return (bool) $this->client->set( $key, $serialized_value, 'EX', $ttl, 'NX' );
 	}
 
 	/**
@@ -165,8 +185,12 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function replace( $key, $value, $ttl ) {
-		$ttl = $ttl > 0 ? $ttl : ( isset( $this->config['lifetime'] ) ? $this->config['lifetime'] : 3600 );
-		return (bool) $this->client->set( $key, serialize( $value ), 'EX', $ttl, 'XX' );
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
+		$ttl              = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
+		$serialized_value = serialize( $value );
+		return (bool) $this->client->set( $key, $serialized_value, 'EX', $ttl, 'XX' );
 	}
 
 	/**
@@ -176,6 +200,9 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function delete( $key ) {
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
 		return 0 < $this->client->del( array( $key ) );
 	}
 
@@ -186,6 +213,9 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function flush( $async ) {
+		if ( ! $this->is_connected() ) {
+			return false;
+		}
 		return 'OK' === $this->client->flushdb( $async ? 'ASYNC' : null )->getPayload();
 	}
 
@@ -197,7 +227,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return int|false The new value on success, false on failure.
 	 */
 	public function increment( $key, $offset ) {
-		return $this->client->incrby( $key, $offset );
+		return $this->is_connected() ? $this->client->incrby( $key, $offset ) : false;
 	}
 
 	/**
@@ -208,7 +238,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return int|false The new value on success, false on failure.
 	 */
 	public function decrement( $key, $offset ) {
-		return $this->client->decrby( $key, $offset );
+		return $this->is_connected() ? $this->client->decrby( $key, $offset ) : false;
 	}
 
 	/**
@@ -220,6 +250,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 		if ( $this->client && $this->client->isConnected() ) {
 			$this->client->disconnect();
 		}
+		$this->connected = false;
 		return true;
 	}
 
@@ -238,26 +269,32 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @return array An array of info and stats.
 	 */
 	public function get_info() {
-		if ( false === $this->is_connected() ) {
+		if ( ! $this->is_connected() ) {
 			return array(
 				'status' => 'Not Connected',
 				'client' => 'Predis',
 			);
 		}
-		$info = $this->client->info();
-		return array(
-			'status'         => 'Connected',
-			'client'         => 'Predis',
-			'host'           => $this->config['host'],
-			'port'           => $this->config['port'],
-			'database'       => $this->config['database'],
-			'server_version' => isset( $info['Server']['redis_version'] ) ? $info['Server']['redis_version'] : 'N/A',
-			'memory_usage'   => isset( $info['Memory']['used_memory_human'] ) ? $info['Memory']['used_memory_human'] : 'N/A',
-			'uptime'         => isset( $info['Server']['uptime_in_seconds'] ) ? $info['Server']['uptime_in_seconds'] : 'N/A',
-			'persistent'     => ! empty( $this->config['persistent'] ),
-			'prefetch'       => ! empty( $this->config['prefetch'] ),
-			'serializer'     => isset( $this->config['serializer'] ) ? $this->config['serializer'] : 'php',
-			'compression'    => isset( $this->config['compression'] ) ? $this->config['compression'] : 'none',
-		);
+		try {
+			$info = $this->client->info();
+			return array(
+				'status'         => 'Connected',
+				'client'         => 'Predis',
+				'host'           => $this->config['host'],
+				'port'           => $this->config['port'],
+				'scheme'         => $this->config['scheme'],
+				'database'       => $this->config['database'],
+				'server_version' => $info['Server']['redis_version'] ?? 'N/A',
+				'memory_usage'   => $info['Memory']['used_memory_human'] ?? 'N/A',
+				'uptime'         => $info['Server']['uptime_in_seconds'] ?? 'N/A',
+				'persistent'     => ! empty( $this->config['persistent'] ),
+			);
+		} catch ( Exception $e ) {
+			return array(
+				'status' => 'Connection Error',
+				'client' => 'Predis',
+				'error'  => $e->getMessage(),
+			);
+		}
 	}
 }

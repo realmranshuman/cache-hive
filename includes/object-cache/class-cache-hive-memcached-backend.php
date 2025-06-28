@@ -102,13 +102,20 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			if ( version_compare( phpversion( 'memcached' ), '3', '>=' ) ) {
 				$this->mc->setOption( \Memcached::OPT_BINARY_PROTOCOL, true );
 			}
-			if ( defined( 'Memcached::HAVE_IGBINARY' ) && \Memcached::HAVE_IGBINARY ) {
+
+			// --- THE FIX IS HERE ---
+			// Translate the generic serializer string into the specific Memcached constant.
+			if ( 'igbinary' === ( $this->config['serializer'] ?? '' ) && defined( 'Memcached::HAVE_IGBINARY' ) && \Memcached::HAVE_IGBINARY ) {
 				$this->mc->setOption( \Memcached::OPT_SERIALIZER, \Memcached::SERIALIZER_IGBINARY );
-			}
-			if ( isset( $config['port'] ) && 0 === (int) $config['port'] ) {
-				$this->mc->addServer( $config['host'], 0 );
 			} else {
-				$this->mc->addServer( $config['host'], (int) $config['port'] );
+				$this->mc->setOption( \Memcached::OPT_SERIALIZER, \Memcached::SERIALIZER_PHP );
+			}
+			// --- END OF FIX ---
+
+			if ( 'unix' === $this->config['scheme'] ) {
+				$this->mc->addServer( $this->config['host'], 0 );
+			} else {
+				$this->mc->addServer( $this->config['host'], (int) $this->config['port'] );
 			}
 		}
 
@@ -123,9 +130,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 
 		$stats            = $this->mc->getStats();
-		$is_unix_socket   = ( isset( $config['port'] ) && 0 === (int) $config['port'] ) || ( is_string( $config['host'] ) && str_starts_with( $config['host'], '/' ) );
-		$this->server_key = $is_unix_socket ? $config['host'] . ':0' : $config['host'] . ':' . $config['port'];
-		if ( ':0' === $this->server_key ) { // Handle default unix socket case.
+		$this->server_key = ( 'unix' === $this->config['scheme'] ) ? $this->config['host'] . ':0' : $this->config['host'] . ':' . $this->config['port'];
+		if ( ':0' === $this->server_key && isset( $this->config['host'] ) && '/var/run/memcached/memcached.sock' === $this->config['host'] ) {
 			$this->server_key = '/var/run/memcached/memcached.sock:0';
 		}
 
@@ -137,8 +143,6 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 
 	/**
 	 * Gets the current namespace version from Memcached.
-	 *
-	 * This is a global namespace version used for flushing the entire cache.
 	 *
 	 * @return int The namespace version.
 	 */
@@ -176,14 +180,20 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return string The encoded value.
 	 */
 	private function encode_value( $data ) {
-		$value = serialize( $data );
+		// The serializer is now handled by Memcached::setOption, so we don't do it manually.
+		// However, we still need to handle our custom compression flags.
+		$value = $data;
+
 		if ( 'zstd' === $this->compression_method ) {
-			return self::FLAG_ZSTD_COMPRESSED . zstd_compress( $value );
+			return self::FLAG_ZSTD_COMPRESSED . zstd_compress( serialize( $value ) );
 		}
 		if ( 'lzf' === $this->compression_method ) {
-			return self::FLAG_LZF_COMPRESSED . lzf_compress( $value );
+			return self::FLAG_LZF_COMPRESSED . lzf_compress( serialize( $value ) );
 		}
-		return self::FLAG_PHP_SERIALIZED . $value;
+
+		// If no custom compression, let the built-in serializer handle it.
+		// We add a flag just to be consistent in our decode method.
+		return self::FLAG_PHP_SERIALIZED . serialize( $value );
 	}
 
 	/**
@@ -193,20 +203,30 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return mixed The decoded data, or false on failure.
 	 */
 	private function decode_value( $value ) {
-		if ( false === $value || ! is_string( $value ) || 2 > strlen( $value ) ) {
+		// The serializer is now handled by Memcached::setOption, so Memcached::get() returns the unserialized data directly.
+		// We only need to handle our custom compression.
+
+		if ( false === $value ) {
 			return false;
 		}
-		$flag         = $value[0];
-		$data         = substr( $value, 1 );
-		$decompressed = null;
-		if ( self::FLAG_ZSTD_COMPRESSED === $flag && function_exists( 'zstd_uncompress' ) ) {
-			$decompressed = zstd_uncompress( $data );
-		} elseif ( self::FLAG_LZF_COMPRESSED === $flag && function_exists( 'lzf_uncompress' ) ) {
-			$decompressed = lzf_uncompress( $data );
-		} else {
-			$decompressed = $data;
+
+		if ( is_string( $value ) && strlen( $value ) > 1 ) {
+			$flag = $value[0];
+			$data = substr( $value, 1 );
+
+			if ( self::FLAG_ZSTD_COMPRESSED === $flag && function_exists( 'zstd_uncompress' ) ) {
+				return unserialize( zstd_uncompress( $data ) );
+			}
+			if ( self::FLAG_LZF_COMPRESSED === $flag && function_exists( 'lzf_uncompress' ) ) {
+				return unserialize( lzf_uncompress( $data ) );
+			}
+			if ( self::FLAG_PHP_SERIALIZED === $flag ) {
+				return unserialize( $data );
+			}
 		}
-		return unserialize( $decompressed );
+
+		// If no flag or not a string, return the value as is.
+		return $value;
 	}
 
 	/**
@@ -222,15 +242,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			++$this->stats['misses'];
 			return false;
 		}
-
 		$value = $this->mc->get( $this->get_namespaced_key( $key ) );
-
 		if ( \Memcached::RES_SUCCESS === $this->mc->getResultCode() ) {
 			$found = true;
 			++$this->stats['hits'];
 			return $this->decode_value( $value );
 		}
-
 		$found = false;
 		++$this->stats['misses'];
 		return false;
@@ -246,7 +263,6 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() || empty( $keys ) || ! is_array( $keys ) ) {
 			return array();
 		}
-
 		$namespaced_keys = array_map( array( $this, 'get_namespaced_key' ), $keys );
 		$results         = $this->mc->getMulti( $namespaced_keys );
 		$final_results   = array();
@@ -256,13 +272,11 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			$ns_version_len = strlen( $ns_version_str );
 
 			foreach ( $results as $ns_key => $value ) {
-				// Strip the internal namespace to get the key the drop-in expects.
 				$original_key                   = substr( $ns_key, $ns_version_len );
 				$final_results[ $original_key ] = $this->decode_value( $value );
 				++$this->stats['hits'];
 			}
 		}
-
 		$this->stats['misses'] += ( count( $keys ) - count( $final_results ) );
 		return $final_results;
 	}
@@ -319,18 +333,13 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool True on success, false on failure.
 	 */
 	public function delete( $key ) {
-		if ( ! $this->is_connected() ) {
-			return false;
-		}
-		return $this->mc->delete( $this->get_namespaced_key( $key ) );
+		return $this->is_connected() ? $this->mc->delete( $this->get_namespaced_key( $key ) ) : false;
 	}
 
 	/**
-	 * Flushes the entire cache.
+	 * Flushes the cache by incrementing the namespace version.
 	 *
-	 * This is done by incrementing the namespace version.
-	 *
-	 * @param bool $async Not used by this backend.
+	 * @param bool $async Whether to flush asynchronously (not used).
 	 * @return bool True on success, false on failure.
 	 */
 	public function flush( $async ) {
@@ -339,7 +348,6 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 		$this->ns_version = $this->mc->increment( $this->ns_version_key );
 		if ( false === $this->ns_version ) {
-			// If increment fails (e.g., key expired), reset it.
 			$this->ns_version = null;
 			$this->get_ns_version();
 		}
@@ -359,7 +367,6 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 		$namespaced_key = $this->get_namespaced_key( $key );
 		$new_value      = $this->mc->increment( $namespaced_key, $offset );
-		// If the key didn't exist, Memcached::increment returns false. We must add it first.
 		if ( false === $new_value ) {
 			if ( $this->mc->add( $namespaced_key, $offset, 0 ) ) {
 				return $offset;
@@ -381,7 +388,6 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 		$namespaced_key = $this->get_namespaced_key( $key );
 		$new_value      = $this->mc->decrement( $namespaced_key, $offset );
-		// If the key didn't exist, Memcached::decrement returns false. We should initialize it to 0.
 		if ( false === $new_value ) {
 			if ( $this->mc->add( $namespaced_key, 0, 0 ) ) {
 				return 0;
@@ -399,6 +405,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( empty( $this->config['persistent'] ) && $this->is_connected() ) {
 			$this->mc->quit();
 		}
+		$this->connected = false;
 		return true;
 	}
 
@@ -417,7 +424,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return array An array of cache stats and information.
 	 */
 	public function get_info() {
-		if ( ! $this->is_connected() || null === $this->server_key ) {
+		if ( ! $this->is_connected() ) {
 			return array(
 				'status' => 'Not Connected',
 				'client' => 'Memcached',
@@ -425,7 +432,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 		$stats      = $this->mc->getStats()[ $this->server_key ] ?? array();
 		$serializer = 'php';
-		if ( defined( 'Memcached::HAVE_IGBINARY' ) && \Memcached::SERIALIZER_IGBINARY === $this->mc->getOption( \Memcached::OPT_SERIALIZER ) ) {
+		if ( defined( 'Memcached::HAVE_IGBINARY' ) && \Memcached::HAVE_IGBINARY && \Memcached::SERIALIZER_IGBINARY === $this->mc->getOption( \Memcached::OPT_SERIALIZER ) ) {
 			$serializer = 'igbinary';
 		}
 		return array(
@@ -437,11 +444,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			'memory_usage'      => isset( $stats['bytes'] ) ? size_format( $stats['bytes'] ) : 'N/A',
 			'uptime'            => $stats['uptime'] ?? 'N/A',
 			'persistent'        => ! empty( $this->config['persistent'] ),
-			'prefetch'          => ! empty( $this->config['prefetch'] ),
 			'serializer'        => $serializer,
 			'compression'       => $this->compression_method,
-			'hits'              => $this->stats['hits'],
-			'misses'            => $this->stats['misses'],
 			'namespace_version' => $this->ns_version,
 		);
 	}

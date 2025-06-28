@@ -30,3 +30,5 @@ Thumbs.db
 # are part of your plugin's source and ARE correctly version-controlled.
 # Any copies of these files OUTSIDE this directory (e.g., in /wp-content/)
 # should be ignored if you were running git from a parent directory.
+*.crt
+*.pem
