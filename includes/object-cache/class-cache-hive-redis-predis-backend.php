@@ -73,7 +73,6 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 			if ( 'tls' === $parameters['scheme'] && ! empty( $this->config['tls_options'] ) ) {
 				$parameters['ssl'] = array(
 					'cafile'      => $this->config['tls_options']['ca_cert'] ?? null,
-					'local_cert'  => $this->config['tls_options']['local_cert'] ?? null,
 					'verify_peer' => $this->config['tls_options']['verify_peer'] ?? true,
 				);
 			}

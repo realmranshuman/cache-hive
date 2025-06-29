@@ -85,12 +85,9 @@ final class Cache_Hive_Settings {
 			'memcached_user'                  => 'CACHE_HIVE_MEMCACHED_USERNAME',
 			'memcached_pass'                  => 'CACHE_HIVE_MEMCACHED_PASSWORD',
 
-			// Advanced TLS Options for Redis.
+			// Simplified TLS Options for Redis.
 			'tls_options'                     => array(
 				'ca_cert'     => 'CACHE_HIVE_REDIS_TLS_CA_CERT',
-				'local_cert'  => 'CACHE_HIVE_REDIS_TLS_LOCAL_CERT',
-				'local_pk'    => 'CACHE_HIVE_REDIS_TLS_LOCAL_PK',
-				'passphrase'  => 'CACHE_HIVE_REDIS_TLS_PASSPHRASE',
 				'verify_peer' => 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER',
 			),
 		);

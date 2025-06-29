@@ -87,9 +87,6 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 			if ( ! empty( $this->config['tls_options'] ) ) {
 				$context['ssl'] = array(
 					'cafile'      => $this->config['tls_options']['ca_cert'] ?? null,
-					'local_cert'  => $this->config['tls_options']['local_cert'] ?? null,
-					'local_pk'    => $this->config['tls_options']['local_pk'] ?? null,
-					'passphrase'  => $this->config['tls_options']['passphrase'] ?? null,
 					'verify_peer' => $this->config['tls_options']['verify_peer'] ?? true,
 					'SNI_enabled' => true,
 					'peer_name'   => $this->config['host'],
