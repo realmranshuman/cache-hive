@@ -74,34 +74,54 @@ Supercharge your WordPress backend with a persistent object cache. Cache Hive pr
 
 ### 🚀 `wp-config.php` Overrides (Advanced)
 
-For production environments and maximum control, you can define constants in your `wp-config.php` file to lock down and override any setting from the UI. This is the recommended approach for secure and consistent configurations.
+For production environments and maximum control, you can define constants in your `wp-config.php` file to lock down and override any setting from the UI. This is the recommended approach for secure and consistent configurations. When a constant is defined, it takes ultimate priority and the corresponding field in the admin UI will be disabled.
 
-When a constant is defined, it takes ultimate priority and the corresponding field in the admin UI will be disabled.
+#### Example 1: Secure TLS to a Managed Redis Service (e.g., AWS ElastiCache, DigitalOcean)
 
-**Example `wp-config.php` for a Secure Redis TLS Connection:**
+This is the most common production scenario. The Redis server has a certificate from a trusted public CA like Let's Encrypt.
+
 ```php
-/** Cache Hive Object Cache Configuration **/
+/** Cache Hive: Secure Redis TLS Connection **/
 define( 'CACHE_HIVE_OBJECT_CACHE_METHOD', 'redis' );
 define( 'CACHE_HIVE_OBJECT_CACHE_CLIENT', 'phpredis' );
 
-// Connection Details
-define( 'CACHE_HIVE_OBJECT_CACHE_HOST', 'tls://your-redis-host.com' );
+// The 'tls://' prefix is crucial. The hostname MUST match the certificate's name.
+define( 'CACHE_HIVE_OBJECT_CACHE_HOST', 'tls://redis.your-domain.com' );
 define( 'CACHE_HIVE_OBJECT_CACHE_PORT', 6380 );
-define( 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT', 2.5 ); // Optional, in seconds
-define( 'CACHE_HIVE_REDIS_DATABASE', 0 );
 
-// Authentication (ACL)
+// Authentication (ACL Example)
 define( 'CACHE_HIVE_REDIS_USERNAME', 'your-acl-user' );
 define( 'CACHE_HIVE_REDIS_PASSWORD', 'your-secure-password' );
 
-// Advanced TLS Options
-define( 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER', true ); // Recommended for production
-define( 'CACHE_HIVE_REDIS_TLS_CA_CERT', '/path/to/your/ca.crt' );
-// define( 'CACHE_HIVE_REDIS_TLS_LOCAL_CERT', '/path/to/your/client.crt' ); // If using client certs
-// define( 'CACHE_HIVE_REDIS_TLS_LOCAL_PK', '/path/to/your/client.key' );   // If using client certs
+// Enable peer verification for security. No CA_CERT is needed because
+// the certificate is signed by a publicly trusted authority.
+define( 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER', true );
 ```
 
-**Full List of Override Constants:**
+#### Example 2: Secure TLS to a Server with a Private or Self-Signed Certificate
+
+Use this method if your Redis server uses a certificate issued by an internal, private Certificate Authority (CA), or if it's a self-signed certificate.
+
+```php
+/** Cache Hive: Redis with Private/Self-Signed TLS Certificate **/
+define( 'CACHE_HIVE_OBJECT_CACHE_HOST', 'tls://internal-redis.my-company.lan' );
+define( 'CACHE_HIVE_OBJECT_CACHE_PORT', 6380 );
+define( 'CACHE_HIVE_REDIS_PASSWORD', 'your-secure-password' );
+
+// We must still verify the peer for security.
+define( 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER', true );
+
+// CRITICAL: Provide the path to the public certificate of the CA that signed
+// the Redis server's certificate. This tells PHP to trust this specific CA.
+define( 'CACHE_HIVE_REDIS_TLS_CA_CERT', '/path/to/your/private-ca.pem' );
+```
+> **When do I need `CACHE_HIVE_REDIS_TLS_CA_CERT`?**
+> You only need this constant if your PHP environment does not inherently trust the authority that signed your Redis server's SSL certificate. For standard Let's Encrypt or other major public CAs, this is almost never needed. You **must** use it for private or self-signed CAs to establish a chain of trust.
+
+---
+
+#### Full List of Override Constants
+
 ```php
 // --- General Settings ---
 define( 'CACHE_HIVE_OBJECT_CACHE_METHOD', 'redis' );      // 'redis' or 'memcached'
@@ -122,11 +142,8 @@ define( 'CACHE_HIVE_MEMCACHED_USERNAME', '' );
 define( 'CACHE_HIVE_MEMCACHED_PASSWORD', '' );
 
 // --- Redis TLS Specific ---
-define( 'CACHE_HIVE_REDIS_TLS_CA_CERT', '' );      // Path to CA certificate file
-define( 'CACHE_HIVE_REDIS_TLS_LOCAL_CERT', '' ); // Path to client certificate file
-define( 'CACHE_HIVE_REDIS_TLS_LOCAL_PK', '' );    // Path to client private key file
-define( 'CACHE_HIVE_REDIS_TLS_PASSPHRASE', '' );  // Passphrase for the client private key
-define( 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER', false ); // Set to true in production
+define( 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER', false ); // Set to true in production for security
+define( 'CACHE_HIVE_REDIS_TLS_CA_CERT', '' );      // Path to your custom/private CA certificate file (.pem or .crt)
 ```
 
 ### ⚡️ Front-End Optimization
