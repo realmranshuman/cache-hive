@@ -73,6 +73,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 			$host    = $this->config['host'];
 			$port    = (int) $this->config['port'];
 			$timeout = (float) $this->config['timeout'];
+			$context = array();
 
 			if ( 'unix' === $this->config['scheme'] ) {
 				$this->redis->connect( $host );
@@ -81,16 +82,22 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 
 			if ( 'tls' === $this->config['scheme'] ) {
 				$host = 'tls://' . $host;
-			}
 
-			$context = array();
-			if ( ! empty( $this->config['tls_options'] ) ) {
-				$context['ssl'] = array(
-					'cafile'      => $this->config['tls_options']['ca_cert'] ?? null,
-					'verify_peer' => $this->config['tls_options']['verify_peer'] ?? true,
+				// Build the SSL context array carefully, only adding options that are actually defined.
+				$ssl_options = array(
 					'SNI_enabled' => true,
 					'peer_name'   => $this->config['host'],
 				);
+
+				if ( isset( $this->config['tls_options']['verify_peer'] ) ) {
+					$ssl_options['verify_peer'] = (bool) $this->config['tls_options']['verify_peer'];
+				}
+
+				if ( ! empty( $this->config['tls_options']['ca_cert'] ) && file_exists( $this->config['tls_options']['ca_cert'] ) ) {
+					$ssl_options['cafile'] = $this->config['tls_options']['ca_cert'];
+				}
+
+				$context['ssl'] = $ssl_options;
 			}
 
 			if ( ! empty( $this->config['persistent'] ) ) {
