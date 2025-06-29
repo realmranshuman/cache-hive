@@ -127,6 +127,10 @@ class Cache_Hive_REST_ObjectCache {
 		// that are NOT overridden by wp-config.php constants.
 		$overrides = self::get_wp_config_overrides_status();
 		foreach ( $params as $key => $value ) {
+			if ( 'objectCachePassword' === $key && '********' === $value ) {
+				// Don't update the password if the obfuscated string is sent back.
+				continue;
+			}
 			if ( ! isset( $overrides[ $key ] ) ) {
 				// This key is not locked by a constant, so we can update it.
 				// Basic sanitization.
@@ -142,11 +146,18 @@ class Cache_Hive_REST_ObjectCache {
 			}
 		}
 
+		// Enforce prefetch and async flush as they are core, non-configurable features.
+		// They are not on the form, so we must ensure they are always enabled on save.
+		$settings_to_save['prefetch']    = true;
+		$settings_to_save['flush_async'] = true;
+
 		// Now we have the final, authoritative configuration. Let's derive the backend-specific config.
 		$final_config = self::build_backend_config( $settings_to_save );
 
 		// Merge the derived backend config back into the main settings.
 		$settings_to_save = array_merge( $settings_to_save, $final_config );
+
+		$live_status = null;
 
 		if ( ! empty( $settings_to_save['objectCacheEnabled'] ) ) {
 			// Generate a new salt on every successful re-configuration.
@@ -163,18 +174,37 @@ class Cache_Hive_REST_ObjectCache {
 					400
 				);
 			}
+
+			// Capture the fresh status from the successful test connection.
+			$live_status = $test_backend->get_info();
+
 			if ( method_exists( $test_backend, 'close' ) ) {
 				$test_backend->close();
 			}
 		} else {
 			$settings_to_save['objectCacheKey'] = '';
+			// Define the status for a disabled cache.
+			$live_status = array(
+				'status' => 'Disabled',
+				'client' => 'Drop-in not active.',
+			);
 		}
 
 		update_option( 'cache_hive_settings', $settings_to_save, 'yes' );
 		Cache_Hive_Disk::create_config_file( $settings_to_save );
 		Cache_Hive_Object_Cache::manage_dropin( $settings_to_save );
 
-		return self::get_object_cache_settings();
+		// Get the full response data structure, which now reflects the saved options.
+		$response_data = self::get_object_cache_settings()->get_data();
+
+		// Overwrite the (potentially stale) liveStatus from the getter with our fresh,
+		// accurate status captured during the connection test.
+		if ( null !== $live_status ) {
+			$response_data['liveStatus'] = $live_status;
+		}
+
+		// Return the complete and accurate state to the frontend.
+		return new WP_REST_Response( $response_data, 200 );
 	}
 
 	/**
@@ -221,11 +251,8 @@ class Cache_Hive_REST_ObjectCache {
 		}
 
 		// Unify other parameters.
-		$config['database']    = (int) ( $settings['database'] ?? 0 );
-		$config['timeout']     = (float) ( $settings['timeout'] ?? 2.0 );
-		$config['persistent']  = ! empty( $settings['objectCachePersistentConnection'] );
-		$config['prefetch']    = ! empty( $settings['prefetch'] );
-		$config['flush_async'] = ! empty( $settings['flush_async'] );
+		$config['database'] = (int) ( $settings['database'] ?? 0 );
+		$config['timeout']  = (float) ( $settings['timeout'] ?? 2.0 );
 
 		// Set advanced options based on capabilities.
 		$config['serializer'] = $capabilities['serializers']['igbinary'] ? 'igbinary' : 'php';
@@ -245,6 +272,11 @@ class Cache_Hive_REST_ObjectCache {
 		if ( isset( $settings['tls_options'] ) ) {
 			$config['tls_options'] = $settings['tls_options'];
 		}
+
+		// Explicitly carry over prefetch and flush_async from the main settings array.
+		// This preserves their value since they are not on the form.
+		$config['prefetch']    = ! empty( $settings['prefetch'] );
+		$config['flush_async'] = ! empty( $settings['flush_async'] );
 
 		return $config;
 	}

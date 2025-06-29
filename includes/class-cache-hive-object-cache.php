@@ -127,28 +127,28 @@ final class Cache_Hive_Object_Cache {
 		// config from the API controller and simply embeds it. This prevents logic duplication.
 		$config_to_embed = array(
 			// Core.
-			'objectCacheKey'  => $settings['objectCacheKey'] ?? '',
-			'client'          => $settings['client'] ?? 'phpredis',
-			'host'            => $settings['host'] ?? '127.0.0.1',
-			'port'            => $settings['port'] ?? 6379,
-			'scheme'          => $settings['scheme'] ?? 'tcp',
-			'timeout'         => $settings['timeout'] ?? 2.0,
-			'persistent'      => ! empty( $settings['persistent'] ),
+			'objectCacheKey'                  => $settings['objectCacheKey'] ?? '',
+			'client'                          => $settings['client'] ?? 'phpredis',
+			'host'                            => $settings['host'] ?? '127.0.0.1',
+			'port'                            => $settings['port'] ?? 6379,
+			'scheme'                          => $settings['scheme'] ?? 'tcp',
+			'timeout'                         => $settings['timeout'] ?? 2.0,
+			'objectCachePersistentConnection' => ! empty( $settings['objectCachePersistentConnection'] ),
 			// Auth.
-			'user'            => $settings['user'] ?? '',
-			'pass'            => $settings['pass'] ?? '',
+			'user'                            => $settings['user'] ?? '',
+			'pass'                            => $settings['pass'] ?? '',
 			// Redis specific.
-			'database'        => $settings['database'] ?? 0,
-			'serializer'      => $settings['serializer'] ?? 'php',
-			'compression'     => $settings['compression'] ?? 'none',
+			'database'                        => $settings['database'] ?? 0,
+			'serializer'                      => $settings['serializer'] ?? 'php',
+			'compression'                     => $settings['compression'] ?? 'none',
 			// Features.
-			'lifetime'        => $settings['objectCacheLifetime'] ?? 3600,
-			'global_groups'   => $settings['objectCacheGlobalGroups'] ?? array(),
-			'no_cache_groups' => $settings['objectCacheNoCacheGroups'] ?? array(),
-			'prefetch'        => ! empty( $settings['prefetch'] ),
-			'flush_async'     => ! empty( $settings['flush_async'] ),
+			'lifetime'                        => $settings['objectCacheLifetime'] ?? 3600,
+			'global_groups'                   => $settings['objectCacheGlobalGroups'] ?? array(),
+			'no_cache_groups'                 => $settings['objectCacheNoCacheGroups'] ?? array(),
+			'prefetch'                        => ! empty( $settings['prefetch'] ),
+			'flush_async'                     => ! empty( $settings['flush_async'] ),
 			// TLS options.
-			'tls_options'     => $settings['tls_options'] ?? array(),
+			'tls_options'                     => $settings['tls_options'] ?? array(),
 		);
 
 		$generation_date = gmdate( 'Y-m-d H:i:s T' );

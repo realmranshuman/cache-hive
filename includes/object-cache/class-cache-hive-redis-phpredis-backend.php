@@ -100,7 +100,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				$context['ssl'] = $ssl_options;
 			}
 
-			if ( ! empty( $this->config['persistent'] ) ) {
+			if ( ! empty( $this->config['objectCachePersistentConnection'] ) ) {
 				$this->redis->pconnect( $host, $port, $timeout, 'ch-pconn-' . $this->config['database'], 0, 0.0, $context );
 			} else {
 				$this->redis->connect( $host, $port, $timeout, null, 0, 0.0, $context );
@@ -350,7 +350,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		 * @return bool True on success, false on failure.
 		 */
 		public function close() {
-			if ( ! empty( $this->redis ) && empty( $this->config['persistent'] ) ) {
+			if ( ! empty( $this->redis ) && empty( $this->config['objectCachePersistentConnection'] ) ) {
 				try {
 					$this->redis->close();
 				} catch ( \RedisException $e ) {
@@ -423,13 +423,15 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'host'           => $this->config['host'],
 					'port'           => $this->config['port'],
 					'scheme'         => $this->config['scheme'],
+					'persistent'     => ! empty( $this->config['objectCachePersistentConnection'] ),
+					'prefetch'       => ! empty( $this->config['prefetch'] ),
+					'flush_async'    => ! empty( $this->config['flush_async'] ),
 					'database'       => $this->config['database'] ?? 0,
 					'server_version' => $info['redis_version'] ?? 'N/A',
 					'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
 					'uptime'         => $info['uptime_in_seconds'] ?? 'N/A',
 					'serializer'     => $serializer,
 					'compression'    => $compression,
-					'persistent'     => ! empty( $this->config['persistent'] ),
 				);
 			} catch ( \RedisException $e ) {
 				error_log( 'Cache Hive PhpRedis INFO Error: ' . $e->getMessage() );

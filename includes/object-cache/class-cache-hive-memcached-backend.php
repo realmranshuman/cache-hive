@@ -95,7 +95,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 
 		$persistent_id = 'cache-hive-' . md5( ( $config['host'] ?? '' ) . ':' . ( $config['port'] ?? '' ) );
-		$this->mc      = ! empty( $this->config['persistent'] ) ? new \Memcached( $persistent_id ) : new \Memcached();
+		$this->mc      = ! empty( $this->config['objectCachePersistentConnection'] ) ? new \Memcached( $persistent_id ) : new \Memcached();
 
 		if ( ! count( $this->mc->getServerList() ) ) {
 			$this->mc->setOption( \Memcached::OPT_LIBKETAMA_COMPATIBLE, true );
@@ -402,7 +402,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool Always returns true.
 	 */
 	public function close() {
-		if ( empty( $this->config['persistent'] ) && $this->is_connected() ) {
+		if ( empty( $this->config['objectCachePersistentConnection'] ) && $this->is_connected() ) {
 			$this->mc->quit();
 		}
 		$this->connected = false;
@@ -440,10 +440,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			'client'            => 'Memcached',
 			'host'              => $this->config['host'],
 			'port'              => $this->config['port'],
+			'persistent'        => ! empty( $this->config['objectCachePersistentConnection'] ),
+			'prefetch'          => ! empty( $this->config['prefetch'] ),
+			'flush_async'       => ! empty( $this->config['flush_async'] ),
 			'server_version'    => $stats['version'] ?? 'N/A',
 			'memory_usage'      => isset( $stats['bytes'] ) ? size_format( $stats['bytes'] ) : 'N/A',
 			'uptime'            => $stats['uptime'] ?? 'N/A',
-			'persistent'        => ! empty( $this->config['persistent'] ),
 			'serializer'        => $serializer,
 			'compression'       => $this->compression_method,
 			'namespace_version' => $this->ns_version,

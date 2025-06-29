@@ -180,6 +180,8 @@ final class Cache_Hive_Settings {
 			'objectCacheGlobalGroups'         => array(),
 			'objectCacheNoCacheGroups'        => array(),
 			'objectCachePersistentConnection' => false,
+			'prefetch'                        => false,
+			'flush_async'                     => false,
 			'cloudflare_enabled'              => false,
 			'cloudflare_api_method'           => 'token',
 			'cloudflare_api_key'              => '',

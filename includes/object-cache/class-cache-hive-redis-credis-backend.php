@@ -62,7 +62,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 			// The `tls://` scheme is the primary method.
 			$this->client = new Credis_Client( $host, $port, $this->config['timeout'], '', $this->config['database'], null );
 
-			if ( ! empty( $this->config['persistent'] ) ) {
+			if ( ! empty( $this->config['objectCachePersistentConnection'] ) ) {
 				$this->client->setPersistent( 'ch-pconn-' . $this->config['database'] );
 			}
 
@@ -281,11 +281,13 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 				'host'           => $this->config['host'],
 				'port'           => $this->config['port'],
 				'scheme'         => $this->config['scheme'],
+				'persistent'     => ! empty( $this->config['objectCachePersistentConnection'] ),
+				'prefetch'       => ! empty( $this->config['prefetch'] ),
+				'flush_async'    => ! empty( $this->config['flush_async'] ),
 				'database'       => $this->config['database'],
 				'server_version' => $info['redis_version'] ?? 'N/A',
 				'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
 				'uptime'         => $info['uptime_in_seconds'] ?? 'N/A',
-				'persistent'     => ! empty( $this->config['persistent'] ),
 			);
 		} catch ( Exception $e ) {
 			return array(
