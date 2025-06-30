@@ -53,14 +53,18 @@ class Cache_Hive_REST_ObjectCache {
 		$object_cache_settings = array(
 			'objectCacheEnabled'              => ! empty( $settings['objectCacheEnabled'] ),
 			'objectCacheMethod'               => $settings['objectCacheMethod'] ?? 'redis',
+			'objectCacheClient'               => $settings['objectCacheClient'] ?? 'phpredis',
 			'objectCacheHost'                 => $settings['objectCacheHost'] ?? '127.0.0.1',
 			'objectCachePort'                 => $settings['objectCachePort'] ?? 6379,
-			'objectCacheLifetime'             => $settings['objectCacheLifetime'] ?? 3600,
 			'objectCacheUsername'             => $settings['objectCacheUsername'] ?? '',
 			'objectCachePassword'             => $settings['objectCachePassword'] ? '********' : '', // Obfuscate password.
+			'objectCacheDatabase'             => $settings['objectCacheDatabase'] ?? 0,
+			'objectCacheTimeout'              => $settings['objectCacheTimeout'] ?? 2.0,
+			'objectCacheLifetime'             => $settings['objectCacheLifetime'] ?? 3600,
 			'objectCacheKey'                  => $settings['objectCacheKey'] ?? '',
 			'objectCacheGlobalGroups'         => $settings['objectCacheGlobalGroups'] ?? array(),
 			'objectCacheNoCacheGroups'        => $settings['objectCacheNoCacheGroups'] ?? array(),
+			'objectCacheTlsOptions'           => $settings['objectCacheTlsOptions'] ?? array(),
 			'objectCachePersistentConnection' => ! empty( $settings['objectCachePersistentConnection'] ),
 			'wpConfigOverrides'               => self::get_wp_config_overrides_status(),
 		);
@@ -80,33 +84,13 @@ class Cache_Hive_REST_ObjectCache {
 	 * @return array
 	 */
 	private static function get_wp_config_overrides_status() {
-		$overrides = array();
-		$constants = array(
-			'objectCacheMethod',
-			'client',
-			'objectCacheHost',
-			'objectCachePort',
-			'objectCacheLifetime',
-			'timeout',
-			'objectCachePersistentConnection',
-			'database',
-			'objectCacheUsername',
-			'objectCachePassword',
-			'memcached_user',
-			'memcached_pass',
-			'tls_options',
-		);
-		// This uses the same logic as Cache_Hive_Settings but just checks for defined status.
-		foreach ( $constants as $key ) {
-			$const_name = 'CACHE_HIVE_' . strtoupper( str_replace( 'objectCache', 'OBJECT_CACHE_', $key ) );
-			if ( 'client' === $key ) {
-				$const_name = 'CACHE_HIVE_OBJECT_CACHE_CLIENT';
-			}
-			if ( defined( $const_name ) ) {
-				$overrides[ $key ] = true;
-			}
+		// THIS IS THE FIX: Call the new public method and format the response for the frontend.
+		$overridden_keys = Cache_Hive_Settings::get_overridden_keys();
+		if ( empty( $overridden_keys ) ) {
+			return array();
 		}
-		return $overrides;
+		// The frontend expects an associative array like: { 'objectCacheHost': true, ... }.
+		return array_fill_keys( $overridden_keys, true );
 	}
 
 	/**
@@ -119,43 +103,13 @@ class Cache_Hive_REST_ObjectCache {
 	public static function update_object_cache_settings( WP_REST_Request $request ) {
 		$params = $request->get_json_params();
 
-		// Get current settings from DB and merge with wp-config.php constants.
-		// This ensures constants are always respected.
-		$settings_to_save = Cache_Hive_Settings::get_settings( true );
-
-		// Now, merge the user's intent from the form, but only for fields
-		// that are NOT overridden by wp-config.php constants.
-		$overrides = self::get_wp_config_overrides_status();
-		foreach ( $params as $key => $value ) {
-			if ( 'objectCachePassword' === $key && '********' === $value ) {
-				// Don't update the password if the obfuscated string is sent back.
-				continue;
-			}
-			if ( ! isset( $overrides[ $key ] ) ) {
-				// This key is not locked by a constant, so we can update it.
-				// Basic sanitization.
-				if ( is_bool( $settings_to_save[ $key ] ?? null ) ) {
-					$settings_to_save[ $key ] = ! ! $value;
-				} elseif ( is_numeric( $settings_to_save[ $key ] ?? null ) ) {
-					$settings_to_save[ $key ] = (int) $value;
-				} elseif ( is_array( $settings_to_save[ $key ] ?? null ) ) {
-					$settings_to_save[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : array();
-				} else {
-					$settings_to_save[ $key ] = sanitize_text_field( $value );
-				}
-			}
-		}
+		// Sanitize all incoming settings against the defaults.
+		// This ensures we have a complete and valid settings array.
+		$settings_to_save = Cache_Hive_Settings::sanitize_settings( $params );
 
 		// Enforce prefetch and async flush as they are core, non-configurable features.
-		// They are not on the form, so we must ensure they are always enabled on save.
 		$settings_to_save['prefetch']    = true;
 		$settings_to_save['flush_async'] = true;
-
-		// Now we have the final, authoritative configuration. Let's derive the backend-specific config.
-		$final_config = self::build_backend_config( $settings_to_save );
-
-		// Merge the derived backend config back into the main settings.
-		$settings_to_save = array_merge( $settings_to_save, $final_config );
 
 		$live_status = null;
 
@@ -163,8 +117,11 @@ class Cache_Hive_REST_ObjectCache {
 			// Generate a new salt on every successful re-configuration.
 			$settings_to_save['objectCacheKey'] = 'ch-' . wp_generate_password( 10, false );
 
-			// Test the connection with the final configuration.
-			$test_backend = Cache_Hive_Object_Cache_Factory::create( $settings_to_save );
+			// Get the derived runtime config for the backend test. This is NOT saved.
+			$runtime_config = Cache_Hive_Settings::get_object_cache_runtime_config( $settings_to_save );
+
+			// Test the connection with the derived runtime configuration.
+			$test_backend = Cache_Hive_Object_Cache_Factory::create( $runtime_config );
 			if ( ! $test_backend || ! $test_backend->is_connected() ) {
 				return new WP_REST_Response(
 					array(
@@ -190,7 +147,9 @@ class Cache_Hive_REST_ObjectCache {
 			);
 		}
 
+		// Save the pure, camelCased settings to the database.
 		update_option( 'cache_hive_settings', $settings_to_save, 'yes' );
+		// Generate the config and drop-in files from these same pure settings.
 		Cache_Hive_Disk::create_config_file( $settings_to_save );
 		Cache_Hive_Object_Cache::manage_dropin( $settings_to_save );
 
@@ -205,79 +164,5 @@ class Cache_Hive_REST_ObjectCache {
 
 		// Return the complete and accurate state to the frontend.
 		return new WP_REST_Response( $response_data, 200 );
-	}
-
-	/**
-	 * Builds the final, unified configuration array for the backends.
-	 *
-	 * @param array $settings The combined settings from DB, UI, and wp-config.php.
-	 * @return array The derived configuration for the backend.
-	 */
-	private static function build_backend_config( $settings ) {
-		$config       = array();
-		$capabilities = self::get_server_capabilities();
-		$method       = $settings['objectCacheMethod'] ?? 'redis';
-
-		// Determine which client to use.
-		if ( 'redis' === $method ) {
-			$config['client'] = $settings['client'] ?? ( $capabilities['clients']['phpredis'] ? 'phpredis' : ( $capabilities['clients']['predis'] ? 'predis' : 'credis' ) );
-		} else {
-			$config['client'] = 'memcached';
-		}
-
-		// Unify connection details.
-		$host = $settings['objectCacheHost'] ?? '127.0.0.1';
-		$port = (int) ( $settings['objectCachePort'] ?? ( 'redis' === $method ? 6379 : 11211 ) );
-
-		if ( str_starts_with( $host, 'tls://' ) ) {
-			$config['scheme'] = 'tls';
-			$config['host']   = substr( $host, 6 );
-		} elseif ( 0 === $port || str_starts_with( $host, '/' ) ) {
-			$config['scheme'] = 'unix';
-			$config['host']   = $host;
-		} else {
-			$config['scheme'] = 'tcp';
-			$config['host']   = $host;
-		}
-		$config['port'] = $port;
-
-		// Unify Auth.
-		if ( 'memcached' === $config['client'] ) {
-			$config['user'] = $settings['memcached_user'] ?? '';
-			$config['pass'] = $settings['memcached_pass'] ?? '';
-		} else { // Redis.
-			$config['user'] = $settings['objectCacheUsername'] ?? '';
-			$config['pass'] = $settings['objectCachePassword'] ?? '';
-		}
-
-		// Unify other parameters.
-		$config['database'] = (int) ( $settings['database'] ?? 0 );
-		$config['timeout']  = (float) ( $settings['timeout'] ?? 2.0 );
-
-		// Set advanced options based on capabilities.
-		$config['serializer'] = $capabilities['serializers']['igbinary'] ? 'igbinary' : 'php';
-		if ( 'phpredis' === $config['client'] ) {
-			if ( $capabilities['compression']['zstd'] ) {
-				$config['compression'] = 'zstd';
-			} elseif ( $capabilities['compression']['lz4'] ) {
-				$config['compression'] = 'lz4';
-			} elseif ( $capabilities['compression']['lzf'] ) {
-				$config['compression'] = 'lzf';
-			} else {
-				$config['compression'] = 'none';
-			}
-		}
-
-		// Pass through TLS options.
-		if ( isset( $settings['tls_options'] ) ) {
-			$config['tls_options'] = $settings['tls_options'];
-		}
-
-		// Explicitly carry over prefetch and flush_async from the main settings array.
-		// This preserves their value since they are not on the form.
-		$config['prefetch']    = ! empty( $settings['prefetch'] );
-		$config['flush_async'] = ! empty( $settings['flush_async'] );
-
-		return $config;
 	}
 }

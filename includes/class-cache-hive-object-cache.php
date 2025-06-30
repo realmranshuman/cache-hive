@@ -123,33 +123,9 @@ final class Cache_Hive_Object_Cache {
 	 * @return string The drop-in PHP code.
 	 */
 	private static function get_dropin_content( $settings ) {
-		// This class no longer builds the config. It receives the final, unified
-		// config from the API controller and simply embeds it. This prevents logic duplication.
-		$config_to_embed = array(
-			// Core.
-			'objectCacheKey'                  => $settings['objectCacheKey'] ?? '',
-			'client'                          => $settings['client'] ?? 'phpredis',
-			'host'                            => $settings['host'] ?? '127.0.0.1',
-			'port'                            => $settings['port'] ?? 6379,
-			'scheme'                          => $settings['scheme'] ?? 'tcp',
-			'timeout'                         => $settings['timeout'] ?? 2.0,
-			'objectCachePersistentConnection' => ! empty( $settings['objectCachePersistentConnection'] ),
-			// Auth.
-			'user'                            => $settings['user'] ?? '',
-			'pass'                            => $settings['pass'] ?? '',
-			// Redis specific.
-			'database'                        => $settings['database'] ?? 0,
-			'serializer'                      => $settings['serializer'] ?? 'php',
-			'compression'                     => $settings['compression'] ?? 'none',
-			// Features.
-			'lifetime'                        => $settings['objectCacheLifetime'] ?? 3600,
-			'global_groups'                   => $settings['objectCacheGlobalGroups'] ?? array(),
-			'no_cache_groups'                 => $settings['objectCacheNoCacheGroups'] ?? array(),
-			'prefetch'                        => ! empty( $settings['prefetch'] ),
-			'flush_async'                     => ! empty( $settings['flush_async'] ),
-			// TLS options.
-			'tls_options'                     => $settings['tls_options'] ?? array(),
-		);
+		// Get the derived, simple-keyed runtime config from the main settings.
+		// This ensures the drop-in has a clean, consistent config array.
+		$config_to_embed = Cache_Hive_Settings::get_object_cache_runtime_config( $settings );
 
 		$generation_date = gmdate( 'Y-m-d H:i:s T' );
 		$config_exported = var_export( $config_to_embed, true );
@@ -189,7 +165,7 @@ final class WP_Object_Cache {
     private \$backend; private \$config; private \$blog_prefix; private \$multisite; private \$cache = []; private \$prefetched = false;
     public function __construct() { \$this->reinitialize(); }
     public function reinitialize() { \$this->config = {$config_exported}; \$this->reset(); \$plugin_path = WP_CONTENT_DIR . "/plugins/cache-hive/"; \$files = [ 'includes/object-cache/interface-backend.php', 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php', 'includes/object-cache/class-cache-hive-redis-predis-backend.php', 'includes/object-cache/class-cache-hive-redis-credis-backend.php', 'includes/object-cache/class-cache-hive-memcached-backend.php', 'includes/object-cache/class-cache-hive-array-backend.php', 'includes/object-cache/class-cache-hive-object-cache-factory.php' ]; foreach (\$files as \$file) { if (file_exists(\$plugin_path . \$file)) { require_once \$plugin_path . \$file; } } if (class_exists('Cache_Hive_Object_Cache_Factory')) { \$this->backend = Cache_Hive_Object_Cache_Factory::create(\$this->config); } else { \$this->backend = new Cache_Hive_Array_Backend(\$this->config); } \$this->multisite = is_multisite(); \$this->blog_prefix = \$this->multisite ? get_current_blog_id() . ':' : ''; if (\$this->config['prefetch'] && (is_admin() || defined('WP_CLI'))) { \$this->prefetch_options(); } }
-    private function get_key(\$key, \$group) { if (empty(\$group)) { \$group = 'default'; } \$salt = \$this->config['objectCacheKey'] ?? ''; \$global_groups = \$this->config['global_groups'] ?? []; \$prefix = in_array(\$group, \$global_groups, true) ? '' : \$this->blog_prefix; return (\$salt ? \$salt . ':' : '') . \$prefix . "{\$group}:{\$key}"; }
+    private function get_key(\$key, \$group) { if (empty(\$group)) { \$group = 'default'; } \$salt = \$this->config['key_prefix'] ?? ''; \$global_groups = \$this->config['global_groups'] ?? []; \$prefix = in_array(\$group, \$global_groups, true) ? '' : \$this->blog_prefix; return (\$salt ? \$salt . ':' : '') . \$prefix . "{\$group}:{\$key}"; }
     private function is_non_persistent_group(\$group) { if (empty(\$group)) return false; \$no_cache_groups = \$this->config['no_cache_groups'] ?? []; if (empty(\$no_cache_groups)) return false; foreach (\$no_cache_groups as \$no_cache_group) { if (str_starts_with(\$group, \$no_cache_group)) return true; } return false; }
     private function prefetch_options() { if (\$this->prefetched) return; \$alloptions_key = \$this->get_key('alloptions', 'options'); \$alloptions = \$this->backend->get(\$alloptions_key, \$found); if (\$found && is_array(\$alloptions)) { foreach (\$alloptions as \$name => \$value) { \$this->cache[\$this->get_key(\$name, 'options')] = \$value; } \$this->prefetched = true; } }
     

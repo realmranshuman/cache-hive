@@ -100,7 +100,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 				$context['ssl'] = $ssl_options;
 			}
 
-			if ( ! empty( $this->config['objectCachePersistentConnection'] ) ) {
+			if ( ! empty( $this->config['persistent'] ) ) {
 				$this->redis->pconnect( $host, $port, $timeout, 'ch-pconn-' . $this->config['database'], 0, 0.0, $context );
 			} else {
 				$this->redis->connect( $host, $port, $timeout, null, 0, 0.0, $context );
@@ -350,7 +350,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 		 * @return bool True on success, false on failure.
 		 */
 		public function close() {
-			if ( ! empty( $this->redis ) && empty( $this->config['objectCachePersistentConnection'] ) ) {
+			if ( ! empty( $this->redis ) && empty( $this->config['persistent'] ) ) {
 				try {
 					$this->redis->close();
 				} catch ( \RedisException $e ) {
@@ -423,7 +423,7 @@ if ( ! class_exists( 'Cache_Hive_Redis_PhpRedis_Backend' ) ) {
 					'host'           => $this->config['host'],
 					'port'           => $this->config['port'],
 					'scheme'         => $this->config['scheme'],
-					'persistent'     => ! empty( $this->config['objectCachePersistentConnection'] ),
+					'persistent'     => ! empty( $this->config['persistent'] ),
 					'prefetch'       => ! empty( $this->config['prefetch'] ),
 					'flush_async'    => ! empty( $this->config['flush_async'] ),
 					'database'       => $this->config['database'] ?? 0,

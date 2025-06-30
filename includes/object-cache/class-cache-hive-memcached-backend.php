@@ -95,7 +95,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 
 		$persistent_id = 'cache-hive-' . md5( ( $config['host'] ?? '' ) . ':' . ( $config['port'] ?? '' ) );
-		$this->mc      = ! empty( $this->config['objectCachePersistentConnection'] ) ? new \Memcached( $persistent_id ) : new \Memcached();
+		$this->mc      = ! empty( $this->config['persistent'] ) ? new \Memcached( $persistent_id ) : new \Memcached();
 
 		if ( ! count( $this->mc->getServerList() ) ) {
 			$this->mc->setOption( \Memcached::OPT_LIBKETAMA_COMPATIBLE, true );
@@ -103,14 +103,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 				$this->mc->setOption( \Memcached::OPT_BINARY_PROTOCOL, true );
 			}
 
-			// --- THE FIX IS HERE ---
 			// Translate the generic serializer string into the specific Memcached constant.
 			if ( 'igbinary' === ( $this->config['serializer'] ?? '' ) && defined( 'Memcached::HAVE_IGBINARY' ) && \Memcached::HAVE_IGBINARY ) {
 				$this->mc->setOption( \Memcached::OPT_SERIALIZER, \Memcached::SERIALIZER_IGBINARY );
 			} else {
 				$this->mc->setOption( \Memcached::OPT_SERIALIZER, \Memcached::SERIALIZER_PHP );
 			}
-			// --- END OF FIX ---
 
 			if ( 'unix' === $this->config['scheme'] ) {
 				$this->mc->addServer( $this->config['host'], 0 );
@@ -402,7 +400,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	 * @return bool Always returns true.
 	 */
 	public function close() {
-		if ( empty( $this->config['objectCachePersistentConnection'] ) && $this->is_connected() ) {
+		if ( empty( $this->config['persistent'] ) && $this->is_connected() ) {
 			$this->mc->quit();
 		}
 		$this->connected = false;
@@ -440,7 +438,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			'client'            => 'Memcached',
 			'host'              => $this->config['host'],
 			'port'              => $this->config['port'],
-			'persistent'        => ! empty( $this->config['objectCachePersistentConnection'] ),
+			'persistent'        => ! empty( $this->config['persistent'] ),
 			'prefetch'          => ! empty( $this->config['prefetch'] ),
 			'flush_async'       => ! empty( $this->config['flush_async'] ),
 			'server_version'    => $stats['version'] ?? 'N/A',

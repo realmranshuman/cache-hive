@@ -61,7 +61,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 			if ( ! empty( $this->config['pass'] ) ) {
 				$parameters['password'] = $this->config['pass'];
 			}
-			if ( ! empty( $this->config['objectCachePersistentConnection'] ) ) {
+			if ( ! empty( $this->config['persistent'] ) ) {
 				$parameters['persistent'] = true;
 			}
 
@@ -282,7 +282,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 				'host'           => $this->config['host'],
 				'port'           => $this->config['port'],
 				'scheme'         => $this->config['scheme'],
-				'persistent'     => ! empty( $this->config['objectCachePersistentConnection'] ),
+				'persistent'     => ! empty( $this->config['persistent'] ),
 				'prefetch'       => ! empty( $this->config['prefetch'] ),
 				'flush_async'    => ! empty( $this->config['flush_async'] ),
 				'database'       => $this->config['database'],

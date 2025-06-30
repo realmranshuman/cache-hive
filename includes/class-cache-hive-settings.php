@@ -67,34 +67,28 @@ final class Cache_Hive_Settings {
 	private static function get_wp_config_overrides() {
 		$overrides = array();
 		$constants = array(
-			// General.
-			'objectCacheMethod'               => 'CACHE_HIVE_OBJECT_CACHE_METHOD', // redis or memcached.
-			'client'                          => 'CACHE_HIVE_OBJECT_CACHE_CLIENT', // phpredis, predis, credis.
+			// General Object Cache.
+			'objectCacheMethod'               => 'CACHE_HIVE_OBJECT_CACHE_METHOD',
+			'objectCacheClient'               => 'CACHE_HIVE_OBJECT_CACHE_CLIENT',
 			'objectCacheHost'                 => 'CACHE_HIVE_OBJECT_CACHE_HOST',
 			'objectCachePort'                 => 'CACHE_HIVE_OBJECT_CACHE_PORT',
+			'objectCacheUsername'             => 'CACHE_HIVE_OBJECT_CACHE_USERNAME',
+			'objectCachePassword'             => 'CACHE_HIVE_OBJECT_CACHE_PASSWORD',
+			'objectCacheDatabase'             => 'CACHE_HIVE_OBJECT_CACHE_DATABASE',
+			'objectCacheTimeout'              => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
 			'objectCacheLifetime'             => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
-			'timeout'                         => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
 			'objectCachePersistentConnection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
 
-			// Redis Specific.
-			'database'                        => 'CACHE_HIVE_REDIS_DATABASE',
-			'objectCacheUsername'             => 'CACHE_HIVE_REDIS_USERNAME',
-			'objectCachePassword'             => 'CACHE_HIVE_REDIS_PASSWORD',
-
-			// Memcached Specific.
-			'memcached_user'                  => 'CACHE_HIVE_MEMCACHED_USERNAME',
-			'memcached_pass'                  => 'CACHE_HIVE_MEMCACHED_PASSWORD',
-
-			// Simplified TLS Options for Redis.
-			'tls_options'                     => array(
-				'ca_cert'     => 'CACHE_HIVE_REDIS_TLS_CA_CERT',
-				'verify_peer' => 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER',
+			// TLS Options.
+			'objectCacheTlsOptions'           => array(
+				'ca_cert'     => 'CACHE_HIVE_OBJECT_CACHE_TLS_CA_CERT',
+				'verify_peer' => 'CACHE_HIVE_OBJECT_CACHE_TLS_VERIFY_PEER',
 			),
 		);
 
 		foreach ( $constants as $setting_key => $constant_name ) {
 			if ( is_array( $constant_name ) ) {
-				// Handle nested options like tls_options.
+				// Handle nested options like objectCacheTlsOptions.
 				foreach ( $constant_name as $nested_key => $nested_constant ) {
 					if ( defined( $nested_constant ) ) {
 						if ( ! isset( $overrides[ $setting_key ] ) ) {
@@ -109,6 +103,18 @@ final class Cache_Hive_Settings {
 		}
 
 		return $overrides;
+	}
+
+	/**
+	 * Returns an array of setting keys that are currently overridden by wp-config.php constants.
+	 *
+	 * THIS IS THE NEW PUBLIC METHOD
+	 *
+	 * @since 1.1.1
+	 * @return string[] An array of setting keys.
+	 */
+	public static function get_overridden_keys() {
+		return array_keys( self::get_wp_config_overrides() );
 	}
 
 	/**
@@ -171,17 +177,21 @@ final class Cache_Hive_Settings {
 			'browserCacheTTL'                 => 604800,
 			'objectCacheEnabled'              => false,
 			'objectCacheMethod'               => 'redis',
+			'objectCacheClient'               => 'phpredis',
 			'objectCacheHost'                 => '127.0.0.1',
 			'objectCachePort'                 => 6379,
 			'objectCacheLifetime'             => 3600,
 			'objectCacheUsername'             => '',
 			'objectCachePassword'             => '',
+			'objectCacheDatabase'             => 0,
+			'objectCacheTimeout'              => 2.0,
 			'objectCacheKey'                  => '',
 			'objectCacheGlobalGroups'         => array(),
 			'objectCacheNoCacheGroups'        => array(),
+			'objectCacheTlsOptions'           => array(),
 			'objectCachePersistentConnection' => false,
-			'prefetch'                        => false,
-			'flush_async'                     => false,
+			'prefetch'                        => true,
+			'flush_async'                     => true,
 			'cloudflare_enabled'              => false,
 			'cloudflare_api_method'           => 'token',
 			'cloudflare_api_key'              => '',
@@ -190,6 +200,90 @@ final class Cache_Hive_Settings {
 			'cloudflare_domain'               => '',
 			'cloudflare_zone_id'              => '',
 		);
+	}
+
+	/**
+	 * Builds the final, unified runtime configuration array for the backends and drop-in.
+	 *
+	 * This method translates the stored camelCase settings into the simple key format
+	 * expected by the backend clients.
+	 *
+	 * @param array $settings The combined settings from DB, UI, and wp-config.php.
+	 * @return array The derived runtime configuration.
+	 */
+	public static function get_object_cache_runtime_config( $settings ) {
+		$config = array();
+		$method = $settings['objectCacheMethod'] ?? 'redis';
+
+		// Determine which client to use based on availability, if not specified.
+		$clients_available = array(
+			'phpredis'  => class_exists( 'Redis' ),
+			'predis'    => class_exists( 'Predis\\Client' ),
+			'credis'    => class_exists( 'Credis_Client' ),
+			'memcached' => class_exists( 'Memcached' ),
+		);
+		if ( 'redis' === $method ) {
+			$config['client'] = $settings['objectCacheClient'] ?? ( $clients_available['phpredis'] ? 'phpredis' : ( $clients_available['predis'] ? 'predis' : 'credis' ) );
+		} else {
+			$config['client'] = 'memcached';
+		}
+
+		// Unify connection details from objectCacheHost.
+		$host = $settings['objectCacheHost'] ?? '127.0.0.1';
+		$port = (int) ( $settings['objectCachePort'] ?? ( 'redis' === $method ? 6379 : 11211 ) );
+
+		if ( str_starts_with( $host, 'tls://' ) ) {
+			$config['scheme'] = 'tls';
+			$config['host']   = substr( $host, 6 );
+		} elseif ( 0 === $port || str_starts_with( $host, '/' ) ) {
+			$config['scheme'] = 'unix';
+			$config['host']   = $host;
+		} else {
+			$config['scheme'] = 'tcp';
+			$config['host']   = $host;
+		}
+		$config['port'] = $port;
+
+		// Unify Auth, other parameters, and features.
+		$config['user']            = $settings['objectCacheUsername'] ?? '';
+		$config['pass']            = $settings['objectCachePassword'] ?? '';
+		$config['database']        = (int) ( $settings['objectCacheDatabase'] ?? 0 );
+		$config['timeout']         = (float) ( $settings['objectCacheTimeout'] ?? 2.0 );
+		$config['persistent']      = ! empty( $settings['objectCachePersistentConnection'] );
+		$config['prefetch']        = ! empty( $settings['prefetch'] );
+		$config['flush_async']     = ! empty( $settings['flush_async'] );
+		$config['key_prefix']      = $settings['objectCacheKey'] ?? '';
+		$config['lifetime']        = $settings['objectCacheLifetime'] ?? 3600;
+		$config['global_groups']   = $settings['objectCacheGlobalGroups'] ?? array();
+		$config['no_cache_groups'] = $settings['objectCacheNoCacheGroups'] ?? array();
+
+		// Set advanced options based on server capabilities.
+		$serializers_available = array( 'igbinary' => extension_loaded( 'igbinary' ) );
+		$config['serializer']  = $serializers_available['igbinary'] ? 'igbinary' : 'php';
+
+		if ( 'phpredis' === $config['client'] ) {
+			$compression_available = array(
+				'zstd' => extension_loaded( 'zstd' ),
+				'lz4'  => extension_loaded( 'lz4' ),
+				'lzf'  => extension_loaded( 'lzf' ),
+			);
+			if ( $compression_available['zstd'] ) {
+				$config['compression'] = 'zstd';
+			} elseif ( $compression_available['lz4'] ) {
+				$config['compression'] = 'lz4';
+			} elseif ( $compression_available['lzf'] ) {
+				$config['compression'] = 'lzf';
+			} else {
+				$config['compression'] = 'none';
+			}
+		}
+
+		// Pass through TLS options.
+		if ( isset( $settings['objectCacheTlsOptions'] ) ) {
+			$config['tls_options'] = $settings['objectCacheTlsOptions'];
+		}
+
+		return $config;
 	}
 
 	/**
@@ -206,11 +300,17 @@ final class Cache_Hive_Settings {
 
 		foreach ( $input as $key => $value ) {
 			if ( array_key_exists( $key, $defaults ) ) {
+				if ( 'objectCachePassword' === $key && '********' === $value ) {
+					// Don't update the password if the obfuscated string is sent back.
+					continue;
+				}
 				$default_value = $defaults[ $key ];
 				if ( is_bool( $default_value ) ) {
 					$sanitized[ $key ] = (bool) $value;
 				} elseif ( is_int( $default_value ) ) {
 					$sanitized[ $key ] = absint( $value );
+				} elseif ( is_float( $default_value ) ) {
+					$sanitized[ $key ] = (float) $value;
 				} elseif ( is_array( $default_value ) ) {
 					$sanitized[ $key ] = is_array( $value ) ? array_values( array_filter( array_map( 'sanitize_text_field', $value ) ) ) : array();
 				} else {

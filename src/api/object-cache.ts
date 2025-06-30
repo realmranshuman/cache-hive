@@ -1,22 +1,34 @@
 import { wpApiSettings } from "./shared";
 
-// Define a type for our settings data for better type safety
+// UPDATED: The interface now matches the backend's settings structure precisely.
 export interface ObjectCacheSettings {
   objectCacheEnabled: boolean;
   objectCacheMethod: 'redis' | 'memcached';
+  objectCacheClient: 'phpredis' | 'predis' | 'credis' | 'memcached'; // NEW
   objectCacheHost: string;
   objectCachePort: number;
-  objectCacheLifetime: number;
   objectCacheUsername?: string;
   objectCachePassword?: string;
+  objectCacheDatabase?: number; // NEW
+  objectCacheTimeout?: number; // NEW
+  objectCacheLifetime: number;
+  objectCacheKey?: string; // read-only
   objectCacheGlobalGroups?: string[];
   objectCacheNoCacheGroups?: string[];
   objectCachePersistentConnection?: boolean;
+  objectCacheTlsOptions?: { // NEW
+    ca_cert?: string;
+    verify_peer?: boolean;
+  };
+  wpConfigOverrides?: { [key: string]: boolean }; // read-only
   liveStatus?: {
     status: string;
     client: string;
     compression?: string;
     serializer?: string;
+    persistent?: boolean;
+    prefetch?: boolean;
+    // ...other properties from backend clients
     [key: string]: any;
   };
   serverCapabilities?: {
@@ -26,9 +38,16 @@ export interface ObjectCacheSettings {
       credis: boolean;
       memcached: boolean;
     };
-    best_client: string | null;
-    [key: string]: any;
-  }
+    serializers: {
+      igbinary: boolean;
+      php: boolean;
+    };
+    compression: {
+      zstd: boolean;
+      lz4: boolean;
+      lzf: boolean;
+    };
+  };
 }
 
 export async function getObjectCacheSettings(): Promise<ObjectCacheSettings> {
@@ -44,7 +63,7 @@ export async function getObjectCacheSettings(): Promise<ObjectCacheSettings> {
   return response.json();
 }
 
-export async function updateObjectCacheSettings(data: any): Promise<ObjectCacheSettings> {
+export async function updateObjectCacheSettings(data: Partial<ObjectCacheSettings>): Promise<ObjectCacheSettings> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/object-cache`, {
     method: 'POST',
     headers: {
