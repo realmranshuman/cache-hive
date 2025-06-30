@@ -10,20 +10,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ObjectCacheSettings } from "@/api/object-cache" // UPDATED: Import the new interface
+import { ObjectCacheSettings } from "@/api/object-cache"
 
-// UPDATED: The Zod schema now includes all the new fields and uses the full camelCase names.
 const objectCacheSchema = z.object({
   objectCacheEnabled: z.boolean().default(false),
   objectCacheMethod: z.string().default('redis'),
-  objectCacheClient: z.string().optional(), // NEW
+  objectCacheClient: z.string().optional(),
   objectCacheHost: z.string().default('127.0.0.1'),
   objectCachePort: z.coerce.number().min(0, "Port cannot be negative").default(6379),
   objectCacheUsername: z.string().optional(),
   objectCachePassword: z.string().optional(),
-  objectCacheDatabase: z.coerce.number().min(0, "Database must be a positive integer").optional(), // NEW
-  objectCacheTimeout: z.coerce.number().min(0, "Timeout cannot be negative").optional(), // NEW
-  objectCacheLifetime: z.coerce.number().min(60, "Lifetime must be at least 60 seconds").default(3600),
+  objectCacheDatabase: z.coerce.number().min(0, "Database must be a positive integer").optional(),
+  objectCacheTimeout: z.coerce.number().min(0, "Timeout cannot be negative").optional(),
+  objectCacheLifetime: z.coerce.number().min(1, "Lifetime must be at least 1 second").default(3600),
   objectCacheGlobalGroups: z.any(),
   objectCacheNoCacheGroups: z.any(),
   objectCachePersistentConnection: z.boolean().optional().default(false),
@@ -100,7 +99,6 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
     return val.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
   }
 
-  // UPDATED: All default values now use the full camelCase keys from the initial props.
   const form = useForm<ObjectCacheFormData>({
     resolver: zodResolver(objectCacheSchema),
     defaultValues: {
@@ -121,6 +119,7 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
   })
 
   const objectCacheMethod = form.watch('objectCacheMethod');
+  const objectCacheClient = form.watch('objectCacheClient');
 
   React.useEffect(() => {
     form.reset({
@@ -129,6 +128,13 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
       objectCacheNoCacheGroups: toTextarea(initial.objectCacheNoCacheGroups),
     });
   }, [initial, form.reset]);
+
+  React.useEffect(() => {
+    if (objectCacheClient === 'credis') {
+      form.setValue('objectCachePersistentConnection', false);
+    }
+  }, [objectCacheClient, form.setValue]);
+
 
   async function handleSubmit(data: ObjectCacheFormData) {
     const payload = {
@@ -147,11 +153,10 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
       <div className="lg:col-span-3">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            {/* UPDATED: All FormField names are now the full camelCase version */}
             <FormField control={form.control} name="objectCacheEnabled" render={({ field }) => (
               <FormItem className="flex items-center justify-between rounded-lg border p-4">
                 <div className="space-y-0.5"><FormLabel className="text-base">Enable Object Cache</FormLabel><CardDescription>Turn on persistent object caching for your site.</CardDescription></div>
-                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={disabled('objectCacheEnabled')} /></FormControl>
+                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} disabled={disabled('objectCacheEnabled')} /></FormControl>
               </FormItem>
             )} />
 
@@ -163,20 +168,34 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
                 </Select><FormMessage />
                 </FormItem>
               )} />
-              {/* NEW: Field for selecting the Redis client */}
-              {isRedis && (
-                <FormField control={form.control} name="objectCacheClient" render={({ field }) => (
-                  <FormItem><FormLabel>Redis Client</FormLabel><Select value={field.value} onValueChange={field.onChange} disabled={disabled('objectCacheClient')}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="phpredis">PhpRedis</SelectItem>
-                      <SelectItem value="predis">Predis</SelectItem>
-                      <SelectItem value="credis">Credis</SelectItem>
-                    </SelectContent>
-                  </Select><FormMessage />
+
+              {/* UPDATED: Field is now always rendered, but disabled with a dynamic label */}
+              <FormField
+                control={form.control}
+                name="objectCacheClient"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Redis Client {isRedis ? '' : '(Redis only)'}</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={!isRedis || disabled('objectCacheClient')}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="phpredis">PhpRedis</SelectItem>
+                        <SelectItem value="predis">Predis</SelectItem>
+                        <SelectItem value="credis">Credis</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
                   </FormItem>
-                )} />
-              )}
+                )}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -200,20 +219,48 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* NEW: Field for Redis Database */}
-              {isRedis && (
-                <FormField control={form.control} name="objectCacheDatabase" render={({ field }) => (
-                  <FormItem><FormLabel>Database</FormLabel>
-                    <FormControl><Input {...field} type="text" disabled={disabled('objectCacheDatabase')} inputMode="numeric" pattern="[0-9]*" value={field.value ?? ''} className="bg-white text-black dark:bg-gray-900 dark:text-white" /></FormControl>
-                    <FormMessage /></FormItem>
-                )} />
-              )}
-              {/* NEW: Field for Connection Timeout */}
-              <FormField control={form.control} name="objectCacheTimeout" render={({ field }) => (
-                <FormItem><FormLabel>Timeout (seconds)</FormLabel>
-                  <FormControl><Input {...field} type="text" disabled={disabled('objectCacheTimeout')} inputMode="decimal" value={field.value ?? ''} className="bg-white text-black dark:bg-gray-900 dark:text-white" /></FormControl>
-                  <FormMessage /></FormItem>
-              )} />
+              {/* UPDATED: Field is now always rendered, but disabled with a dynamic label */}
+              <FormField
+                control={form.control}
+                name="objectCacheDatabase"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Database {isRedis ? '' : '(Redis only)'}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="text"
+                        disabled={!isRedis || disabled('objectCacheDatabase')}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={field.value ?? ''}
+                        className="bg-white text-black dark:bg-gray-900 dark:text-white"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="objectCacheTimeout"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Timeout (seconds)</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="text"
+                        disabled={disabled('objectCacheTimeout')}
+                        inputMode="decimal"
+                        value={field.value ?? ''}
+                        className="bg-white text-black dark:bg-gray-900 dark:text-white"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <FormField control={form.control} name="objectCacheLifetime" render={({ field }) => (
@@ -233,12 +280,26 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
               )} />
             </div>
 
-            <FormField control={form.control} name="objectCachePersistentConnection" render={({ field }) => (
-              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5"><FormLabel className="text-base">Persistent Connection</FormLabel><CardDescription>Reduces latency by reusing connections. Recommended if supported.</CardDescription></div>
-                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} disabled={disabled('objectCachePersistentConnection')} /></FormControl>
-              </FormItem>
-            )} />
+            <FormField control={form.control} name="objectCachePersistentConnection" render={({ field }) => {
+              const isCredis = isRedis && objectCacheClient === 'credis';
+              const switchDisabled = disabled("objectCachePersistentConnection") || isCredis;
+
+              return (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Persistent Connection</FormLabel>
+                    <CardDescription>
+                      {isCredis
+                        ? "This option is not available for the Credis client."
+                        : "Reduces latency by reusing connections. Recommended if supported."}
+                    </CardDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={!!field.value} onCheckedChange={field.onChange} disabled={switchDisabled} />
+                  </FormControl>
+                </FormItem>
+              );
+            }} />
 
             <div className="flex justify-end pt-4">
               <Button type="submit" disabled={isSaving}>{isSaving ? "Saving..." : "Save Changes"}</Button>

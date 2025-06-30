@@ -60,11 +60,9 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 
 			// Note: Credis doesn't support a rich context array for TLS like PhpRedis/Predis.
 			// The `tls://` scheme is the primary method.
+			// The database is passed directly to the constructor, and the `setPersistent` call is removed.
+			// Credis's constructor signature: `__construct($host = '127.0.0.1', $port = 6379, $timeout = null, $persistent = '', $db = 0, $password = null)`.
 			$this->client = new Credis_Client( $host, $port, $this->config['timeout'], '', $this->config['database'], null );
-
-			if ( ! empty( $this->config['persistent'] ) ) {
-				$this->client->setPersistent( 'ch-pconn-' . $this->config['database'] );
-			}
 
 			$this->client->connect();
 
@@ -72,6 +70,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 			$password = $this->config['pass'] ?? null;
 			$username = $this->config['user'] ?? null;
 			if ( ! empty( $password ) ) {
+				// The auth command can throw an exception on failure, which we catch below.
 				$auth_params = empty( $username ) ? array( $password ) : array( $username, $password );
 				$this->client->__call( 'auth', $auth_params );
 			}
@@ -281,7 +280,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 				'host'           => $this->config['host'],
 				'port'           => $this->config['port'],
 				'scheme'         => $this->config['scheme'],
-				'persistent'     => ! empty( $this->config['persistent'] ),
+				'persistent'     => false, // Always report false for Credis.
 				'prefetch'       => ! empty( $this->config['prefetch'] ),
 				'flush_async'    => ! empty( $this->config['flush_async'] ),
 				'database'       => $this->config['database'],
