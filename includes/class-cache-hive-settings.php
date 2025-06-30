@@ -138,18 +138,53 @@ final class Cache_Hive_Settings {
 	 */
 	public static function get_default_settings() {
 		// All multi-line textareas are now defined as arrays by default.
-		$default_mobile_agents   = array( 'Mobile', 'Android', 'Silk/', 'Kindle', 'BlackBerry', 'Opera Mini', 'Opera Mobi', 'iPhone', 'iPad' );
-		$default_exclude_uris    = array( '/wp-admin/', '/wp-login.php', '/cart/', '/checkout/', '/my-account/.*' );
-		$default_exclude_queries = array( 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'preview', 'edit', '_ga' );
-		$default_exclude_cookies = array( 'wordpress_logged_in', 'wp-postpass', 'woocommerce_cart_hash', 'comment_author_' );
-		$default_custom_hooks    = array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' );
+		$default_mobile_agents   = array(
+			'Mobile',
+			'Android',
+			'Silk/',
+			'Kindle',
+			'BlackBerry',
+			'Opera Mini',
+			'Opera Mobi',
+			'iPhone',
+			'iPad',
+		);
+		$default_exclude_uris    = array(
+			'/wp-admin/',
+			'/wp-login.php',
+			'/cart/',
+			'/checkout/',
+			'/my-account/.*',
+		);
+		$default_exclude_queries = array(
+			'utm_source',
+			'utm_medium',
+			'utm_campaign',
+			'fbclid',
+			'preview',
+			'edit',
+			'_ga',
+		);
+		$default_exclude_cookies = array(
+			'wordpress_logged_in',
+			'wp-postpass',
+			'woocommerce_cart_hash',
+			'comment_author_',
+		);
+		$default_custom_hooks    = array(
+			'switch_theme',
+			'deactivated_plugin',
+			'activated_plugin',
+			'wp_update_nav_menu',
+			'wp_update_nav_menu_item',
+		);
 
 		return array(
 			'enableCache'                     => true,
 			'cacheLoggedUsers'                => false,
-			'cacheCommenters'                 => true,
+			'cacheCommenters'                 => false,
 			'cacheRestApi'                    => false,
-			'cacheMobile'                     => true,
+			'cacheMobile'                     => false,
 			'mobileUserAgents'                => $default_mobile_agents,
 			'publicCacheTTL'                  => 604800,
 			'privateCacheTTL'                 => 1800,
@@ -159,12 +194,12 @@ final class Cache_Hive_Settings {
 			'autoPurgeEntireSite'             => false,
 			'autoPurgeFrontPage'              => true,
 			'autoPurgeHomePage'               => false,
-			'autoPurgePages'                  => true,
-			'autoPurgeAuthorArchive'          => false,
+			'autoPurgePages'                  => false,
+			'autoPurgeAuthorArchive'          => true,
 			'autoPurgePostTypeArchive'        => true,
-			'autoPurgeYearlyArchive'          => false,
-			'autoPurgeMonthlyArchive'         => false,
-			'autoPurgeDailyArchive'           => false,
+			'autoPurgeYearlyArchive'          => true,
+			'autoPurgeMonthlyArchive'         => true,
+			'autoPurgeDailyArchive'           => true,
 			'autoPurgeTermArchive'            => true,
 			'purgeOnUpgrade'                  => true,
 			'serveStale'                      => false,
@@ -186,8 +221,38 @@ final class Cache_Hive_Settings {
 			'objectCacheDatabase'             => 0,
 			'objectCacheTimeout'              => 2.0,
 			'objectCacheKey'                  => '',
-			'objectCacheGlobalGroups'         => array(),
-			'objectCacheNoCacheGroups'        => array(),
+			'objectCacheGlobalGroups'         => array(
+				'blog-details',
+				'blog-lookup',
+				'global-posts',
+				'networks',
+				'rss',
+				'sites',
+				'site-details',
+				'site-lookup',
+				'site-options',
+				'site-transient',
+				'users',
+				'useremail',
+				'userlogins',
+				'usermeta',
+				'user_meta',
+				'userslugs',
+				'blog_meta',
+				'image_editor',
+				'network-queries',
+				'site-queries',
+				'theme_files',
+				'translation_files',
+				'user-queries',
+			),
+			'objectCacheNoCacheGroups'        => array(
+				'comment',
+				'plugins',
+				'theme_json',
+				'themes',
+				'wc_session_id',
+			),
 			'objectCacheTlsOptions'           => array(),
 			'objectCachePersistentConnection' => false,
 			'prefetch'                        => true,
