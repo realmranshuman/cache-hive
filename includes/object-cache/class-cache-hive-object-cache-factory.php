@@ -30,8 +30,10 @@ class Cache_Hive_Object_Cache_Factory {
 		$log_prefix = '[Cache Hive Object Cache Factory] ';
 		$backend    = null;
 
-		// Determine which client to use based on config.
-		$client_to_use = defined( 'CACHE_HIVE_OBJECT_CACHE_CLIENT' ) ? CACHE_HIVE_OBJECT_CACHE_CLIENT : ( $config['client'] ?? null );
+		// The $config array is the single source of truth for the runtime.
+		// It has already been processed to determine the correct client based on the method.
+		// We trust its 'client' key directly.
+		$client_to_use = $config['client'] ?? null;
 
 		// NOTE: All 'require_once' calls have been removed. The main 'cache-hive.php'
 		// file is now responsible for loading all necessary class files.

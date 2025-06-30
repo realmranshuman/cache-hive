@@ -50,7 +50,8 @@ final class Cache_Hive_Settings {
 			}
 
 			// Get wp-config.php overrides and merge them on top. They have the final say.
-			$wp_config_overrides = self::get_wp_config_overrides();
+			// Pass the currently merged settings so the override logic can be method-aware.
+			$wp_config_overrides = self::get_wp_config_overrides( $merged_settings );
 			$merged_settings     = array_merge( $merged_settings, $wp_config_overrides );
 
 			self::$settings = $merged_settings;
@@ -61,44 +62,76 @@ final class Cache_Hive_Settings {
 	/**
 	 * Gathers all defined object cache constants from wp-config.php.
 	 *
+	 * This function is "method-aware" and uses a data-driven approach to check
+	 * only for the allowed, specific constants for the active cache method.
+	 *
 	 * @since 1.1.0
+	 * @param array $current_settings The current settings array, used to determine the method if not defined in a constant.
 	 * @return array An array of settings defined in wp-config.php.
 	 */
-	private static function get_wp_config_overrides() {
+	private static function get_wp_config_overrides( $current_settings ) {
 		$overrides = array();
-		$constants = array(
-			// General Object Cache.
+
+		// Determine the active method (priority: constant > settings).
+		$method = defined( 'CACHE_HIVE_OBJECT_CACHE_METHOD' )
+			? constant( 'CACHE_HIVE_OBJECT_CACHE_METHOD' )
+			: ( $current_settings['objectCacheMethod'] ?? 'redis' );
+
+		// Handle non-method-specific constants first.
+		$simple_constants = array(
 			'objectCacheMethod'               => 'CACHE_HIVE_OBJECT_CACHE_METHOD',
 			'objectCacheClient'               => 'CACHE_HIVE_OBJECT_CACHE_CLIENT',
 			'objectCacheHost'                 => 'CACHE_HIVE_OBJECT_CACHE_HOST',
 			'objectCachePort'                 => 'CACHE_HIVE_OBJECT_CACHE_PORT',
-			'objectCacheUsername'             => 'CACHE_HIVE_OBJECT_CACHE_USERNAME',
-			'objectCachePassword'             => 'CACHE_HIVE_OBJECT_CACHE_PASSWORD',
-			'objectCacheDatabase'             => 'CACHE_HIVE_OBJECT_CACHE_DATABASE',
 			'objectCacheTimeout'              => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
 			'objectCacheLifetime'             => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
 			'objectCachePersistentConnection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
+		);
 
-			// TLS Options.
-			'objectCacheTlsOptions'           => array(
-				'ca_cert'     => 'CACHE_HIVE_OBJECT_CACHE_TLS_CA_CERT',
-				'verify_peer' => 'CACHE_HIVE_OBJECT_CACHE_TLS_VERIFY_PEER',
+		foreach ( $simple_constants as $setting_key => $constant_name ) {
+			if ( defined( $constant_name ) ) {
+				$overrides[ $setting_key ] = constant( $constant_name );
+			}
+		}
+
+		// Define the mapping of settings to their method-specific constants.
+		$method_specific_constants = array(
+			'objectCacheUsername' => array(
+				'redis'     => 'CACHE_HIVE_REDIS_USERNAME',
+				'memcached' => 'CACHE_HIVE_MEMCACHED_USERNAME',
+			),
+			'objectCachePassword' => array(
+				'redis'     => 'CACHE_HIVE_REDIS_PASSWORD',
+				'memcached' => 'CACHE_HIVE_MEMCACHED_PASSWORD',
+			),
+			'objectCacheDatabase' => array(
+				'redis' => 'CACHE_HIVE_REDIS_DATABASE',
 			),
 		);
 
-		foreach ( $constants as $setting_key => $constant_name ) {
-			if ( is_array( $constant_name ) ) {
-				// Handle nested options like objectCacheTlsOptions.
-				foreach ( $constant_name as $nested_key => $nested_constant ) {
-					if ( defined( $nested_constant ) ) {
-						if ( ! isset( $overrides[ $setting_key ] ) ) {
-							$overrides[ $setting_key ] = array();
-						}
-						$overrides[ $setting_key ][ $nested_key ] = constant( $nested_constant );
-					}
+		// Process the method-specific constants based on the active method.
+		foreach ( $method_specific_constants as $setting_key => $method_map ) {
+			// Check if there is a constant defined for the current setting and active method.
+			if ( isset( $method_map[ $method ] ) ) {
+				$constant_name = $method_map[ $method ];
+				if ( defined( $constant_name ) ) {
+					$overrides[ $setting_key ] = constant( $constant_name );
 				}
-			} elseif ( defined( $constant_name ) ) {
-				$overrides[ $setting_key ] = constant( $constant_name );
+			}
+		}
+
+		// Handle Redis-specific TLS options.
+		$tls_constants = array(
+			'ca_cert'     => 'CACHE_HIVE_REDIS_TLS_CA_CERT',
+			'verify_peer' => 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER',
+		);
+
+		foreach ( $tls_constants as $nested_key => $nested_constant ) {
+			if ( defined( $nested_constant ) ) {
+				if ( ! isset( $overrides['objectCacheTlsOptions'] ) ) {
+					$overrides['objectCacheTlsOptions'] = array();
+				}
+				$overrides['objectCacheTlsOptions'][ $nested_key ] = constant( $nested_constant );
 			}
 		}
 
@@ -114,7 +147,9 @@ final class Cache_Hive_Settings {
 	 * @return string[] An array of setting keys.
 	 */
 	public static function get_overridden_keys() {
-		return array_keys( self::get_wp_config_overrides() );
+		// We pass an empty array because at this stage we only care about which keys are defined,
+		// and the logic correctly falls back to checking all possibilities.
+		return array_keys( self::get_wp_config_overrides( array() ) );
 	}
 
 	/**
@@ -271,7 +306,8 @@ final class Cache_Hive_Settings {
 	 * Builds the final, unified runtime configuration array for the backends and drop-in.
 	 *
 	 * This method translates the stored camelCase settings into the simple key format
-	 * expected by the backend clients.
+	 * expected by the backend clients. It is now method-aware to avoid sending
+	 * incorrect parameters to the backend.
 	 *
 	 * @param array $settings The combined settings from DB, UI, and wp-config.php.
 	 * @return array The derived runtime configuration.
@@ -280,20 +316,7 @@ final class Cache_Hive_Settings {
 		$config = array();
 		$method = $settings['objectCacheMethod'] ?? 'redis';
 
-		// Determine which client to use based on availability, if not specified.
-		$clients_available = array(
-			'phpredis'  => class_exists( 'Redis' ),
-			'predis'    => class_exists( 'Predis\\Client' ),
-			'credis'    => class_exists( 'Credis_Client' ),
-			'memcached' => class_exists( 'Memcached' ),
-		);
-		if ( 'redis' === $method ) {
-			$config['client'] = $settings['objectCacheClient'] ?? ( $clients_available['phpredis'] ? 'phpredis' : ( $clients_available['predis'] ? 'predis' : 'credis' ) );
-		} else {
-			$config['client'] = 'memcached';
-		}
-
-		// Unify connection details from objectCacheHost.
+		// --- Common Configuration ---
 		$host = $settings['objectCacheHost'] ?? '127.0.0.1';
 		$port = (int) ( $settings['objectCachePort'] ?? ( 'redis' === $method ? 6379 : 11211 ) );
 
@@ -309,10 +332,8 @@ final class Cache_Hive_Settings {
 		}
 		$config['port'] = $port;
 
-		// Unify Auth, other parameters, and features.
 		$config['user']            = $settings['objectCacheUsername'] ?? '';
 		$config['pass']            = $settings['objectCachePassword'] ?? '';
-		$config['database']        = (int) ( $settings['objectCacheDatabase'] ?? 0 );
 		$config['timeout']         = (float) ( $settings['objectCacheTimeout'] ?? 2.0 );
 		$config['persistent']      = ! empty( $settings['objectCachePersistentConnection'] );
 		$config['prefetch']        = ! empty( $settings['prefetch'] );
@@ -321,31 +342,49 @@ final class Cache_Hive_Settings {
 		$config['lifetime']        = $settings['objectCacheLifetime'] ?? 3600;
 		$config['global_groups']   = $settings['objectCacheGlobalGroups'] ?? array();
 		$config['no_cache_groups'] = $settings['objectCacheNoCacheGroups'] ?? array();
+		$serializers_available     = array( 'igbinary' => extension_loaded( 'igbinary' ) );
+		$config['serializer']      = $serializers_available['igbinary'] ? 'igbinary' : 'php';
 
-		// Set advanced options based on server capabilities.
-		$serializers_available = array( 'igbinary' => extension_loaded( 'igbinary' ) );
-		$config['serializer']  = $serializers_available['igbinary'] ? 'igbinary' : 'php';
-
-		if ( 'phpredis' === $config['client'] ) {
-			$compression_available = array(
-				'zstd' => extension_loaded( 'zstd' ),
-				'lz4'  => extension_loaded( 'lz4' ),
-				'lzf'  => extension_loaded( 'lzf' ),
+		// --- Method-Specific Configuration ---
+		if ( 'redis' === $method ) {
+			$clients_available = array(
+				'phpredis' => class_exists( 'Redis' ),
+				'predis'   => class_exists( 'Predis\\Client' ),
+				'credis'   => class_exists( 'Credis_Client' ),
 			);
-			if ( $compression_available['zstd'] ) {
-				$config['compression'] = 'zstd';
-			} elseif ( $compression_available['lz4'] ) {
-				$config['compression'] = 'lz4';
-			} elseif ( $compression_available['lzf'] ) {
-				$config['compression'] = 'lzf';
-			} else {
-				$config['compression'] = 'none';
-			}
-		}
 
-		// Pass through TLS options.
-		if ( isset( $settings['objectCacheTlsOptions'] ) ) {
-			$config['tls_options'] = $settings['objectCacheTlsOptions'];
+			$config['client']   = $settings['objectCacheClient'] ?? ( $clients_available['phpredis'] ? 'phpredis' : ( $clients_available['predis'] ? 'predis' : 'credis' ) );
+			$config['database'] = (int) ( $settings['objectCacheDatabase'] ?? 0 );
+
+			if ( 'phpredis' === $config['client'] ) {
+				$compression_available = array(
+					'zstd' => extension_loaded( 'zstd' ),
+					'lz4'  => extension_loaded( 'lz4' ),
+					'lzf'  => extension_loaded( 'lzf' ),
+				);
+				if ( $compression_available['zstd'] ) {
+					$config['compression'] = 'zstd';
+				} elseif ( $compression_available['lz4'] ) {
+					$config['compression'] = 'lz4';
+				} elseif ( $compression_available['lzf'] ) {
+					$config['compression'] = 'lzf';
+				} else {
+					$config['compression'] = 'none';
+				}
+			}
+
+			// Handle TLS options with a secure default.
+			if ( 'tls' === $config['scheme'] ) {
+				$tls_defaults          = array(
+					'verify_peer' => true,
+					'ca_cert'     => null,
+				);
+				$config['tls_options'] = wp_parse_args( $settings['objectCacheTlsOptions'] ?? array(), $tls_defaults );
+			}
+		} elseif ( 'memcached' === $method ) {
+			$config['client'] = 'memcached';
+			// Memcached does not use database, compression, or TLS options in this context.
+			// The config array remains clean of these Redis-specific values.
 		}
 
 		return $config;
