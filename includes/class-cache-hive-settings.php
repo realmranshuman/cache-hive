@@ -243,7 +243,7 @@ final class Cache_Hive_Settings {
 			'excludeQueryStrings'             => $default_exclude_queries,
 			'excludeCookies'                  => $default_exclude_cookies,
 			'excludeRoles'                    => array(),
-			'browserCacheEnabled'             => true,
+			'browserCacheEnabled'             => false,
 			'browserCacheTTL'                 => 604800,
 			'objectCacheEnabled'              => false,
 			'objectCacheMethod'               => 'redis',

@@ -19,15 +19,9 @@ import { toast as sonnerToast } from "sonner";
 const browserCacheSchema = z.object({
   browserCacheEnabled: z.boolean(),
   browserCacheTTL: z
-    .preprocess((val) => {
-      if (typeof val === "string") return Number(val);
-      return val;
-    },
-      z
-        .number()
-        .min(14400, "Minimum 4 hours (14400 seconds)")
-        .max(63072000, "Maximum 2 years (63072000 seconds)")
-    ),
+    .number({ invalid_type_error: "TTL must be a valid number." })
+    .min(14400, "Minimum 4 hours (14400 seconds)")
+    .max(63072000, "Maximum 2 years (63072000 seconds)"),
 })
 
 type BrowserCacheFormData = z.infer<typeof browserCacheSchema>
@@ -45,14 +39,13 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
   const [verifyLoading, setVerifyLoading] = React.useState(false);
   const [verifyMessage, setVerifyMessage] = React.useState<string | null>(null);
 
-  const form = useForm({
+  const form = useForm<BrowserCacheFormData>({
     resolver: zodResolver(browserCacheSchema),
-    defaultValues: initial,
+    values: {
+      browserCacheEnabled: initial?.browserCacheEnabled || false,
+      browserCacheTTL: initial?.browserCacheTTL || 31536000,
+    },
   });
-
-  React.useEffect(() => {
-    form.reset(initial);
-  }, [initial]);
 
   async function handleSubmit(data: BrowserCacheFormData) {
     await onSubmit({
@@ -65,7 +58,6 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(rules);
     } else {
-      // fallback for older browsers
       const textarea = document.createElement('textarea');
       textarea.value = rules;
       document.body.appendChild(textarea);
@@ -88,7 +80,6 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
       if (cacheControl && /max-age|public/.test(cacheControl)) {
         const verifyRes = await verifyNginxBrowserCache();
         setVerifyMessage(verifyRes.message || 'Verified!');
-        // Optionally, you can trigger a refresh in parent after verification
       } else {
         setVerifyMessage('Could not verify caching headers.');
       }
@@ -99,7 +90,8 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
     }
   }
 
-  // Show error and rules to copy if .htaccess is not writable after save attempt (even if rules are present)
+  // --- Conditional returns for views that DO NOT show the main form ---
+
   if (error && manualRules) {
     return (
       <div className="space-y-4">
@@ -110,7 +102,6 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
     );
   }
 
-  // Apache/LiteSpeed: .htaccess not writable and rules not present (initial load, not after save)
   if (
     status &&
     (status.server === 'apache' || status.server === 'litespeed') &&
@@ -126,87 +117,7 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
       </div>
     );
   }
-
-  // Apache/LiteSpeed: rules present (writable or not)
-  if (
-    status &&
-    (status.server === 'apache' || status.server === 'litespeed') &&
-    status.rulesPresent === true
-  ) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-green-100 text-green-800 p-3 rounded">
-          Browser cache is <b>active</b> (rules detected in <code>.htaccess</code>).<br />
-          TTL: <b>{status.settings.browserCacheTTL}</b> seconds.<br />
-          {status.htaccessWritable === false ? (
-            <>
-              The toggle is disabled because <code>.htaccess</code> is not writable.<br />
-              To disable browser cache, remove the rules manually from <code>.htaccess</code>.
-            </>
-          ) : (
-            <>
-              The toggle and TTL are now synced with the rules in <code>.htaccess</code>.<br />
-              You can edit settings below, or edit/remove the rules directly in <code>.htaccess</code>.
-            </>
-          )}
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1">Active .htaccess rules:</label>
-          <pre className="bg-gray-100 text-xs p-2 rounded overflow-x-auto select-text whitespace-pre-wrap font-mono text-black dark:bg-gray-900 dark:text-white" style={{ userSelect: 'text' }}>{status.rules}</pre>
-        </div>
-        <Form {...form}>
-          <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
-            <FormField
-              control={form.control}
-              name="browserCacheEnabled"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between">
-                  <FormLabel>Browser Cache</FormLabel>
-                  <FormControl>
-                    <Switch checked={field.value} disabled={status.htaccessWritable === false} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="browserCacheTTL"
-              render={({ field }) => (
-                <FormItem className="space-y-2">
-                  <FormLabel>Browser Cache TTL (seconds)</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      id="browser-cache-ttl"
-                      type="number"
-                      min={14400}
-                      max={63072000}
-                      step={1}
-                      placeholder="31536000"
-                      disabled={status.htaccessWritable === false}
-                      value={typeof field.value === 'number' || typeof field.value === 'string' ? field.value : ''}
-                      onChange={e => field.onChange(e.target.value === '' ? '' : Number(e.target.value))}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {status.htaccessWritable !== false && (
-              <div className="flex justify-end">
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            )}
-          </form>
-        </Form>
-      </div>
-    );
-  }
-
-  // Nginx: not verified, rules not present (simulate read-only by always showing if rulesPresent is false)
+  
   if (status && status.server === 'nginx' && !status.nginxVerified && status.rulesPresent === false) {
     return (
       <div className="space-y-4">
@@ -221,58 +132,95 @@ export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error
     );
   }
 
-  // Nginx: verified
   if (status && status.server === 'nginx' && status.nginxVerified) {
     return <div className="bg-green-100 text-green-800 p-3 rounded">Nginx browser cache rules are verified and active.</div>;
   }
 
-  // Default: show form
+  // --- Refactored Unified Form View ---
+
+  const rulesArePresent = status?.rulesPresent === true;
+  const isHtaccessReadOnly = status?.htaccessWritable === false;
+  const fieldsAreDisabled = isSaving || (rulesArePresent && isHtaccessReadOnly);
+  const showSaveButton = !(rulesArePresent && isHtaccessReadOnly);
+
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="browserCacheEnabled"
-          render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
-              <FormLabel>Browser Cache</FormLabel>
-              <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+    <div className="space-y-4">
+      {rulesArePresent && (
+        <>
+          <div className="bg-green-100 text-green-800 p-3 rounded">
+            Browser cache is <b>active</b> (rules detected in <code>.htaccess</code>).<br />
+            TTL: <b>{status.settings.browserCacheTTL}</b> seconds.<br />
+            {isHtaccessReadOnly ? (
+              <>
+                The toggle is disabled because <code>.htaccess</code> is not writable.<br />
+                To disable browser cache, remove the rules manually from <code>.htaccess</code>.
+              </>
+            ) : (
+              <>
+                The toggle and TTL are now synced with the rules in <code>.htaccess</code>.<br />
+                You can edit settings below, or edit/remove the rules directly in <code>.htaccess</code>.
+              </>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Active .htaccess rules:</label>
+            <pre className="bg-gray-100 text-xs p-2 rounded overflow-x-auto select-text whitespace-pre-wrap font-mono text-black dark:bg-gray-900 dark:text-white" style={{ userSelect: 'text' }}>{status.rules}</pre>
+          </div>
+        </>
+      )}
+
+      <Form {...form}>
+        <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+          <FormField
+            control={form.control}
+            name="browserCacheEnabled"
+            render={({ field }) => (
+              <FormItem className="flex items-center justify-between">
+                <FormLabel>Browser Cache</FormLabel>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={fieldsAreDisabled}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="browserCacheTTL"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Browser Cache TTL (seconds)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    id="browser-cache-ttl"
+                    type="number"
+                    min={14400}
+                    max={63072000}
+                    step={1}
+                    placeholder="31536000"
+                    disabled={fieldsAreDisabled}
+                    value={field.value ?? ''}
+                    onChange={e => field.onChange(Number(e.target.value))}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {showSaveButton && (
+            <div className="flex justify-end">
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           )}
-        />
-        <FormField
-          control={form.control}
-          name="browserCacheTTL"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Browser Cache TTL (seconds)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  id="browser-cache-ttl"
-                  type="number"
-                  min={14400}
-                  max={63072000}
-                  step={1}
-                  placeholder="31536000"
-                  disabled={isSaving}
-                  value={typeof field.value === 'number' || typeof field.value === 'string' ? field.value : ''}
-                  onChange={e => field.onChange(e.target.value === '' ? '' : Number(e.target.value))}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <div className="flex justify-end">
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Changes"}
-          </Button>
-        </div>
-      </form>
-    </Form>
+        </form>
+      </Form>
+    </div>
   );
 }
