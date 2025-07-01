@@ -71,10 +71,13 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 			}
 
 			if ( 'tls' === $parameters['scheme'] && ! empty( $this->config['tls_options'] ) ) {
-				$parameters['ssl'] = array(
-					'cafile'      => $this->config['tls_options']['ca_cert'] ?? null,
+				$ssl_options = array(
 					'verify_peer' => $this->config['tls_options']['verify_peer'] ?? true,
 				);
+				if ( ! empty( $this->config['tls_options']['ca_cert'] ) ) {
+					$ssl_options['cafile'] = $this->config['tls_options']['ca_cert'];
+				}
+				$parameters['ssl'] = $ssl_options;
 			}
 
 			$this->client = new Predis\Client( $parameters );
