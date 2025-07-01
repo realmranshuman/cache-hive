@@ -92,7 +92,7 @@ final class Cache_Hive_Engine {
 
 		$cache_file = Cache_Hive_Disk::get_cache_file_path();
 
-		if ( Cache_Hive_Disk::is_cache_valid( $cache_file ) ) {
+		if ( self::is_cache_valid( $cache_file ) ) {
 			header( 'X-Cache-Hive: Hit (Engine)' );
 		} elseif ( ( self::$settings['serveStale'] ?? false ) && file_exists( $cache_file ) ) {
 			header( 'X-Cache-Hive: Stale (Engine)' );
@@ -243,5 +243,37 @@ final class Cache_Hive_Engine {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Checks if a cache file is valid (exists and is not expired).
+	 *
+	 * @since 1.0.0
+	 * @param string $cache_file The full path to the cache file.
+	 * @return bool
+	 */
+	public static function is_cache_valid( $cache_file ) {
+		$meta_file = $cache_file . '.meta';
+
+		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
+			return false;
+		}
+
+		$meta_data_json = @file_get_contents( $meta_file );
+		if ( ! $meta_data_json ) {
+			return false;
+		}
+
+		$meta_data = json_decode( $meta_data_json, true );
+
+		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
+			return false;
+		}
+
+		if ( 0 === (int) $meta_data['ttl'] ) {
+			return true;
+		}
+
+		return ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time();
 	}
 }

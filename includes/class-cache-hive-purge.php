@@ -56,7 +56,7 @@ final class Cache_Hive_Purge {
 	 */
 	public static function purge_all() {
 		if ( is_dir( CACHE_HIVE_CACHE_DIR ) ) {
-			Cache_Hive_Disk::delete_directory( CACHE_HIVE_CACHE_DIR );
+			self::delete_directory( CACHE_HIVE_CACHE_DIR );
 		}
 
 		// Also purge integrated services.
@@ -252,7 +252,7 @@ final class Cache_Hive_Purge {
 		$dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
 
 		if ( is_dir( $dir_path ) ) {
-			Cache_Hive_Disk::delete_directory( $dir_path );
+			self::delete_directory( $dir_path );
 		}
 	}
 
@@ -270,7 +270,7 @@ final class Cache_Hive_Purge {
 			);
 			foreach ( $iterator as $file ) {
 				if ( $file->isDir() && strpos( $file->getFilename(), 'user_' ) === 0 ) {
-					Cache_Hive_Disk::delete_directory( $file->getRealPath() );
+					Cache_Hive_Purge::delete_directory( $file->getRealPath() );
 				}
 			}
 		}
@@ -300,7 +300,7 @@ final class Cache_Hive_Purge {
 			$iterator = new DirectoryIterator( $dir_path );
 			foreach ( $iterator as $fileinfo ) {
 				if ( $fileinfo->isDir() && strpos( $fileinfo->getFilename(), 'user_' ) === 0 ) {
-					Cache_Hive_Disk::delete_directory( $fileinfo->getRealPath() );
+					Cache_Hive_Purge::delete_directory( $fileinfo->getRealPath() );
 				}
 			}
 		}
@@ -349,9 +349,31 @@ final class Cache_Hive_Purge {
 			);
 			foreach ( $iterator as $file ) {
 				if ( $file->isDir() && $file->getFilename() === $user_hash ) {
-					Cache_Hive_Disk::delete_directory( $file->getRealPath() );
+					Cache_Hive_Purge::delete_directory( $file->getRealPath() );
 				}
 			}
 		}
+	}
+
+	/**
+	 * Recursively deletes a directory and its contents.
+	 *
+	 * @since 1.0.0
+	 * @param string $dir The directory path to delete.
+	 */
+	public static function delete_directory( $dir ) {
+		if ( ! file_exists( $dir ) ) {
+			return;
+		}
+		$it    = new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS );
+		$files = new RecursiveIteratorIterator( $it, RecursiveIteratorIterator::CHILD_FIRST );
+		foreach ( $files as $file ) {
+			if ( $file->isDir() ) {
+				@rmdir( $file->getRealPath() );
+			} else {
+				@unlink( $file->getRealPath() );
+			}
+		}
+		@rmdir( $dir );
 	}
 }

@@ -99,7 +99,7 @@ final class Cache_Hive_Lifecycle {
 	 * @since 1.0.0
 	 */
 	public static function setup_environment() {
-		Cache_Hive_Disk::create_advanced_cache_file();
+		self::create_advanced_cache_file();
 		self::set_wp_cache_constant( true );
 	}
 
@@ -113,7 +113,7 @@ final class Cache_Hive_Lifecycle {
 			@unlink( WP_CONTENT_DIR . '/advanced-cache.php' );
 		}
 		self::set_wp_cache_constant( false );
-		Cache_Hive_Disk::delete_config_file();
+		self::delete_config_file();
 	}
 
 	/**
@@ -164,6 +164,39 @@ final class Cache_Hive_Lifecycle {
 				error_log( 'Failed to invalidate OPcache for: ' . $config_file );
 			}
 		}
+	}
+
+	/**
+	 * Deletes the config file.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function delete_config_file() {
+		$config_file = CACHE_HIVE_CONFIG_DIR . '/config.php';
+		if ( file_exists( $config_file ) ) {
+			@unlink( $config_file );
+		}
+		if ( is_dir( CACHE_HIVE_CONFIG_DIR ) ) {
+			@rmdir( CACHE_HIVE_CONFIG_DIR );
+		}
+	}
+
+	/**
+	 * Creates the advanced-cache.php file in wp-content.
+	 *
+	 * @since 1.0.0
+	 * @return bool Success or failure.
+	 */
+	public static function create_advanced_cache_file() {
+		if ( ! is_writable( WP_CONTENT_DIR ) ) {
+			return false;
+		}
+		$advanced_cache_source_file      = CACHE_HIVE_DIR . 'class-cache-hive-advanced-cache.php';
+		$advanced_cache_destination_file = WP_CONTENT_DIR . '/advanced-cache.php';
+		if ( ! is_readable( $advanced_cache_source_file ) ) {
+			return false;
+		}
+		return copy( $advanced_cache_source_file, $advanced_cache_destination_file );
 	}
 
 	/**

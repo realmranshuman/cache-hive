@@ -19,39 +19,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Cache_Hive_Disk {
 	/**
-	 * Creates the advanced-cache.php file in wp-content.
-	 *
-	 * @since 1.0.0
-	 * @return bool Success or failure.
-	 */
-	public static function create_advanced_cache_file() {
-		if ( ! is_writable( WP_CONTENT_DIR ) ) {
-			return false;
-		}
-		$advanced_cache_source_file      = CACHE_HIVE_DIR . 'class-cache-hive-advanced-cache.php';
-		$advanced_cache_destination_file = WP_CONTENT_DIR . '/advanced-cache.php';
-		if ( ! is_readable( $advanced_cache_source_file ) ) {
-			return false;
-		}
-		return copy( $advanced_cache_source_file, $advanced_cache_destination_file );
-	}
-
-	/**
-	 * Deletes the config file.
-	 *
-	 * @since 1.0.0
-	 */
-	public static function delete_config_file() {
-		$config_file = CACHE_HIVE_CONFIG_DIR . '/config.php';
-		if ( file_exists( $config_file ) ) {
-			@unlink( $config_file );
-		}
-		if ( is_dir( CACHE_HIVE_CONFIG_DIR ) ) {
-			@rmdir( CACHE_HIVE_CONFIG_DIR );
-		}
-	}
-
-	/**
 	 * Get the full path to the cache file for the current request.
 	 *
 	 * @since 1.0.0
@@ -121,60 +88,6 @@ final class Cache_Hive_Disk {
 			);
 			file_put_contents( $meta_file, json_encode( $meta_data ), LOCK_EX );
 		}
-	}
-
-	/**
-	 * Checks if a cache file is valid (exists and is not expired).
-	 *
-	 * @since 1.0.0
-	 * @param string $cache_file The full path to the cache file.
-	 * @return bool
-	 */
-	public static function is_cache_valid( $cache_file ) {
-		$meta_file = $cache_file . '.meta';
-
-		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
-			return false;
-		}
-
-		$meta_data_json = @file_get_contents( $meta_file );
-		if ( ! $meta_data_json ) {
-			return false;
-		}
-
-		$meta_data = json_decode( $meta_data_json, true );
-
-		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
-			return false;
-		}
-
-		if ( 0 === (int) $meta_data['ttl'] ) {
-			return true;
-		}
-
-		return ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time();
-	}
-
-	/**
-	 * Recursively deletes a directory and its contents.
-	 *
-	 * @since 1.0.0
-	 * @param string $dir The directory path to delete.
-	 */
-	public static function delete_directory( $dir ) {
-		if ( ! file_exists( $dir ) ) {
-			return;
-		}
-		$it    = new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS );
-		$files = new RecursiveIteratorIterator( $it, RecursiveIteratorIterator::CHILD_FIRST );
-		foreach ( $files as $file ) {
-			if ( $file->isDir() ) {
-				@rmdir( $file->getRealPath() );
-			} else {
-				@unlink( $file->getRealPath() );
-			}
-		}
-		@rmdir( $dir );
 	}
 
 	/**
