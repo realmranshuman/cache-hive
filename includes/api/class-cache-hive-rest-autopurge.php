@@ -81,7 +81,7 @@ class Cache_Hive_REST_AutoPurge {
 
 		$new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
 		update_option( 'cache_hive_settings', $new_settings, 'yes' );
-		Cache_Hive_Disk::create_config_file( $new_settings );
+		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
 		// Manually build the response from the known fresh data.
 		$response_data = array(

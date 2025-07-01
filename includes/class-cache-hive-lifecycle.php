@@ -87,10 +87,99 @@ final class Cache_Hive_Lifecycle {
 		$settings = Cache_Hive_Settings::get_settings( true );
 
 		// This will create the config file, advanced-cache.php, and set WP_CACHE constant.
-		Cache_Hive_Disk::setup_environment();
+		self::setup_environment();
 
 		// Now that the environment is set up, ensure the config file has the latest settings.
-		Cache_Hive_Disk::create_config_file( $settings );
+		Cache_Hive_Lifecycle::create_config_file( $settings );
+	}
+
+	/**
+	 * Setup environment: create advanced-cache.php and set WP_CACHE constant.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function setup_environment() {
+		Cache_Hive_Disk::create_advanced_cache_file();
+		self::set_wp_cache_constant( true );
+	}
+
+	/**
+	 * Cleanup environment: remove advanced-cache.php and unset WP_CACHE constant.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function cleanup_environment() {
+		if ( file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ) ) {
+			@unlink( WP_CONTENT_DIR . '/advanced-cache.php' );
+		}
+		self::set_wp_cache_constant( false );
+		Cache_Hive_Disk::delete_config_file();
+	}
+
+	/**
+	 * Sets or unsets the WP_CACHE constant in wp-config.php.
+	 *
+	 * @since 1.0.0
+	 * @param bool $enable True to set the constant, false to remove.
+	 */
+	private static function set_wp_cache_constant( $enable = true ) {
+		$config_path = self::find_wp_config_path();
+		if ( ! $config_path || ! is_writable( $config_path ) ) {
+			return;
+		}
+
+		$config_content = file_get_contents( $config_path );
+		$define_string  = "define( 'WP_CACHE', true ); // Added by Cache Hive.";
+
+		$config_content = preg_replace( "/^[\t\s]*define\s*\(\s*['\"]WP_CACHE['\"]\s*,\s*.*\s*\);.*?\R/mi", '', $config_content );
+
+		if ( $enable ) {
+			// Insert define at the top after <?php.
+			$config_content = preg_replace( '/<\?php(.*?\n)/', "<?php\n$define_string\n", $config_content, 1 );
+		}
+
+		file_put_contents( $config_path, $config_content, LOCK_EX );
+	}
+
+	/**
+	 * Create the config file with current settings for advanced-cache.php to read.
+	 *
+	 * @since 1.0.0
+	 * @param array $settings The settings array.
+	 */
+	public static function create_config_file( $settings ) {
+		if ( ! is_dir( CACHE_HIVE_CONFIG_DIR ) ) {
+			@mkdir( CACHE_HIVE_CONFIG_DIR, 0755, true );
+		}
+
+		$config_file = CACHE_HIVE_CONFIG_DIR . '/config.php';
+		$contents    = '<?php return ' . var_export( $settings, true ) . ';';
+		file_put_contents( $config_file, $contents, LOCK_EX );
+
+		// Invalidate OPcache for the config file.
+		if ( function_exists( 'opcache_invalidate' ) && ini_get( 'opcache.enable' ) ) {
+			$result = opcache_invalidate( $config_file, true );
+			if ( false === $result ) {
+				// Optionally log or handle the failure to invalidate OPcache.
+				error_log( 'Failed to invalidate OPcache for: ' . $config_file );
+			}
+		}
+	}
+
+	/**
+	 * Finds the path to wp-config.php.
+	 *
+	 * @since 1.0.0
+	 * @return string|false Path to wp-config.php or false if not found.
+	 */
+	private static function find_wp_config_path() {
+		if ( file_exists( ABSPATH . 'wp-config.php' ) ) {
+			return ABSPATH . 'wp-config.php';
+		}
+		if ( file_exists( dirname( ABSPATH ) . '/wp-config.php' ) && ! file_exists( dirname( ABSPATH ) . '/wp-settings.php' ) ) {
+			return dirname( ABSPATH ) . '/wp-config.php';
+		}
+		return false;
 	}
 
 	/**
@@ -103,7 +192,7 @@ final class Cache_Hive_Lifecycle {
 		Cache_Hive_Purge::purge_all();
 
 		// This will remove advanced-cache.php, the WP_CACHE constant, and the config file.
-		Cache_Hive_Disk::cleanup_environment();
+		self::cleanup_environment();
 
 		// Remove object-cache.php drop-in if it exists.
 		$dropin = defined( 'WP_CONTENT_DIR' ) ? WP_CONTENT_DIR . '/object-cache.php' : false;

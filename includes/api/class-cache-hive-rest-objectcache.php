@@ -150,7 +150,7 @@ class Cache_Hive_REST_ObjectCache {
 		// Save the pure, camelCased settings to the database.
 		update_option( 'cache_hive_settings', $settings_to_save, 'yes' );
 		// Generate the config and drop-in files from these same pure settings.
-		Cache_Hive_Disk::create_config_file( $settings_to_save );
+		Cache_Hive_Lifecycle::create_config_file( $settings_to_save );
 		Cache_Hive_Object_Cache::manage_dropin( $settings_to_save );
 
 		// Get the full response data structure, which now reflects the saved options.

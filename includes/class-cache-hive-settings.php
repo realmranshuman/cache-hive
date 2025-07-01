@@ -425,4 +425,27 @@ final class Cache_Hive_Settings {
 
 		return $sanitized;
 	}
+
+	/**
+	 * Gets the TTL (time to live) for the current page based on context.
+	 *
+	 * @since 1.0.0
+	 * @return int TTL in seconds.
+	 */
+	public static function get_current_page_ttl() {
+		$settings = self::get_settings();
+		if ( function_exists( 'is_front_page' ) && ( is_front_page() || is_home() ) ) {
+			return $settings['frontPageTTL'] ?? 0;
+		}
+		if ( function_exists( 'is_feed' ) && is_feed() ) {
+			return $settings['feedTTL'] ?? 0;
+		}
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return $settings['restTTL'] ?? 0;
+		}
+		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) {
+			return $settings['privateCacheTTL'] ?? 0;
+		}
+		return $settings['publicCacheTTL'] ?? 0;
+	}
 }

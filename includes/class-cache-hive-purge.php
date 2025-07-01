@@ -55,7 +55,9 @@ final class Cache_Hive_Purge {
 	 * @since 1.0.0
 	 */
 	public static function purge_all() {
-		Cache_Hive_Disk::purge_all();
+		if ( is_dir( CACHE_HIVE_CACHE_DIR ) ) {
+			Cache_Hive_Disk::delete_directory( CACHE_HIVE_CACHE_DIR );
+		}
 
 		// Also purge integrated services.
 		if ( Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
@@ -131,7 +133,7 @@ final class Cache_Hive_Purge {
 		// Only purge entire site if the setting is strictly true.
 		if ( true === Cache_Hive_Settings::get( 'autoPurgeEntireSite', false ) ) {
 			self::purge_all();
-			Cache_Hive_Disk::purge_all_private(); // Purge private cache as well.
+			Cache_Hive_Purge::purge_all_private(); // Purge private cache as well.
 			return;
 		}
 
@@ -141,27 +143,27 @@ final class Cache_Hive_Purge {
 			if ( 'post' === $post->post_type ) {
 				$url_to_purge = get_permalink( $post );
 				if ( $url_to_purge ) {
-					Cache_Hive_Disk::purge_url( $url_to_purge );
-					Cache_Hive_Disk::purge_private_url( $url_to_purge ); // Purge private cache for this post.
+					Cache_Hive_Purge::purge_url( $url_to_purge );
+					Cache_Hive_Purge::purge_private_url( $url_to_purge ); // Purge private cache for this post.
 				}
 			}
 			// For pages, purge homepage/frontpage as a proxy for all pages.
 			if ( 'page' === $post->post_type && Cache_Hive_Settings::get( 'autoPurgePages' ) ) {
-				Cache_Hive_Disk::purge_url( home_url( '/' ) );
-				Cache_Hive_Disk::purge_private_url( home_url( '/' ) );
+				Cache_Hive_Purge::purge_url( home_url( '/' ) );
+				Cache_Hive_Purge::purge_private_url( home_url( '/' ) );
 			}
 		}
 		// Purge Front Page / Home.
 		if ( Cache_Hive_Settings::get( 'autoPurgeFrontPage' ) || Cache_Hive_Settings::get( 'autoPurgeHomePage' ) ) {
-			Cache_Hive_Disk::purge_url( home_url( '/' ) );
-			Cache_Hive_Disk::purge_private_url( home_url( '/' ) );
+			Cache_Hive_Purge::purge_url( home_url( '/' ) );
+			Cache_Hive_Purge::purge_private_url( home_url( '/' ) );
 		}
 		// Purge Author Archive.
 		if ( $post && Cache_Hive_Settings::get( 'autoPurgeAuthorArchive' ) ) {
 			$author_url = get_author_posts_url( $post->post_author );
 			if ( $author_url ) {
-				Cache_Hive_Disk::purge_url( $author_url );
-				Cache_Hive_Disk::purge_private_url( $author_url );
+				Cache_Hive_Purge::purge_url( $author_url );
+				Cache_Hive_Purge::purge_private_url( $author_url );
 			}
 		}
 		// Purge Post Type Archive.
@@ -170,8 +172,8 @@ final class Cache_Hive_Purge {
 			if ( $post_type_obj && ! empty( $post_type_obj->has_archive ) ) {
 				$archive_url = get_post_type_archive_link( $post->post_type );
 				if ( $archive_url ) {
-					Cache_Hive_Disk::purge_url( $archive_url );
-					Cache_Hive_Disk::purge_private_url( $archive_url );
+					Cache_Hive_Purge::purge_url( $archive_url );
+					Cache_Hive_Purge::purge_private_url( $archive_url );
 				}
 			}
 		}
@@ -181,8 +183,8 @@ final class Cache_Hive_Purge {
 			if ( $year ) {
 				$year_url = get_year_link( $year );
 				if ( $year_url ) {
-					Cache_Hive_Disk::purge_url( $year_url );
-					Cache_Hive_Disk::purge_private_url( $year_url );
+					Cache_Hive_Purge::purge_url( $year_url );
+					Cache_Hive_Purge::purge_private_url( $year_url );
 				}
 			}
 		}
@@ -193,8 +195,8 @@ final class Cache_Hive_Purge {
 			if ( $year && $month ) {
 				$month_url = get_month_link( $year, $month );
 				if ( $month_url ) {
-					Cache_Hive_Disk::purge_url( $month_url );
-					Cache_Hive_Disk::purge_private_url( $month_url );
+					Cache_Hive_Purge::purge_url( $month_url );
+					Cache_Hive_Purge::purge_private_url( $month_url );
 				}
 			}
 		}
@@ -206,8 +208,8 @@ final class Cache_Hive_Purge {
 			if ( $year && $month && $day ) {
 				$day_url = get_day_link( $year, $month, $day );
 				if ( $day_url ) {
-					Cache_Hive_Disk::purge_url( $day_url );
-					Cache_Hive_Disk::purge_private_url( $day_url );
+					Cache_Hive_Purge::purge_url( $day_url );
+					Cache_Hive_Purge::purge_private_url( $day_url );
 				}
 			}
 		}
@@ -220,10 +222,134 @@ final class Cache_Hive_Purge {
 					foreach ( $terms as $term ) {
 						$term_url = get_term_link( $term );
 						if ( ! is_wp_error( $term_url ) ) {
-							Cache_Hive_Disk::purge_url( $term_url );
-							Cache_Hive_Disk::purge_private_url( $term_url );
+							Cache_Hive_Purge::purge_url( $term_url );
+							Cache_Hive_Purge::purge_private_url( $term_url );
 						}
 					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Purges a single URL. This now correctly purges the subdirectory containing both mobile and desktop files.
+	 *
+	 * @since 1.0.0
+	 * @param string $url The URL to purge.
+	 */
+	public static function purge_url( $url ) {
+		$url_parts = wp_parse_url( $url );
+		if ( empty( $url_parts['path'] ) ) {
+			return;
+		}
+
+		$uri = rtrim( $url_parts['path'], '/' );
+		if ( empty( $uri ) ) {
+			$uri = '/__index__';
+		}
+
+		$host     = strtolower( $url_parts['host'] );
+		$dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
+
+		if ( is_dir( $dir_path ) ) {
+			Cache_Hive_Disk::delete_directory( $dir_path );
+		}
+	}
+
+	/**
+	 * Purges all private user cache directories.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function purge_all_private() {
+		// Implement logic to delete all user_ directories recursively under CACHE_HIVE_CACHE_DIR.
+		if ( is_dir( CACHE_HIVE_CACHE_DIR ) ) {
+			$iterator = new RecursiveIteratorIterator(
+				new RecursiveDirectoryIterator( CACHE_HIVE_CACHE_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
+				RecursiveIteratorIterator::CHILD_FIRST
+			);
+			foreach ( $iterator as $file ) {
+				if ( $file->isDir() && strpos( $file->getFilename(), 'user_' ) === 0 ) {
+					Cache_Hive_Disk::delete_directory( $file->getRealPath() );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Purges the private cache for a specific URL.
+	 *
+	 * @since 1.0.0
+	 * @param string $url The URL to purge private cache for.
+	 */
+	public static function purge_private_url( $url ) {
+		$url_parts = wp_parse_url( $url );
+		if ( empty( $url_parts['path'] ) ) {
+			return;
+		}
+
+		$uri = rtrim( $url_parts['path'], '/' );
+		if ( empty( $uri ) ) {
+			$uri = '/__index__';
+		}
+
+		$host     = strtolower( $url_parts['host'] );
+		$dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
+
+		if ( is_dir( $dir_path ) ) {
+			$iterator = new DirectoryIterator( $dir_path );
+			foreach ( $iterator as $fileinfo ) {
+				if ( $fileinfo->isDir() && strpos( $fileinfo->getFilename(), 'user_' ) === 0 ) {
+					Cache_Hive_Disk::delete_directory( $fileinfo->getRealPath() );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Registers hooks for purging private cache on user logout.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function register_hooks() {
+		add_action( 'wp_logout', array( __CLASS__, 'purge_current_user_private_cache' ) );
+	}
+
+	/**
+	 * Purges the private cache for the current user on logout.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function purge_current_user_private_cache() {
+		if ( function_exists( 'wp_get_current_user' ) ) {
+			$user = wp_get_current_user();
+			if ( $user && $user->ID ) {
+				self::purge_user_private_cache( $user->ID );
+			}
+		}
+	}
+
+	/**
+	 * Purges the private cache for a specific user ID.
+	 *
+	 * @since 1.0.0
+	 * @param int $user_id The user ID whose private cache should be purged.
+	 */
+	public static function purge_user_private_cache( $user_id ) {
+		$settings = Cache_Hive_Settings::get_settings();
+		if ( empty( $settings['cacheLoggedUsers'] ) ) {
+			return;
+		}
+		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive';
+		$user_hash = 'user_' . md5( $user_id . $auth_key );
+		if ( is_dir( CACHE_HIVE_CACHE_DIR ) ) {
+			$iterator = new RecursiveIteratorIterator(
+				new RecursiveDirectoryIterator( CACHE_HIVE_CACHE_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
+				RecursiveIteratorIterator::CHILD_FIRST
+			);
+			foreach ( $iterator as $file ) {
+				if ( $file->isDir() && $file->getFilename() === $user_hash ) {
+					Cache_Hive_Disk::delete_directory( $file->getRealPath() );
 				}
 			}
 		}

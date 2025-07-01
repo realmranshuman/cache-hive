@@ -71,7 +71,7 @@ require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-object-cac
 
 // Register hooks for cache purging on logout.
 if ( class_exists( 'Cache_Hive_Disk' ) ) {
-	Cache_Hive_Disk::register_hooks();
+	Cache_Hive_Purge::register_hooks();
 }
 
 // =========================================================================

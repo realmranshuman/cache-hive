@@ -61,7 +61,7 @@ class Cache_Hive_REST_BrowserCache {
 						$settings['browserCacheEnabled'] = true;
 						$settings['browserCacheTTL']     = $ttl;
 						update_option( 'cache_hive_settings', $settings );
-						Cache_Hive_Disk::create_config_file( $settings );
+						Cache_Hive_Lifecycle::create_config_file( $settings );
 						$status['settings']['browserCacheEnabled'] = true;
 						$status['settings']['browserCacheTTL']     = $ttl;
 					}
@@ -140,7 +140,7 @@ class Cache_Hive_REST_BrowserCache {
 		}
 		$new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
 		update_option( 'cache_hive_settings', $new_settings );
-		Cache_Hive_Disk::create_config_file( $new_settings );
+		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 		$server = Cache_Hive_Browser_Cache::get_server_software();
 		if ( 'apache' === $server || 'litespeed' === $server ) {
 			if ( ! function_exists( 'get_home_path' ) ) {
