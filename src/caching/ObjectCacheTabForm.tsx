@@ -104,6 +104,23 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
     return val.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
   }
 
+  // NEW: Get available clients and methods from capabilities
+  const availableClients = React.useMemo(() => {
+    const c = (initial.serverCapabilities?.clients || {}) as Record<string, boolean>;
+    return [
+      c.phpredis ? { value: 'phpredis', label: 'PhpRedis' } : null,
+      c.predis ? { value: 'predis', label: 'Predis' } : null,
+      c.credis ? { value: 'credis', label: 'Credis' } : null,
+    ].filter(Boolean) as { value: string, label: string }[];
+  }, [initial.serverCapabilities]);
+
+  const availableMethods = React.useMemo(() => {
+    const c = (initial.serverCapabilities?.clients || {}) as Record<string, boolean>;
+    const methods = [{ value: 'redis', label: 'Redis' }];
+    if (c.memcached) methods.push({ value: 'memcached', label: 'Memcached' });
+    return methods;
+  }, [initial.serverCapabilities]);
+
   const form = useForm<ObjectCacheFormData>({
     resolver: zodResolver(objectCacheSchema),
     defaultValues: {
@@ -195,7 +212,11 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
                     {withWpConfigHoverCard('objectCacheMethod', (
                       <Select value={field.value} onValueChange={field.onChange} disabled={disabled('objectCacheMethod')}>
                         <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent><SelectItem value="redis">Redis</SelectItem><SelectItem value="memcached">Memcached</SelectItem></SelectContent>
+                        <SelectContent>
+                          {availableMethods.map(method => (
+                            <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     ))}
                     <FormMessage />
@@ -224,9 +245,9 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="phpredis">PhpRedis</SelectItem>
-                                  <SelectItem value="predis">Predis</SelectItem>
-                                  <SelectItem value="credis">Credis</SelectItem>
+                                  {availableClients.map(client => (
+                                    <SelectItem key={client.value} value={client.value}>{client.label}</SelectItem>
+                                  ))}
                                 </SelectContent>
                               </Select>
                             </div>
@@ -247,9 +268,9 @@ export function ObjectCacheTabForm({ initial, onSubmit, isSaving }: { initial: O
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="phpredis">PhpRedis</SelectItem>
-                            <SelectItem value="predis">Predis</SelectItem>
-                            <SelectItem value="credis">Credis</SelectItem>
+                            {availableClients.map(client => (
+                              <SelectItem key={client.value} value={client.value}>{client.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       ))}
