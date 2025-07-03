@@ -65,10 +65,10 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 	private static function remove_comments( $html ) {
 		// Protect IE conditional comments.
 		$protected_comments = array();
-		$html = preg_replace_callback(
+		$html               = preg_replace_callback(
 			'/<!--\[if.*?\[endif\]-->/is',
 			function ( $matches ) use ( &$protected_comments ) {
-				$placeholder = '<!--CACHE-HIVE-IE-COMMENT--' . count( $protected_comments ) . '-->';
+				$placeholder          = '<!--CACHE-HIVE-IE-COMMENT--' . count( $protected_comments ) . '-->';
 				$protected_comments[] = $matches[0];
 				return $placeholder;
 			},
@@ -120,8 +120,8 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $html; // Return original HTML if tokenization fails.
 		}
 
-		$output      = '';
-		$skip_stack  = array(); // Use a stack to handle nested skip tags correctly.
+		$output       = '';
+		$skip_stack   = array(); // Use a stack to handle nested skip tags correctly.
 		$tags_to_skip = array(
 			'pre',
 			'code',
@@ -135,7 +135,7 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 			if ( isset( $token[0] ) && '<' === $token[0] ) {
 				// It's a tag, get its name. e.g., 'div' from '<div class="...">' or '/div' from '</div>'.
 				if ( preg_match( '/^<([\/!\?]?)(\w+)/', $token, $matches ) ) {
-					$tag_name = strtolower( $matches[2] );
+					$tag_name       = strtolower( $matches[2] );
 					$is_closing_tag = '/' === $matches[1];
 
 					// If this is a closing tag for the last item on our skip stack, pop it off.

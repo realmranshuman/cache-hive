@@ -78,6 +78,16 @@ if ( class_exists( 'Cache_Hive_Disk' ) ) {
 // ADMIN UI SETUP
 // =========================================================================
 
+// Add Settings link on Plugins page.
+add_filter(
+	'plugin_action_links_' . CACHE_HIVE_BASE,
+	function ( $links ) {
+		$settings_link = '<a href="' . admin_url( 'admin.php?page=cache-hive' ) . '">' . __( 'Settings', 'cache-hive' ) . '</a>';
+		array_unshift( $links, $settings_link );
+		return $links;
+	}
+);
+
 add_action(
 	'admin_menu',
 	function () {
