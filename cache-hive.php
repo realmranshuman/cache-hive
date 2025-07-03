@@ -185,20 +185,6 @@ add_action(
 	100
 );
 
-add_action( 'plugins_loaded', 'cache_hive_init' );
-
-/**
- * Initializes plugin components that need to run on the 'plugins_loaded' hook.
- *
- * @since 1.0.0
- */
-function cache_hive_init() {
-	// Initialize object cache if the class exists.
-	if ( class_exists( 'Cache_Hive_Object_Cache' ) ) {
-		Cache_Hive_Object_Cache::init();
-	}
-}
-
 /**
  * Begins execution of the plugin.
  *

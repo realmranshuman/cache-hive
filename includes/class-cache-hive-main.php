@@ -62,6 +62,7 @@ final class Cache_Hive_Main {
 	private function init_components() {
 		Cache_Hive_REST_API::init();
 		Cache_Hive_Purge::init();
+		Cache_Hive_Object_Cache::init(); // Explicitly initialize object cache.
 		// Cache_Hive_Cloudflare::init(); // Uncomment when ready.
 		// Cache_Hive_HTML_Optimizer::init(); // Uncomment when ready.
 		// Cache_Hive_CSS_Optimizer::init(); // Uncomment when ready.
