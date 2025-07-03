@@ -83,9 +83,7 @@ final class Cache_Hive_Main {
 		// Core plugin initialization.
 		add_action( 'init', array( 'Cache_Hive_Engine', 'start' ), 0 );
 		add_action( 'init', array( $this, 'load_textdomain' ) );
-
-		// Add a simple action link for convenience.
-		add_filter( 'plugin_action_links_' . CACHE_HIVE_BASE, array( $this, 'add_plugin_action_links' ) );
+		add_action( 'init', array( 'Cache_Hive_Base_Optimizer', 'init_hooks' ) );
 	}
 
 	/**

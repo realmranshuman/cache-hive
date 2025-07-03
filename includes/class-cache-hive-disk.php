@@ -51,12 +51,23 @@ final class Cache_Hive_Disk {
 	}
 
 	/**
-	 * Creates a static HTML file and its metadata file.
+	 * Creates a static HTML file and its metadata file after running optimizations.
 	 *
 	 * @since 1.0.0
 	 * @param string $buffer The page content to cache.
 	 */
 	public static function cache_page( $buffer ) {
+		// INTEGRATION POINT: Run all enabled optimizations on the buffer before caching.
+		$optimized_buffer = Cache_Hive_Base_Optimizer::optimize( $buffer );
+
+		// If optimization returned something valid, use it. Otherwise, fall back to original.
+		$final_buffer = ! empty( $optimized_buffer ) ? $optimized_buffer : $buffer;
+
+		// Don't cache empty pages.
+		if ( empty( trim( $final_buffer ) ) ) {
+			return;
+		}
+
 		$cache_file = self::get_cache_file_path();
 		$meta_file  = $cache_file . '.meta';
 		$cache_dir  = dirname( $cache_file );
@@ -67,7 +78,7 @@ final class Cache_Hive_Disk {
 			}
 		}
 
-		$cache_created = file_put_contents( $cache_file, $buffer . self::get_cache_signature(), LOCK_EX );
+		$cache_created = file_put_contents( $cache_file, $final_buffer . self::get_cache_signature(), LOCK_EX );
 
 		if ( $cache_created ) {
 			if ( false !== strpos( $cache_file, '/user_' ) ) {
