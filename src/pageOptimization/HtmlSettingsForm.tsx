@@ -15,10 +15,94 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 
+// Helper function to check if a string is a valid absolute or protocol-relative URL.
+// Accepts http, https, and protocol-relative URLs (//).
+const isValidUrl = (url: string) => {
+  if (typeof url !== "string" || !url.trim()) return false;
+
+  // Allow protocol-relative URLs
+  if (url.startsWith("//")) {
+    url = "http:" + url;
+  }
+
+  // Explicitly require '//' after protocol for absolute URLs
+  if (
+    (url.startsWith("http:") || url.startsWith("https:")) &&
+    !url.startsWith("http://") &&
+    !url.startsWith("https://")
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    // Only allow http(s) protocols
+    if (!["http:", "https:"].includes(parsed.protocol)) return false;
+
+    // Hostname must be present and contain at least one dot (not localhost)
+    if (
+      !parsed.hostname ||
+      !/^[a-zA-Z0-9.-]+$/.test(parsed.hostname) ||
+      !parsed.hostname.includes(".")
+    ) {
+      return false;
+    }
+
+    // Disallow spaces or control chars anywhere
+    if (/\s/.test(url)) return false;
+
+    // Disallow fragments
+    if (parsed.hash) return false;
+
+    // Disallow empty host or protocol
+    if (!parsed.protocol || !parsed.hostname) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// The schema is updated to attach the validation error to the parent field.
 const htmlSchema = z.object({
   minify: z.boolean(),
-  dnsPrefetch: z.array(z.string()).optional(),
-  dnsPreconnect: z.array(z.string()).optional(),
+  dnsPrefetch: z
+    .array(z.string())
+    .optional()
+    .superRefine((urls, ctx) => {
+      if (urls) {
+        for (const url of urls) {
+          // We only validate non-empty lines.
+          if (url && !isValidUrl(url)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "One or more entries is not a valid URL.",
+              // By OMITTING the `path` property, the error is attached
+              // to `dnsPrefetch` itself, which <FormMessage /> can read.
+            });
+            // We only need one error to invalidate the whole field, so we stop.
+            break;
+          }
+        }
+      }
+    }),
+  dnsPreconnect: z
+    .array(z.string())
+    .optional()
+    .superRefine((urls, ctx) => {
+      if (urls) {
+        for (const url of urls) {
+          if (url && !isValidUrl(url)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "One or more entries is not a valid URL.",
+            });
+            break;
+          }
+        }
+      }
+    }),
   autoDnsPrefetch: z.boolean(),
   googleFontsAsync: z.boolean(),
   keepComments: z.boolean(),
@@ -41,7 +125,6 @@ export function HtmlSettingsForm({
 }: HtmlSettingsFormProps) {
   const form = useForm<HtmlFormData>({
     resolver: zodResolver(htmlSchema),
-    // THE FIX: Use `values` to make the form a controlled component.
     values: {
       minify: initial.minify ?? false,
       dnsPrefetch: initial.dnsPrefetch ?? [],
@@ -54,10 +137,16 @@ export function HtmlSettingsForm({
     },
   });
 
+  const handleTextareaChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    field: any // The field object from react-hook-form's render prop
+  ) => {
+    field.onChange(e.target.value.split("\n"));
+  };
+
   return (
     <Form {...form}>
-      <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-        {/* ... form fields remain the same ... */}
+      <form className="space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
         <FormField
           control={form.control}
           name="minify"
@@ -74,50 +163,65 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="dnsPrefetch"
           render={({ field }) => (
-            <FormItem className="space-y-2">
+            <FormItem>
               <FormLabel>DNS Prefetch</FormLabel>
               <FormControl>
                 <Textarea
                   id="dns-prefetch"
-                  placeholder={"//fonts.googleapis.com\n//cdn.example.com"}
-                  rows={2}
+                  placeholder={
+                    "https://fonts.googleapis.com\n//cdn.example.com"
+                  }
+                  rows={3}
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
+                  className="font-mono text-sm"
                 />
               </FormControl>
+              <FormDescription>
+                Enter one full URL per line (e.g., https://example.com or
+                //example.com).
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="dnsPreconnect"
           render={({ field }) => (
-            <FormItem className="space-y-2">
+            <FormItem>
               <FormLabel>DNS Preconnect</FormLabel>
               <FormControl>
                 <Textarea
                   id="dns-preconnect"
-                  placeholder={"//fonts.gstatic.com\n//cdn.example.com"}
-                  rows={2}
+                  placeholder={"https://fonts.gstatic.com\n//cdn.example.com"}
+                  rows={3}
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
+                  className="font-mono text-sm"
                 />
               </FormControl>
+              <FormDescription>
+                Enter one full URL per line. Use for critical, third-party
+                domains.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="autoDnsPrefetch"
@@ -139,6 +243,7 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="googleFontsAsync"
@@ -155,6 +260,7 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="keepComments"
@@ -171,6 +277,7 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="removeEmoji"
@@ -187,6 +294,7 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="removeNoscript"
@@ -203,6 +311,7 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
+
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}
