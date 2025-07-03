@@ -69,8 +69,22 @@ class Cache_Hive_REST_AutoPurge {
 					break;
 				case 'customPurgeHooks':
 					if ( is_array( $value ) ) {
-						$updated_settings[ $key ] = array_map( 'sanitize_text_field', $value );
+						// Sanitize all incoming hook names first.
+						$sanitized_hooks = array_map( 'sanitize_text_field', $value );
+
+						// Filter the array, keeping only hooks that actually exist in WordPress.
+						$validated_hooks = array_filter(
+							$sanitized_hooks,
+							function ( $hook ) {
+								// A hook is considered valid if it is registered as either an action or a filter.
+								return has_action( $hook ) || has_filter( $hook );
+							}
+						);
+
+						// Re-index the array to ensure it's a simple, 0-indexed array for JSON conversion.
+						$updated_settings[ $key ] = array_values( $validated_hooks );
 					} else {
+						// If the input isn't an array for some reason, default to an empty array.
 						$updated_settings[ $key ] = array();
 					}
 					break;
