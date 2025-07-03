@@ -215,17 +215,22 @@ final class Cache_Hive_Settings {
 		);
 
 		return array(
+			// Cache Settings.
 			'enableCache'                     => true,
 			'cacheLoggedUsers'                => false,
 			'cacheCommenters'                 => false,
 			'cacheRestApi'                    => false,
 			'cacheMobile'                     => false,
 			'mobileUserAgents'                => $default_mobile_agents,
+			'serveStale'                      => false,
+			'purgeOnUpgrade'                  => true,
+			// TTL Settings.
 			'publicCacheTTL'                  => 604800,
 			'privateCacheTTL'                 => 1800,
 			'frontPageTTL'                    => 604800,
 			'feedTTL'                         => 604800,
 			'restTTL'                         => 604800,
+			// Auto Purge Settings.
 			'autoPurgeEntireSite'             => false,
 			'autoPurgeFrontPage'              => true,
 			'autoPurgeHomePage'               => false,
@@ -236,15 +241,16 @@ final class Cache_Hive_Settings {
 			'autoPurgeMonthlyArchive'         => true,
 			'autoPurgeDailyArchive'           => true,
 			'autoPurgeTermArchive'            => true,
-			'purgeOnUpgrade'                  => true,
-			'serveStale'                      => false,
 			'customPurgeHooks'                => $default_custom_hooks,
+			// Exclusion Settings.
 			'excludeUris'                     => $default_exclude_uris,
 			'excludeQueryStrings'             => $default_exclude_queries,
 			'excludeCookies'                  => $default_exclude_cookies,
 			'excludeRoles'                    => array(),
+			// Browser Cache Settings.
 			'browserCacheEnabled'             => false,
 			'browserCacheTTL'                 => 604800,
+			// Object Cache Settings.
 			'objectCacheEnabled'              => false,
 			'objectCacheMethod'               => 'redis',
 			'objectCacheClient'               => 'phpredis',
@@ -292,6 +298,7 @@ final class Cache_Hive_Settings {
 			'objectCachePersistentConnection' => false,
 			'prefetch'                        => true,
 			'flush_async'                     => true,
+			// Cloudflare Settings.
 			'cloudflare_enabled'              => false,
 			'cloudflare_api_method'           => 'token',
 			'cloudflare_api_key'              => '',
@@ -299,6 +306,40 @@ final class Cache_Hive_Settings {
 			'cloudflare_email'                => '',
 			'cloudflare_domain'               => '',
 			'cloudflare_zone_id'              => '',
+			// Page Optimization - CSS.
+			'css_minify'                      => false,
+			'css_combine'                     => false,
+			'css_combine_external_inline'     => false,
+			'css_font_optimization'           => 'default',
+			'css_excludes'                    => array(),
+			// Page Optimization - JS.
+			'js_minify'                       => false,
+			'js_combine'                      => false,
+			'js_combine_external_inline'      => false,
+			'js_defer_mode'                   => 'off',
+			'js_excludes'                     => array(),
+			'js_defer_excludes'               => array(),
+			// Page Optimization - HTML.
+			'html_minify'                     => false,
+			'html_dns_prefetch'               => array(),
+			'html_dns_preconnect'             => array(),
+			'auto_dns_prefetch'               => false,
+			'google_fonts_async'              => false,
+			'html_keep_comments'              => false,
+			'remove_emoji_scripts'            => false,
+			'html_remove_noscript'            => false,
+			// Page Optimization - Media.
+			'media_lazyload_images'           => false,
+			'media_lazyload_iframes'          => false,
+			'media_image_excludes'            => array(),
+			'media_iframe_excludes'           => array(),
+			'media_add_missing_sizes'         => false,
+			'media_responsive_placeholder'    => false,
+			'media_optimize_uploads'          => false,
+			'media_optimization_quality'      => 82,
+			'media_auto_resize_uploads'       => false,
+			'media_resize_width'              => 0,
+			'media_resize_height'             => 0,
 		);
 	}
 
@@ -416,6 +457,10 @@ final class Cache_Hive_Settings {
 				} elseif ( is_float( $default_value ) ) {
 					$sanitized[ $key ] = (float) $value;
 				} elseif ( is_array( $default_value ) ) {
+					// Handle both array and string (from textarea) inputs.
+					if ( is_string( $value ) ) {
+						$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
+					}
 					$sanitized[ $key ] = is_array( $value ) ? array_values( array_filter( array_map( 'sanitize_text_field', $value ) ) ) : array();
 				} else {
 					$sanitized[ $key ] = sanitize_text_field( $value );

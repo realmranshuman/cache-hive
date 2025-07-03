@@ -17,6 +17,10 @@ require_once __DIR__ . '/api/class-cache-hive-rest-exclusions.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-objectcache.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-browsercache.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-roles.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-css.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-js.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-html.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-media.php';
 
 /**
  * Final class for managing all REST API endpoints for Cache Hive.
@@ -49,7 +53,7 @@ final class Cache_Hive_REST_API {
 	 * @since 1.0.0
 	 */
 	public static function register_routes() {
-		// Only register per-section endpoints.
+		// Cache Settings Routes.
 		register_rest_route(
 			self::$namespace,
 			'/cache',
@@ -153,6 +157,72 @@ final class Cache_Hive_REST_API {
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( 'Cache_Hive_REST_BrowserCache', 'verify_nginx_browser_cache' ),
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		// Page Optimization Routes.
+		register_rest_route(
+			self::$namespace,
+			'/optimizers/css',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_CSS', 'get_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_CSS', 'update_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+			)
+		);
+		register_rest_route(
+			self::$namespace,
+			'/optimizers/js',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_JS', 'get_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_JS', 'update_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+			)
+		);
+		register_rest_route(
+			self::$namespace,
+			'/optimizers/html',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_HTML', 'get_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_HTML', 'update_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+			)
+		);
+		register_rest_route(
+			self::$namespace,
+			'/optimizers/media',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_Media', 'get_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::EDITABLE,
+					'callback'            => array( 'Cache_Hive_REST_Optimizers_Media', 'update_settings' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
 			)
 		);
 
