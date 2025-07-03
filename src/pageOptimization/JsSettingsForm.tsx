@@ -1,11 +1,17 @@
-import * as React from "react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import * as React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Form,
   FormControl,
@@ -13,42 +19,60 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
+} from "@/components/ui/form";
 
 const jsSchema = z.object({
   minify: z.boolean(),
   combine: z.boolean(),
   combineExternalInline: z.boolean(),
   deferMode: z.string(),
-  excludes: z.string().optional(),
-  deferExcludes: z.string().optional()
-})
+  excludes: z.array(z.string()).optional(),
+  deferExcludes: z.array(z.string()).optional(),
+});
 
-type JsFormData = z.infer<typeof jsSchema>
+export type JsFormData = z.infer<typeof jsSchema>;
 
-export function JsSettingsForm({ initial, onSubmit }: { initial: JsFormData, onSubmit: (data: JsFormData) => void }) {
+interface JsSettingsFormProps {
+  initial: JsFormData;
+  onSubmit: (data: JsFormData) => Promise<void>;
+  isSaving: boolean;
+}
+
+export function JsSettingsForm({
+  initial,
+  onSubmit,
+  isSaving,
+}: JsSettingsFormProps) {
   const form = useForm<JsFormData>({
     resolver: zodResolver(jsSchema),
-    defaultValues: initial,
-  })
-
-  function handleSubmit(data: JsFormData) {
-    onSubmit(data)
-  }
+    // THE FIX: Use `values` to make the form a controlled component.
+    values: {
+      minify: initial.minify ?? false,
+      combine: initial.combine ?? false,
+      combineExternalInline: initial.combineExternalInline ?? false,
+      deferMode: initial.deferMode ?? "off",
+      excludes: initial.excludes ?? [],
+      deferExcludes: initial.deferExcludes ?? [],
+    },
+  });
 
   return (
     <Form {...form}>
-      <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+      <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+        {/* ... form fields remain the same ... */}
         <FormField
           control={form.control}
           name="minify"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Minify JS</FormLabel>
               <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
@@ -56,12 +80,15 @@ export function JsSettingsForm({ initial, onSubmit }: { initial: JsFormData, onS
           control={form.control}
           name="combine"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Combine JS</FormLabel>
               <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
@@ -69,12 +96,15 @@ export function JsSettingsForm({ initial, onSubmit }: { initial: JsFormData, onS
           control={form.control}
           name="combineExternalInline"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Combine External And Inline JS</FormLabel>
               <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
@@ -84,18 +114,22 @@ export function JsSettingsForm({ initial, onSubmit }: { initial: JsFormData, onS
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>JS Deferred Loading</FormLabel>
-              <FormControl>
-                <Select value={field.value} onValueChange={field.onChange}>
+              <Select
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={isSaving}
+              >
+                <FormControl>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="off">Off</SelectItem>
-                    <SelectItem value="deferred">Deferred</SelectItem>
-                    <SelectItem value="delayed">Delayed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormControl>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="off">Off</SelectItem>
+                  <SelectItem value="deferred">Deferred</SelectItem>
+                  <SelectItem value="delayed">Delayed</SelectItem>
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
@@ -107,7 +141,18 @@ export function JsSettingsForm({ initial, onSubmit }: { initial: JsFormData, onS
             <FormItem className="space-y-2">
               <FormLabel>JS Minify/Combine Excludes</FormLabel>
               <FormControl>
-                <Textarea id="js-excludes" placeholder={"/wp-content/plugins/example-plugin/\n/wp-content/themes/example-theme/"} rows={3} {...field} />
+                <Textarea
+                  id="js-excludes"
+                  placeholder={
+                    "/wp-content/plugins/example-plugin/\n/wp-content/themes/example-theme/"
+                  }
+                  rows={3}
+                  value={
+                    Array.isArray(field.value) ? field.value.join("\n") : ""
+                  }
+                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  disabled={isSaving}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -120,16 +165,27 @@ export function JsSettingsForm({ initial, onSubmit }: { initial: JsFormData, onS
             <FormItem className="space-y-2">
               <FormLabel>JS Deferred/Delayed Excludes</FormLabel>
               <FormControl>
-                <Textarea id="js-defer-excludes" placeholder={"/wp-content/plugins/example-plugin/\n/wp-content/themes/example-theme/"} rows={3} {...field} />
+                <Textarea
+                  id="js-defer-excludes"
+                  placeholder={"jquery.js\n/wp-content/plugins/another-plugin/"}
+                  rows={3}
+                  value={
+                    Array.isArray(field.value) ? field.value.join("\n") : ""
+                  }
+                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  disabled={isSaving}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
         <div className="flex justify-end">
-          <Button type="submit">Save Settings</Button>
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Changes"}
+          </Button>
         </div>
       </form>
     </Form>
-  )
+  );
 }

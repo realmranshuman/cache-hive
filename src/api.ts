@@ -8,3 +8,7 @@ export * from './api/exclusions';
 export * from './api/object-cache';
 export * from './api/browser-cache';
 export * from './api/roles';
+export * from './api/optimizers-css';
+export * from './api/optimizers-js';
+export * from './api/optimizers-html';
+export * from './api/optimizers-media';
