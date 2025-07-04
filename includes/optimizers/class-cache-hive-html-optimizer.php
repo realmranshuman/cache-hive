@@ -14,7 +14,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Class Cache_Hive_HTML_Optimizer
  *
  * Handles all HTML minification and optimization tasks based on plugin settings.
- * This class uses a safe, string-based tokenizing approach to avoid DOM reformatting issues.
  */
 final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 
@@ -34,142 +33,123 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 
 		$settings = Cache_Hive_Settings::get_settings();
 
-		// Step 1: Remove comments first, while preserving special conditional comments.
-		if ( empty( $settings['html_keep_comments'] ) ) {
-			$html = self::remove_comments( $html );
-		}
-
-		// Step 2: Remove <noscript> tags if enabled.
-		if ( ! empty( $settings['html_remove_noscript'] ) ) {
-			$html = self::remove_noscript_tags( $html );
-		}
-
-		// Step 3: Perform the core minification of whitespace.
+		// Step 1: Perform the main minification if enabled.
+		// This single, highly-efficient method now handles all conditional structural
+		// minification (comments, noscript, whitespace) in one single pass.
 		if ( ! empty( $settings['html_minify'] ) ) {
-			$html = self::minify_html_content( $html );
+			$html = self::minify_html( $html );
 		}
 
-		// Step 4: Add header links like prefetch/preconnect. This is done last to avoid being affected by other processes.
+		// Step 2: Add header links like prefetch/preconnect. This is done last to avoid
+		// being affected by other processes and to inject into the final <head>.
 		$html = self::add_header_links( $html, $settings );
 
 		return $html;
 	}
 
 	/**
-	 * Removes HTML comments but preserves special IE conditional comments.
+	 * Implements a high-performance, single-pass HTML minifier.
 	 *
-	 * @since 1.2.0
-	 * @param string $html The HTML content.
-	 * @return string The HTML with comments removed.
-	 */
-	private static function remove_comments( $html ) {
-		// Protect IE conditional comments.
-		$protected_comments = array();
-		$html               = preg_replace_callback(
-			'/<!--\[if.*?\[endif\]-->/is',
-			function ( $matches ) use ( &$protected_comments ) {
-				$placeholder          = '<!--CACHE-HIVE-IE-COMMENT--' . count( $protected_comments ) . '-->';
-				$protected_comments[] = $matches[0];
-				return $placeholder;
-			},
-			$html
-		);
-
-		// Remove all other standard HTML comments.
-		$html = preg_replace( '/<!--[\s\S]*?-->/', '', $html );
-
-		// Restore the protected IE conditional comments.
-		if ( ! empty( $protected_comments ) ) {
-			$html = preg_replace_callback(
-				'/<!--CACHE-HIVE-IE-COMMENT--(\d+)-->/',
-				function ( $matches ) use ( $protected_comments ) {
-					return isset( $protected_comments[ $matches[1] ] ) ? $protected_comments[ $matches[1] ] : '';
-				},
-				$html
-			);
-		}
-
-		return $html;
-	}
-
-	/**
-	 * Removes <noscript> tags and their content.
+	 * This function uses a single `preg_replace_callback` call with a dynamically built
+	 * regular expression to perform multiple optimizations at once, preventing the
+	 * performance cost of processing the full HTML string multiple times. It handles:
+	 * 1. Conditional removal of all HTML comments.
+	 * 2. Conditional removal of <noscript> tags.
+	 * 3. Conditional minification of inline CSS and JS comments.
+	 * 4. Collapsing all redundant whitespace into single spaces.
 	 *
-	 * @since 1.2.0
-	 * @param string $html The HTML content.
-	 * @return string The HTML with <noscript> tags removed.
-	 */
-	private static function remove_noscript_tags( $html ) {
-		return preg_replace( '/<noscript\b[^>]*>.*?<\/noscript>/is', '', $html );
-	}
-
-	/**
-	 * The core HTML minification logic.
-	 *
-	 * This method tokenizes the HTML into tags and content, then intelligently
-	 * removes whitespace from the content parts, respecting sensitive tags like <pre> and <script>.
+	 * All operations intelligently skip content within <pre>, <code>, <textarea>, and other specified tags.
 	 *
 	 * @since 1.2.0
 	 * @param string $html The HTML content.
 	 * @return string The minified HTML content.
 	 */
-	private static function minify_html_content( $html ) {
-		// Tokenize the HTML by splitting it at tags, but keeping the tags as delimiters.
-		$tokens = preg_split( '/(<[^>]+>)/s', $html, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY );
-		if ( ! is_array( $tokens ) ) {
-			return $html; // Return original HTML if tokenization fails.
+	private static function minify_html( $html ) {
+		// Bail if the HTML is too large to process, to prevent performance issues.
+		if ( strlen( $html ) > 700000 ) {
+			return $html;
 		}
 
-		$output       = '';
-		$skip_stack   = array(); // Use a stack to handle nested skip tags correctly.
-		$tags_to_skip = array(
-			'pre',
-			'code',
-			'script',
-			'style',
-			'textarea',
+		$settings = Cache_Hive_Settings::get_settings();
+
+		// Step 1: Conditionally minify comments inside <style> and <script> tags.
+		// This is a preliminary pass that only runs if the respective settings are enabled.
+		$minify_inline_css = ! empty( $settings['html_minify_inline_css'] );
+		$minify_inline_js  = ! empty( $settings['html_minify_inline_js'] );
+
+		if ( $minify_inline_css || $minify_inline_js ) {
+			$html = preg_replace(
+				// This regex safely targets CSS/JS block comments (/*...*/) and single-line JS comments (//...).
+				'#/\*(?!!)[\s\S]*?\*/|(?:^[ \t]*)//.*$|((?<!\()[ \t>;,{}[\]])//[^;\n]*$#m',
+				'$1',
+				$html
+			);
+		}
+
+		// Step 2: Build the list of tags whose content should not be minified (whitespace collapse).
+		/**
+		 * Filters the HTML tags to ignore during whitespace minification.
+		 *
+		 * @since 1.2.0
+		 * @param string[] $ignore_tags The names of HTML tags to ignore. Default are 'textarea', 'pre', and 'code'.
+		 */
+		$ignore_tags = (array) apply_filters( 'cache_hive_minify_html_ignore_tags', array( 'textarea', 'pre', 'code' ) );
+
+		// If inline CSS/JS minification is off, add them to the ignore list to prevent whitespace collapse.
+		if ( ! $minify_inline_css ) {
+			$ignore_tags[] = 'style';
+		}
+		if ( ! $minify_inline_js ) {
+			$ignore_tags[] = 'script';
+		}
+
+		$ignore_tags_regex = implode( '|', array_unique( $ignore_tags ) );
+
+		// Step 3: Dynamically build a single master regex to handle all structural minification in one pass.
+		$patterns = array();
+
+		// Pattern for HTML comments (only added if the setting is enabled).
+		if ( empty( $settings['html_keep_comments'] ) ) {
+			$patterns[] = '(?<comment><!--[\s\S]*?-->)';
+		}
+
+		// Pattern for <noscript> tags (only added if the setting is enabled).
+		if ( ! empty( $settings['html_remove_noscript'] ) ) {
+			$patterns[] = '(?<noscript><noscript\b[^>]*>.*?<\/noscript>)';
+		}
+
+		// Pattern for collapsible whitespace (always runs if minification is on).
+		// This powerful regex looks ahead to ensure it's not inside an ignored tag.
+		$patterns[] = '(?<whitespace>(?>[^\S ]\s*|\s{2,})(?=[^<]*+(?:<(?!/?(?:' . $ignore_tags_regex . ')\b)[^<]*+)*+(?:<(?>' . $ignore_tags_regex . ')\b|\z)))';
+
+		// If there are no patterns to match (e.g., all conditionals are off), return original HTML.
+		if ( empty( $patterns ) ) {
+			return $html;
+		}
+
+		$master_regex = '#' . implode( '|', $patterns ) . '#isx';
+
+		$minified_html = preg_replace_callback(
+			$master_regex,
+			function ( $matches ) {
+				// Check which named capture group matched and return the correct replacement.
+				if ( ! empty( $matches['comment'] ) || ! empty( $matches['noscript'] ) ) {
+					return ''; // Remove comments and noscript tags completely.
+				}
+				if ( ! empty( $matches['whitespace'] ) ) {
+					return ' '; // Collapse whitespace to a single space.
+				}
+				return ''; // Fallback, should not be reached.
+			},
+			$html
 		);
 
-		foreach ( $tokens as $token ) {
-			// Check if the token is a tag.
-			if ( isset( $token[0] ) && '<' === $token[0] ) {
-				// It's a tag, get its name. e.g., 'div' from '<div class="...">' or '/div' from '</div>'.
-				if ( preg_match( '/^<([\/!\?]?)(\w+)/', $token, $matches ) ) {
-					$tag_name       = strtolower( $matches[2] );
-					$is_closing_tag = '/' === $matches[1];
-
-					// If this is a closing tag for the last item on our skip stack, pop it off.
-					if ( $is_closing_tag && ! empty( $skip_stack ) && end( $skip_stack ) === $tag_name ) {
-						array_pop( $skip_stack );
-					}
-
-					$output .= $token;
-
-					// If this is an opening tag that we need to skip, push it to the stack.
-					if ( ! $is_closing_tag && in_array( $tag_name, $tags_to_skip, true ) ) {
-						array_push( $skip_stack, $tag_name );
-					}
-				} else {
-					// Not a standard tag (e.g., a comment placeholder), just append it.
-					$output .= $token;
-				}
-			} else { // It's content between tags.
-				// If the skip stack is empty, we can minify the content.
-				if ( empty( $skip_stack ) ) {
-					// Collapse multiple whitespace characters (including newlines) into a single space.
-					$minified_token = preg_replace( '/\s+/', ' ', $token );
-					// Don't add a space if the content was just whitespace.
-					if ( trim( $minified_token ) !== '' ) {
-						$output .= $minified_token;
-					}
-				} else {
-					// We are inside a skip tag, so append the content as-is.
-					$output .= $token;
-				}
-			}
+		// If minification resulted in a very short or empty string, it likely failed. Return the original.
+		if ( strlen( $minified_html ) <= 1 ) {
+			return $html;
 		}
 
-		return $output;
+		return $minified_html;
 	}
 
 	/**
