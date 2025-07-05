@@ -10,6 +10,7 @@ namespace Cache_Hive\Includes\API;
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Settings;
 use Cache_Hive\Includes\Object_Cache\Cache_Hive_Object_Cache_Factory;
+use Cache_Hive\Includes\Cache_Hive_Object_Cache;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -31,8 +32,8 @@ class Cache_Hive_REST_ObjectCache {
 		return array(
 			'clients'     => array(
 				'phpredis'  => class_exists( 'Redis' ),
-				'predis'    => class_exists( 'Predis\\Client' ),
-				'credis'    => class_exists( 'Credis_Client' ),
+				'predis'    => class_exists( 'Cache_Hive\\Vendor\\Predis\\Client' ),
+				'credis'    => class_exists( 'Cache_Hive\\Vendor\\Credis_Client' ),
 				'memcached' => class_exists( 'Memcached' ),
 			),
 			'serializers' => array(

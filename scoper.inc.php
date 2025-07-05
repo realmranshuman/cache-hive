@@ -1,36 +1,45 @@
 <?php
-// scoper.inc.php
-
-declare(strict_types=1);
+/**
+ * PHP-Scoper configuration file for Cache Hive.
+ *
+ * @package Cache_Hive
+ */
 
 use Isolated\Symfony\Component\Finder\Finder;
 
 return [
-    // The prefix that will be used for all namespaces.
+    // The prefix that will be added to all namespaces and global classes.
+    // This is the answer to "how do I find the new namespace?". It's what you define here.
     'prefix' => 'Cache_Hive\\Vendor',
 
-    // Specifies where Scoper can find the files to scope.
-    // This finder configuration is crucial to ensure it picks up the right files.
+    // Tell Scoper which files to scope. We will target ONLY the Predis, Credis,
+    // and their required PSR dependency directories within the `vendor` folder.
     'finders' => [
         Finder::create()
             ->files()
             ->in('vendor')
-            ->notPath('composer/installed.json') // Don't include this file
-            ->name('*.php'),
+            // Scope Predis and its PSR dependency
+            ->path('predis/predis/src')
+            ->path('psr/http-message/src')
+            ->path('psr/container/src')
+            // Scope Credis
+            ->path('colinmollenhour/credis'),
 
-        Finder::create()->files()->in('vendor')->depth('== 0')->name('autoload.php'),
+        // We also need to include the top-level composer files for autoloading.
+        Finder::create()
+            ->files()
+            ->in('vendor')
+            ->depth('== 0') // important: only files in vendor/, not subdirectories
+            ->name('/autoload_.*\.php/'),
+
+        Finder::create()
+            ->files()
+            ->in('vendor/composer')
+            ->name('/.*\.php/'),
+
     ],
 
-    // Whitelist specific namespaces that should NOT be prefixed.
-    // This is the definitive fix for the fatal error.
-    'exclude-namespaces' => [
-        // The double backslash is crucial for the regex to be valid.
-        '#^Composer\\\\Autoload#',
-        '#^Symfony\\\\Polyfill#',
-    ],
-    
-    // By default, Scoper is smart enough not to prefix global PHP functions and classes.
-    'expose-global-constants' => true,
-    'expose-global-classes'   => true,
-    'expose-global-functions' => true,
+    // By default, Scoper whitelists (exposes) all global functions, constants,
+    // and classes. This is generally safe and what we want, so we don't need
+    // to add a `patchers` or `expose-` array for this use case.
 ];

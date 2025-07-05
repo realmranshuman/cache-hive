@@ -115,7 +115,7 @@ final class Cache_Hive_Object_Cache {
 			return false;
 		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_get_contents
-		$content = @file_get_contents( self::$dropin_path, false, null, 0, 100 );
+		$content = @file_get_contents( self::$dropin_path, false, null, 0, 128 );
 		return $content && str_contains( $content, self::DROPIN_MARKER );
 	}
 
@@ -136,7 +136,7 @@ final class Cache_Hive_Object_Cache {
 		return <<<PHP
 <?php
 /**
- * {$this->DROPIN_MARKER}
+ * {self::DROPIN_MARKER}
  * Generated: {$generation_date}
  */
 if ( defined( 'WP_CACHE_HIVE_OBJECT_CACHE_LOADED' ) ) { return; }
@@ -174,8 +174,8 @@ final class WP_Object_Cache {
         \$plugin_path = WP_CONTENT_DIR . "/plugins/cache-hive/";
         \$files_to_load = [ 'includes/object-cache/interface-backend.php', 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php', 'includes/object-cache/class-cache-hive-redis-predis-backend.php', 'includes/object-cache/class-cache-hive-redis-credis-backend.php', 'includes/object-cache/class-cache-hive-memcached-backend.php', 'includes/object-cache/class-cache-hive-array-backend.php', 'includes/object-cache/class-cache-hive-object-cache-factory.php' ];
         foreach (\$files_to_load as \$file) { if (file_exists(\$plugin_path . \$file)) { require_once \$plugin_path . \$file; } }
-        if (class_exists('Cache_Hive\\\Includes\\\Object_Cache\\\Cache_Hive_Object_Cache_Factory')) { \$this->backend = Cache_Hive\\\Includes\\\Object_Cache\\\Cache_Hive_Object_Cache_Factory::create(\$this->config); }
-        else { \$this->backend = new Cache_Hive\\\Includes\\\Object_Cache\\\Cache_Hive_Array_Backend(\$this->config); }
+		if (class_exists('Cache_Hive\\Includes\\Object_Cache\\Cache_Hive_Object_Cache_Factory')) { \$this->backend = \\Cache_Hive\\Includes\\Object_Cache\\Cache_Hive_Object_Cache_Factory::create(\$this->config); }
+		else { \$this->backend = new \\Cache_Hive\\Includes\\Object_Cache\\Cache_Hive_Array_Backend(\$this->config); }
         \$this->multisite = is_multisite();
         \$this->blog_prefix = \$this->multisite ? get_current_blog_id() . ':' : '';
         if (\$this->config['prefetch'] && (is_admin() || defined('WP_CLI'))) { \$this->prefetch_options(); }

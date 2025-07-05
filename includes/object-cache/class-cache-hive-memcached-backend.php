@@ -229,6 +229,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			'host'              => $this->config['host'],
 			'port'              => $this->config['port'],
 			'persistent'        => ! empty( $this->config['persistent'] ),
+			'prefetch'          => ! empty( $this->config['prefetch'] ),
+			'serializer'        => $this->config['serializer'] ?? 'php',
 			'server_version'    => $stats['version'] ?? 'N/A',
 			'memory_usage'      => isset( $stats['bytes'] ) ? size_format( $stats['bytes'] ) : 'N/A',
 			'uptime'            => $stats['uptime'] ?? 'N/A',

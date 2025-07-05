@@ -37,8 +37,9 @@ define( 'CACHE_HIVE_CONFIG_DIR', WP_CONTENT_DIR . '/cache-hive-config' );
 // =========================================================================
 // BOOTSTRAP COMPOSER AUTOLOADER & PLUGIN FILES
 // =========================================================================
-if ( file_exists( CACHE_HIVE_DIR . 'lib/autoload.php' ) ) {
-	require_once CACHE_HIVE_DIR . 'lib/autoload.php';
+// In your main cache-hive.php file
+if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+	require_once __DIR__ . '/vendor/autoload.php';
 }
 
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-settings.php';

@@ -32,12 +32,12 @@ class Cache_Hive_Object_Cache_Factory {
 				}
 				break;
 			case 'predis':
-				if ( class_exists( 'Predis\\Client' ) ) {
+				if ( class_exists( 'Cache_Hive\\Vendor\\Predis\\Client' ) ) {
 					$backend = new Cache_Hive_Redis_Predis_Backend( $config );
 				}
 				break;
 			case 'credis':
-				if ( class_exists( 'Credis_Client' ) ) {
+				if ( class_exists( 'Cache_Hive\\Vendor\\Credis_Client' ) ) {
 					$backend = new Cache_Hive_Redis_Credis_Backend( $config );
 				}
 				break;
