@@ -140,7 +140,7 @@ final class Cache_Hive_Lifecycle {
 		file_put_contents( $config_file, $contents, LOCK_EX );
 
 		if ( function_exists( 'opcache_invalidate' ) && ini_get( 'opcache.enable' ) ) {
-			@opcache_invalidate( $config_file, true );
+			opcache_invalidate( $config_file, true );
 		}
 	}
 
@@ -169,7 +169,7 @@ final class Cache_Hive_Lifecycle {
 		$source      = CACHE_HIVE_DIR . 'class-cache-hive-advanced-cache.php';
 		$destination = WP_CONTENT_DIR . '/advanced-cache.php';
 
-		return is_readable( $source ) && @copy( $source, $destination );
+		return is_readable( $source ) && copy( $source, $destination );
 	}
 
 	/**

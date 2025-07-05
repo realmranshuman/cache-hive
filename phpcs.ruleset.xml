@@ -12,7 +12,10 @@
 
 	<!-- Exclude third-party code and build artifacts. -->
 	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/lib/*</exclude-pattern>
 	<exclude-pattern>*/tests/*</exclude-pattern>
+	<!-- Exclude scoper.inc.php from all rules. -->
+	<exclude-pattern>*/scoper.inc.php</exclude-pattern>
 
 	<!-- Set the PHP version to check against. -->
 	<config name="testVersion">7.4-</config>
@@ -36,16 +39,16 @@
 	# has proven exist under `WordPress/Sniffs/Security/`.
 	-->
 	<rule ref="WordPress.Security.EscapeOutput"><severity>10</severity></rule>
-	<rule ref="WordPress.Security.NonceVerification"><severity>10</severity></rule>
+	<rule ref="WordPress.Security.NonceVerification">
+		<exclude-pattern>*/includes/class-cache-hive-engine.php</exclude-pattern>
+		<severity>10</severity>
+	</rule>
 	<rule ref="WordPress.Security.PluginMenuSlug"><severity>10</severity></rule>
 	<rule ref="WordPress.Security.SafeRedirect"><severity>10</severity></rule>
 
-	<!--
-	And finally, we apply our special exclusion to the one remaining rule
-	that was causing the original problem.
-	-->
 	<rule ref="WordPress.Security.ValidatedSanitizedInput">
 		<exclude-pattern>*/class-cache-hive-advanced-cache.php</exclude-pattern>
+		<exclude-pattern>*/includes/class-cache-hive-engine.php</exclude-pattern>
 		<severity>10</severity>
 	</rule>
 

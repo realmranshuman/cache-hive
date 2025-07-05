@@ -143,7 +143,7 @@ final class Cache_Hive_Settings {
 	 */
 	public static function get_default_settings() {
 		return array(
-			// General Cache Settings
+			// General Cache Settings.
 			'enable_cache'                       => true,
 			'cache_logged_users'                 => false,
 			'cache_commenters'                   => false,
@@ -153,14 +153,14 @@ final class Cache_Hive_Settings {
 			'serve_stale'                        => false,
 			'purge_on_upgrade'                   => true,
 
-			// TTL Settings
+			// TTL Settings.
 			'public_cache_ttl'                   => 604800,
 			'private_cache_ttl'                  => 1800,
 			'front_page_ttl'                     => 604800,
 			'feed_ttl'                           => 604800,
 			'rest_ttl'                           => 604800,
 
-			// Auto Purge Settings
+			// Auto Purge Settings.
 			'auto_purge_entire_site'             => false,
 			'auto_purge_front_page'              => true,
 			'auto_purge_home_page'               => false,
@@ -173,17 +173,17 @@ final class Cache_Hive_Settings {
 			'auto_purge_term_archive'            => true,
 			'custom_purge_hooks'                 => array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' ),
 
-			// Exclusion Settings
+			// Exclusion Settings.
 			'exclude_uris'                       => array( '/wp-admin/', '/wp-login.php', '/cart/', '/checkout/', '/my-account/.*' ),
 			'exclude_query_strings'              => array( 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'preview', 'edit', '_ga' ),
 			'exclude_cookies'                    => array( 'wordpress_logged_in', 'wp-postpass', 'woocommerce_cart_hash', 'comment_author_' ),
 			'exclude_roles'                      => array(),
 
-			// Browser Cache Settings
+			// Browser Cache Settings.
 			'browser_cache_enabled'              => false,
 			'browser_cache_ttl'                  => 604800,
 
-			// Object Cache Settings
+			// Object Cache Settings.
 			'object_cache_enabled'               => false,
 			'object_cache_method'                => 'redis',
 			'object_cache_client'                => 'phpredis',
@@ -202,7 +202,7 @@ final class Cache_Hive_Settings {
 			'prefetch'                           => true,
 			'flush_async'                        => true,
 
-			// Cloudflare Settings
+			// Cloudflare Settings.
 			'cloudflare_enabled'                 => false,
 			'cloudflare_api_method'              => 'token',
 			'cloudflare_api_key'                 => '',
@@ -211,14 +211,14 @@ final class Cache_Hive_Settings {
 			'cloudflare_domain'                  => '',
 			'cloudflare_zone_id'                 => '',
 
-			// Page Optimization - CSS
+			// Page Optimization - CSS.
 			'css_minify'                         => false,
 			'css_combine'                        => false,
 			'css_combine_external_inline'        => false,
 			'css_font_optimization'              => 'default',
 			'css_excludes'                       => array(),
 
-			// Page Optimization - JS
+			// Page Optimization - JS.
 			'js_minify'                          => false,
 			'js_combine'                         => false,
 			'js_combine_external_inline'         => false,
@@ -226,7 +226,7 @@ final class Cache_Hive_Settings {
 			'js_excludes'                        => array(),
 			'js_defer_excludes'                  => array(),
 
-			// Page Optimization - HTML
+			// Page Optimization - HTML.
 			'html_minify'                        => false,
 			'html_dns_prefetch'                  => array(),
 			'html_dns_preconnect'                => array(),
@@ -236,7 +236,7 @@ final class Cache_Hive_Settings {
 			'remove_emoji_scripts'               => false,
 			'html_remove_noscript'               => false,
 
-			// Page Optimization - Media
+			// Page Optimization - Media.
 			'media_lazyload_images'              => false,
 			'media_lazyload_iframes'             => false,
 			'media_image_excludes'               => array(),

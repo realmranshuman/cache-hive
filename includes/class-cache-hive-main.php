@@ -59,7 +59,7 @@ final class Cache_Hive_Main {
 		// Cache_Hive_HTML_Optimizer::init();
 		// Cache_Hive_CSS_Optimizer::init();
 		// Cache_Hive_JS_Optimizer::init();
-		// Cache_Hive_Media_Optimizer::init();
+		// Cache_Hive_Media_Optimizer::init();.
 	}
 
 	/**

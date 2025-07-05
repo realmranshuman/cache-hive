@@ -93,6 +93,11 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		}
 	}
 
+	/**
+	 * Retrieves the current namespace version from Memcached.
+	 *
+	 * @return int The current namespace version.
+	 */
 	private function get_ns_version() {
 		if ( null !== $this->ns_version ) {
 			return $this->ns_version;
@@ -106,10 +111,23 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $this->ns_version;
 	}
 
+	/**
+	 * Generates a namespaced key for Memcached.
+	 *
+	 * @param string $key The original key.
+	 * @return string The namespaced key.
+	 */
 	private function get_namespaced_key( $key ) {
 		return $this->get_ns_version() . ':' . $key;
 	}
 
+	/**
+	 * Retrieves a value from the cache.
+	 *
+	 * @param string $key The key to retrieve.
+	 * @param bool   $found Whether the key was found in the cache.
+	 * @return mixed The cached value, or false if not found.
+	 */
 	public function get( $key, &$found ) {
 		if ( ! $this->is_connected() ) {
 			$found = false;
@@ -120,6 +138,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $found ? $value : false;
 	}
 
+	/**
+	 * Retrieves multiple values from the cache.
+	 *
+	 * @param array $keys An array of keys to retrieve.
+	 * @return array An associative array of cached values, keyed by the original keys.
+	 */
 	public function get_multiple( $keys ) {
 		if ( ! $this->is_connected() || empty( $keys ) || ! is_array( $keys ) ) {
 			return array();
@@ -138,6 +162,13 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $final_results;
 	}
 
+	/**
+	 * Stores a value in the cache.
+	 *
+	 * @param string $key The key to store the value under.
+	 * @param mixed  $value The value to store.
+	 * @param int    $ttl The time-to-live for the cache item in seconds.
+	 */
 	public function set( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -145,6 +176,13 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $this->mc->set( $this->get_namespaced_key( $key ), $value, $ttl );
 	}
 
+	/**
+	 * Adds a value to the cache only if the key does not already exist.
+	 *
+	 * @param string $key The key to store the value under.
+	 * @param mixed  $value The value to store.
+	 * @param int    $ttl The time-to-live for the cache item in seconds.
+	 */
 	public function add( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -152,6 +190,13 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $this->mc->add( $this->get_namespaced_key( $key ), $value, $ttl );
 	}
 
+	/**
+	 * Replaces a value in the cache only if the key already exists.
+	 *
+	 * @param string $key The key to store the value under.
+	 * @param mixed  $value The value to store.
+	 * @param int    $ttl The time-to-live for the cache item in seconds.
+	 */
 	public function replace( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -159,10 +204,21 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $this->mc->replace( $this->get_namespaced_key( $key ), $value, $ttl );
 	}
 
+	/**
+	 * Deletes a value from the cache.
+	 *
+	 * @param string $key The key to delete.
+	 * @return bool True on success, false on failure.
+	 */
 	public function delete( $key ) {
 		return $this->is_connected() ? $this->mc->delete( $this->get_namespaced_key( $key ) ) : false;
 	}
 
+	/**
+	 * Flushes the entire cache.
+	 *
+	 * @param bool $async Whether to flush asynchronously (if supported).
+	 */
 	public function flush( $async ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -175,6 +231,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return true;
 	}
 
+	/**
+	 * Increments a numeric item's value.
+	 *
+	 * @param string $key The key of the item to increment.
+	 * @param int    $offset The amount by which to increment the item's value.
+	 */
 	public function increment( $key, $offset ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -189,6 +251,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $new_value;
 	}
 
+	/**
+	 * Decrements a numeric item's value.
+	 *
+	 * @param string $key The key of the item to decrement.
+	 * @param int    $offset The amount by which to decrement the item's value.
+	 */
 	public function decrement( $key, $offset ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -203,6 +271,11 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return $new_value;
 	}
 
+	/**
+	 * Closes the Memcached connection.
+	 *
+	 * @return bool True on success, false on failure.
+	 */
 	public function close() {
 		if ( empty( $this->config['persistent'] ) && $this->is_connected() ) {
 			$this->mc->quit();
@@ -211,10 +284,20 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		return true;
 	}
 
+	/**
+	 * Checks if the Memcached client is connected.
+	 *
+	 * @return bool True if connected, false otherwise.
+	 */
 	public function is_connected() {
 		return $this->connected;
 	}
 
+	/**
+	 * Retrieves information about the Memcached connection and server.
+	 *
+	 * @return array An associative array containing connection status and server information.
+	 */
 	public function get_info() {
 		if ( ! $this->is_connected() ) {
 			return array(

@@ -98,7 +98,7 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 		$links_to_add = array();
 		$site_host    = wp_parse_url( home_url(), PHP_URL_HOST );
 
-		// Manual DNS Prefetch & Preconnect
+		// Manual DNS Prefetch & Preconnect.
 		if ( ! empty( $settings['html_dns_prefetch'] ) && is_array( $settings['html_dns_prefetch'] ) ) {
 			foreach ( $settings['html_dns_prefetch'] as $domain ) {
 				$links_to_add[] = '<link rel="dns-prefetch" href="' . esc_attr( $domain ) . '">';
@@ -110,7 +110,7 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 			}
 		}
 
-		// Automatic DNS Prefetch
+		// Automatic DNS Prefetch.
 		if ( ! empty( $settings['auto_dns_prefetch'] ) ) {
 			preg_match_all( '/<(?:link|script|img|iframe)[^>]+(?:href|src)=["\']((?:https?:)?\/\/[^\'"\/]+)/i', $html, $matches );
 			if ( ! empty( $matches[1] ) ) {
@@ -124,7 +124,7 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 			}
 		}
 
-		// Async Google Fonts
+		// Async Google Fonts.
 		if ( ! empty( $settings['google_fonts_async'] ) ) {
 			preg_match_all( '/<link[^>]+href=["\'](https?:\/\/fonts\.googleapis\.com\/css[^\'"]+)["\'][^>]*>/i', $html, $font_matches );
 			if ( ! empty( $font_matches[1] ) ) {

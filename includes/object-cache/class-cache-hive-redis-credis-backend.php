@@ -15,13 +15,36 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Credis backend for the Cache Hive object cache.
  */
 class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
+	/**
+	 * The Credis client instance.
+	 *
+	 * @var \Credis_Client|null
+	 */
 	private $client;
+	/**
+	 * The backend configuration.
+	 *
+	 * @var array
+	 */
 	private $config;
+	/**
+	 * Connection status.
+	 *
+	 * @var bool
+	 */
 	private $connected = false;
 
+	/**
+	 * Sets up the Credis connection.
+	 *
+	 * @param array $config The backend configuration.
+	 */
 	public function __construct( $config ) {
 		$this->config = $config;
-		if ( ! class_exists( 'Credis_Client' ) ) {
+		if ( ! class_exists( 'Cache_Hive\\Vendor\\Credis_Client' ) ) {
+			// Fallback to Array backend if Credis_Client is not available.
+			// This is handled by the factory, so we just return here.
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			return;
 		}
 
@@ -44,6 +67,12 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		}
 	}
 
+	/**
+	 * Unserializes a value if it's a serialized string.
+	 *
+	 * @param mixed $value The value to unserialize.
+	 * @return mixed The unserialized value or the original value if not serialized.
+	 */
 	private function unserialize_value( $value ) {
 		if ( is_string( $value ) ) {
 			$unserialized = @unserialize( $value );
@@ -52,6 +81,13 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		return $value;
 	}
 
+	/**
+	 * Retrieves a value from the cache.
+	 *
+	 * @param string $key The key to retrieve.
+	 * @param bool   $found Whether the key was found in the cache.
+	 * @return mixed The cached value, or false if not found.
+	 */
 	public function get( $key, &$found ) {
 		$found = false;
 		if ( ! $this->is_connected() ) {
@@ -65,6 +101,12 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		return $this->unserialize_value( $value );
 	}
 
+	/**
+	 * Retrieves multiple values from the cache.
+	 *
+	 * @param array $keys An array of keys to retrieve.
+	 * @return array An associative array of cached values, keyed by the original keys.
+	 */
 	public function get_multiple( $keys ) {
 		if ( empty( $keys ) || ! $this->is_connected() ) {
 			return array();
@@ -79,6 +121,14 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		return $result;
 	}
 
+	/**
+	 * Stores a value in the cache.
+	 *
+	 * @param string $key The key to store the value under.
+	 * @param mixed  $value The value to store.
+	 * @param int    $ttl The time-to-live for the cache item in seconds.
+	 * @return bool True on success, false on failure.
+	 */
 	public function set( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -86,6 +136,14 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		return $this->client->setex( $key, $ttl, serialize( $value ) );
 	}
 
+	/**
+	 * Adds a value to the cache only if the key does not already exist.
+	 *
+	 * @param string $key The key to store the value under.
+	 * @param mixed  $value The value to store.
+	 * @param int    $ttl The time-to-live for the cache item in seconds.
+	 * @return bool True on success, false on failure.
+	 */
 	public function add( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -100,6 +158,14 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		);
 	}
 
+	/**
+	 * Replaces a value in the cache only if the key already exists.
+	 *
+	 * @param string $key The key to store the value under.
+	 * @param mixed  $value The value to store.
+	 * @param int    $ttl The time-to-live for the cache item in seconds.
+	 * @return bool True on success, false on failure.
+	 */
 	public function replace( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false;
@@ -114,22 +180,53 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		);
 	}
 
+	/**
+	 * Deletes a value from the cache.
+	 *
+	 * @param string $key The key to delete.
+	 * @return bool True on success, false on failure.
+	 */
 	public function delete( $key ) {
 		return $this->is_connected() ? $this->client->del( $key ) > 0 : false;
 	}
 
+	/**
+	 * Flushes the entire cache.
+	 *
+	 * @param bool $async Whether to flush asynchronously (if supported).
+	 * @return bool True on success, false on failure.
+	 */
 	public function flush( $async ) {
 		return $this->is_connected() ? $this->client->flushdb( $async ) : false;
 	}
 
+	/**
+	 * Increments a numeric item's value.
+	 *
+	 * @param string $key The key of the item to increment.
+	 * @param int    $offset The amount by which to increment the item's value.
+	 * @return int|false The new value on success, false on failure.
+	 */
 	public function increment( $key, $offset ) {
 		return $this->is_connected() ? $this->client->incrby( $key, $offset ) : false;
 	}
 
+	/**
+	 * Decrements a numeric item's value.
+	 *
+	 * @param string $key The key of the item to decrement.
+	 * @param int    $offset The amount by which to decrement the item's value.
+	 * @return int|false The new value on success, false on failure.
+	 */
 	public function decrement( $key, $offset ) {
 		return $this->is_connected() ? $this->client->decrby( $key, $offset ) : false;
 	}
 
+	/**
+	 * Closes the connection to the cache backend.
+	 *
+	 * @return bool True on success, false on failure.
+	 */
 	public function close() {
 		if ( $this->client && $this->client->isConnected() ) {
 			$this->client->close();
@@ -138,10 +235,20 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		return true;
 	}
 
+	/**
+	 * Checks if the cache backend is connected.
+	 *
+	 * @return bool True if connected, false otherwise.
+	 */
 	public function is_connected() {
 		return $this->connected;
 	}
 
+	/**
+	 * Retrieves information about the Credis connection and server.
+	 *
+	 * @return array An associative array containing connection status and server information.
+	 */
 	public function get_info() {
 		if ( ! $this->is_connected() ) {
 			return array(
@@ -157,9 +264,9 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 				'host'           => $this->config['host'],
 				'port'           => $this->config['port'],
 				'database'       => $this->config['database'],
-				'persistent'     => ! empty( $this->config['persistent'] ), 
+				'persistent'     => ! empty( $this->config['persistent'] ),
 				'prefetch'       => ! empty( $this->config['prefetch'] ),
-				'serializer'     => $this->config['serializer'] ?? 'php', 
+				'serializer'     => $this->config['serializer'] ?? 'php',
 				'server_version' => $info['redis_version'] ?? 'N/A',
 				'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
 				'uptime'         => $info['uptime_in_seconds'] ?? 'N/A',

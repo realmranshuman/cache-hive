@@ -24,8 +24,7 @@ class Cache_Hive_Base_Optimizer {
 	 * @return string The optimized HTML content.
 	 */
 	public static function optimize( $html ) {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
 
 		if ( is_admin() || is_feed() || is_preview() || preg_match( '/sitemap(_index)?\.xml$/', $request_uri ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 			return $html;
@@ -33,8 +32,8 @@ class Cache_Hive_Base_Optimizer {
 
 		$settings = Cache_Hive_Settings::get_settings();
 
-		// Future: CSS and JS optimizers can be enabled here when their logic is complete.
 		/*
+		Future: CSS and JS optimizers can be enabled here when their logic is complete.
 		if ( ! empty( $settings['css_minify'] ) || ! empty( $settings['css_combine'] ) ) {
 			$html = Cache_Hive_CSS_Optimizer::process( $html );
 		}

@@ -33,16 +33,16 @@ class Cache_Hive_REST_BrowserCache {
 	public static function get_settings() {
 		$settings = Cache_Hive_Settings::get_settings();
 		$server   = Cache_Hive_Browser_Cache::get_server_software();
-		$status   = [
-			'settings' => [
+		$status   = array(
+			'settings' => array(
 				'browser_cache_enabled' => (bool) ( $settings['browser_cache_enabled'] ?? false ),
 				'browser_cache_ttl'     => (int) ( $settings['browser_cache_ttl'] ?? 0 ),
-			],
+			),
 			'server'   => $server,
-		];
+		);
 
 		if ( 'apache' === $server || 'litespeed' === $server ) {
-			$htaccess_file              = trailingslashit( get_home_path() ) . '.htaccess';
+			$htaccess_file               = trailingslashit( get_home_path() ) . '.htaccess';
 			$status['htaccess_writable'] = is_writable( $htaccess_file );
 			$status['rules']             = Cache_Hive_Browser_Cache::generate_htaccess_rules( $settings );
 			$status['rules_present']     = false;
@@ -94,7 +94,7 @@ class Cache_Hive_REST_BrowserCache {
 	 */
 	public static function verify_nginx_browser_cache() {
 		$test_url = site_url( '/wp-includes/css/dashicons.min.css' );
-		$response = wp_remote_head( $test_url, [ 'timeout' => 5 ] );
+		$response = wp_remote_head( $test_url, array( 'timeout' => 5 ) );
 		$ttl      = 0;
 		$verified = false;
 		$message  = __( 'Browser cache headers not detected.', 'cache-hive' );
@@ -109,10 +109,13 @@ class Cache_Hive_REST_BrowserCache {
 			}
 		}
 
-		return new WP_REST_Response( [
-			'verified' => $verified,
-			'ttl'      => $ttl,
-			'message'  => $message,
-		], 200 );
+		return new WP_REST_Response(
+			array(
+				'verified' => $verified,
+				'ttl'      => $ttl,
+				'message'  => $message,
+			),
+			200
+		);
 	}
 }

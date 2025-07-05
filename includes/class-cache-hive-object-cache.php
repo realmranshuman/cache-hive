@@ -83,11 +83,11 @@ final class Cache_Hive_Object_Cache {
 		}
 
 		if ( function_exists( 'opcache_invalidate' ) && ini_get( 'opcache.enable' ) ) {
-			@opcache_invalidate( self::$dropin_path, true );
+			opcache_invalidate( self::$dropin_path, true );
 		}
 
 		if ( function_exists( 'wp_is_writable' ) && ! wp_is_writable( self::$dropin_path ) ) {
-			@chmod( self::$dropin_path, 0644 );
+			chmod( self::$dropin_path, 0644 );
 		}
 
 		return self::is_dropin_active();

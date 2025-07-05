@@ -142,7 +142,10 @@ final class Cache_Hive_Advanced_Cache {
 		$exclude_uris = $this->settings['exclude_uris'] ?? array();
 		if ( ! empty( $exclude_uris ) ) {
 			foreach ( $exclude_uris as $pattern ) {
-				if ( ! empty( $pattern ) && @preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $request_uri ) ) {
+				if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $request_uri ) ) {
+					if ( preg_last_error() !== PREG_NO_ERROR ) {
+						error_log( 'Cache Hive: Regex error in exclude_uris pattern "' . $pattern . '": ' . preg_last_error() );
+					}
 					return true;
 				}
 			}
@@ -158,7 +161,10 @@ final class Cache_Hive_Advanced_Cache {
 				$query_keys = array_keys( $query_params );
 				foreach ( $query_keys as $key ) {
 					foreach ( $exclude_qs as $pattern ) {
-						if ( ! empty( $pattern ) && @preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $key ) ) {
+						if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $key ) ) {
+							if ( preg_last_error() !== PREG_NO_ERROR ) {
+								error_log( 'Cache Hive: Regex error in exclude_query_strings pattern "' . $pattern . '": ' . preg_last_error() );
+							}
 							return true;
 						}
 					}
@@ -172,8 +178,11 @@ final class Cache_Hive_Advanced_Cache {
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			$cookie_keys = array_keys( $_COOKIE );
 			foreach ( $cookie_keys as $key ) {
-				foreach ( $exclude_cookies as $pattern ) {
-					if ( ! empty( $pattern ) && @preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $key ) ) {
+				foreach ( $exclude_cookies as $pattern ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedForeach
+					if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $key ) ) {
+						if ( preg_last_error() !== PREG_NO_ERROR ) {
+							error_log( 'Cache Hive: Regex error in exclude_cookies pattern "' . $pattern . '": ' . preg_last_error() );
+						}
 						return true;
 					}
 				}
@@ -200,7 +209,10 @@ final class Cache_Hive_Advanced_Cache {
 		}
 
 		$regex = '/' . implode( '|', array_map( 'preg_quote', $mobile_user_agents, array( '/' ) ) ) . '/i';
-		return (bool) @preg_match( $regex, $user_agent );
+		if ( preg_match( $regex, $user_agent ) ) {
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -268,12 +280,17 @@ final class Cache_Hive_Advanced_Cache {
 	 */
 	private function is_cache_valid( $cache_file ) {
 		$meta_file = $cache_file . '.meta';
-		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
+		if ( ! is_readable( $cache_file ) || ! is_readable( $meta_file ) ) {
 			return false;
 		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		$meta_data = json_decode( @file_get_contents( $meta_file ), true );
+		$meta_content = file_get_contents( $meta_file );
+		if ( false === $meta_content ) {
+			error_log( 'Cache Hive: Could not read meta file: ' . $meta_file );
+			return false;
+		}
+		$meta_data = json_decode( $meta_content, true );
 		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
 			return false;
 		}

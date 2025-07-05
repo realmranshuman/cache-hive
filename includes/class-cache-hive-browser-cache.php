@@ -40,8 +40,7 @@ final class Cache_Hive_Browser_Cache {
 	 * @return string
 	 */
 	public static function get_server_software() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$software = strtolower( $_SERVER['SERVER_SOFTWARE'] ?? '' );
+		$software = strtolower( sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ?? '' ) ) );
 		if ( str_contains( $software, 'apache' ) ) {
 			return 'apache';
 		}

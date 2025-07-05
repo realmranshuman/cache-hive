@@ -23,13 +23,11 @@ final class Cache_Hive_Disk {
 	 * @return string The cache file path.
 	 */
 	public static function get_cache_file_path() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$uri = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
+		$uri = strtok( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ) ), '?' );
 		$uri = rtrim( $uri, '/' );
 		$uri = empty( $uri ) ? '/__index__' : $uri;
 
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$host     = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
+		$host     = strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ?? '' ) ) );
 		$dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
 
 		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) {
@@ -77,10 +75,8 @@ final class Cache_Hive_Disk {
 				? ( Cache_Hive_Settings::get( 'private_cache_ttl' ) ?? 1800 )
 				: Cache_Hive_Settings::get_current_page_ttl();
 
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$http_host = $_SERVER['HTTP_HOST'] ?? '';
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+			$http_host   = sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ?? '' ) );
+			$request_uri = sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ) );
 			$url         = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ? 'https' : 'http' ) . '://' . $http_host . $request_uri;
 
 			$meta_data = array(

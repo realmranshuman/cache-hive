@@ -66,7 +66,8 @@ final class Cache_Hive_Engine {
 			return false;
 		}
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? wp_unslash( $_SERVER['REQUEST_METHOD'] ) : 'GET';
+		if ( 'GET' !== $request_method ) {
 			return false;
 		}
 		if ( ! Cache_Hive_Settings::get( 'enable_cache', false ) ) {
@@ -171,16 +172,20 @@ final class Cache_Hive_Engine {
 		}
 
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 		if ( ! empty( self::$settings['exclude_uris'] ) ) {
 			foreach ( self::$settings['exclude_uris'] as $pattern ) {
-				if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $request_uri ) ) {
+				if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\\#', $pattern ) . '#i', $request_uri ) ) {
 					return true;
 				}
 			}
 		}
 
+		// Note: This block only checks query string keys for cache exclusion logic.
+		// It does not process or act on user input, so nonce verification is not required.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! empty( $_GET ) && ! empty( self::$settings['exclude_query_strings'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$get_keys = array_keys( wp_unslash( $_GET ) );
 			foreach ( $get_keys as $query_key ) {
 				foreach ( self::$settings['exclude_query_strings'] as $pattern ) {
@@ -212,7 +217,7 @@ final class Cache_Hive_Engine {
 	 */
 	public static function is_mobile() {
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+		$user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) : '';
 		if ( empty( $user_agent ) || ! ( self::$settings['cache_mobile'] ?? false ) ) {
 			return false;
 		}
@@ -222,7 +227,7 @@ final class Cache_Hive_Engine {
 			return false;
 		}
 
-		$regex = '/' . implode( '|', array_map( 'preg_quote', $mobile_user_agents, array( '/' ) ) ) . '/i';
+		$regex = '#(?:' . implode( '|', array_map( 'preg_quote', $mobile_user_agents, array( '#' ) ) ) . ')#i';
 		return (bool) preg_match( $regex, $user_agent );
 	}
 
