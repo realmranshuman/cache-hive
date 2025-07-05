@@ -1,28 +1,31 @@
 import { wpApiSettings } from "./shared";
+import { TtlFormData } from "@/caching/TtlTabForm";
 
-export async function getTtlSettings() {
+export async function getTtlSettings(): Promise<TtlFormData> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/ttl`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'X-WP-Nonce': wpApiSettings.nonce,
-      'Content-Type': 'application/json',
+      "X-WP-Nonce": wpApiSettings.nonce,
+      "Content-Type": "application/json",
     },
-    credentials: 'include',
+    credentials: "include",
   });
-  if (!response.ok) throw new Error('Failed to fetch TTL settings');
+  if (!response.ok) throw new Error("Failed to fetch TTL settings");
   return response.json();
 }
 
-export async function updateTtlSettings(data: any) {
+export async function updateTtlSettings(
+  data: TtlFormData
+): Promise<TtlFormData> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/ttl`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'X-WP-Nonce': wpApiSettings.nonce,
-      'Content-Type': 'application/json',
+      "X-WP-Nonce": wpApiSettings.nonce,
+      "Content-Type": "application/json",
     },
-    credentials: 'include',
+    credentials: "include",
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to update TTL settings');
+  if (!response.ok) throw new Error("Failed to update TTL settings");
   return response.json();
 }

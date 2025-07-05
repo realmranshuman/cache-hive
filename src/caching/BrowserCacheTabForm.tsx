@@ -1,10 +1,10 @@
-import * as React from "react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import { Input } from "@/components/ui/input"
+import * as React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import {
   Form,
   FormControl,
@@ -12,19 +12,16 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
+} from "@/components/ui/form";
 import { verifyNginxBrowserCache, BrowserCacheStatus } from "@/api";
 import { toast as sonnerToast } from "sonner";
 
 const browserCacheSchema = z.object({
-  browserCacheEnabled: z.boolean(),
-  browserCacheTTL: z
-    .number({ invalid_type_error: "TTL must be a valid number." })
-    .min(14400, "Minimum 4 hours (14400 seconds)")
-    .max(63072000, "Maximum 2 years (63072000 seconds)"),
-})
+  browser_cache_enabled: z.boolean(),
+  browser_cache_ttl: z.coerce.number().min(0, "TTL must be a positive number."),
+});
 
-type BrowserCacheFormData = z.infer<typeof browserCacheSchema>
+type BrowserCacheFormData = z.infer<typeof browserCacheSchema>;
 
 type Props = {
   initial: BrowserCacheStatus["settings"];
@@ -35,190 +32,186 @@ type Props = {
   manualRules?: string | null;
 };
 
-export function BrowserCacheTabForm({ initial, onSubmit, isSaving, status, error, manualRules }: Props) {
+export function BrowserCacheTabForm({
+  initial,
+  onSubmit,
+  isSaving,
+  status,
+  error,
+  manualRules,
+}: Props) {
   const [verifyLoading, setVerifyLoading] = React.useState(false);
   const [verifyMessage, setVerifyMessage] = React.useState<string | null>(null);
 
   const form = useForm<BrowserCacheFormData>({
     resolver: zodResolver(browserCacheSchema),
     values: {
-      browserCacheEnabled: initial?.browserCacheEnabled || false,
-      browserCacheTTL: initial?.browserCacheTTL || 31536000,
+      browser_cache_enabled: initial?.browser_cache_enabled ?? false,
+      browser_cache_ttl: initial?.browser_cache_ttl ?? 31536000,
     },
   });
 
-  async function handleSubmit(data: BrowserCacheFormData) {
-    await onSubmit({
-      ...data,
-      browserCacheTTL: Number(data.browserCacheTTL),
-    });
-  }
-
   async function handleCopy(rules: string) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(rules);
-    } else {
-      const textarea = document.createElement('textarea');
-      textarea.value = rules;
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        document.execCommand('copy');
-      } finally {
-        document.body.removeChild(textarea);
-      }
-    }
-    sonnerToast.success('Rules copied to clipboard!');
+    await navigator.clipboard.writeText(rules);
+    sonnerToast.success("Rules copied to clipboard!");
   }
 
   async function handleVerifyNginx() {
     setVerifyLoading(true);
     setVerifyMessage(null);
     try {
-      const res = await fetch('/wp-includes/css/dashicons.min.css?_ch_verify=' + Date.now());
-      const cacheControl = res.headers.get('cache-control');
-      if (cacheControl && /max-age|public/.test(cacheControl)) {
-        const verifyRes = await verifyNginxBrowserCache();
-        setVerifyMessage(verifyRes.message || 'Verified!');
-      } else {
-        setVerifyMessage('Could not verify caching headers.');
-      }
+      const verifyRes = await verifyNginxBrowserCache();
+      setVerifyMessage(
+        verifyRes.message ||
+          (verifyRes.verified ? "Verified!" : "Could not verify.")
+      );
     } catch (e) {
-      setVerifyMessage('Verification failed.');
+      setVerifyMessage("Verification failed.");
     } finally {
       setVerifyLoading(false);
     }
   }
 
-  // --- Conditional returns for views that DO NOT show the main form ---
-
   if (error && manualRules) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-100 text-red-800 p-3 rounded">{error.message}</div>
-        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={manualRules} />
-        <Button onClick={() => handleCopy(manualRules)}>Copy</Button>
+        <div className="bg-red-100 text-red-800 p-3 rounded">
+          {error.message}
+        </div>
+        <textarea
+          className="w-full font-mono text-xs"
+          rows={10}
+          readOnly
+          value={manualRules}
+        />
+        <Button onClick={() => handleCopy(manualRules)}>Copy Rules</Button>
+      </div>
+    );
+  }
+
+  if (status?.server === "nginx" && !status.nginx_verified) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">
+          Nginx config appears to be missing browser cache rules. Please add the
+          following to your Nginx config, reload the service, then click Verify.
+        </div>
+        <textarea
+          className="w-full font-mono text-xs"
+          rows={8}
+          readOnly
+          value={status.rules}
+        />
+        <div className="flex gap-2">
+          <Button onClick={() => handleCopy(status.rules)}>Copy Rules</Button>
+          <Button onClick={handleVerifyNginx} disabled={verifyLoading}>
+            {verifyLoading ? "Verifying..." : "Verify"}
+          </Button>
+        </div>
+        {verifyMessage && (
+          <div className="text-sm text-gray-700 mt-2">{verifyMessage}</div>
+        )}
       </div>
     );
   }
 
   if (
-    status &&
-    (status.server === 'apache' || status.server === 'litespeed') &&
-    status.htaccessWritable === false && status.rulesPresent === false
+    (status?.server === "apache" || status?.server === "litespeed") &&
+    status.htaccess_writable === false &&
+    !status.rules_present
   ) {
     return (
       <div className="space-y-4">
         <div className="bg-red-100 text-red-800 p-3 rounded">
-          .htaccess is not writable and does not contain browser cache rules. Please add the following rules manually:
+          Your <code>.htaccess</code> file is not writable and browser cache
+          rules are not present. Please add the following rules manually to your{" "}
+          <code>.htaccess</code> file.
         </div>
-        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
-        <Button onClick={() => handleCopy(status.rules)}>Copy</Button>
+        <textarea
+          className="w-full font-mono text-xs"
+          rows={10}
+          readOnly
+          value={status.rules}
+        />
+        <Button onClick={() => handleCopy(status.rules)}>Copy Rules</Button>
       </div>
     );
   }
-  
-  if (status && status.server === 'nginx' && !status.nginxVerified && status.rulesPresent === false) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">Nginx config is missing browser cache rules. Please add the following rules and reload Nginx, then click Verify.</div>
-        <textarea className="w-full font-mono text-xs" rows={8} readOnly value={status.rules} />
-        <div className="flex gap-2">
-          <Button onClick={() => handleCopy(status.rules)}>Copy</Button>
-          <Button onClick={handleVerifyNginx} disabled={verifyLoading}>{verifyLoading ? 'Verifying...' : 'Verify'}</Button>
-        </div>
-        {verifyMessage && <div className="text-sm text-gray-700">{verifyMessage}</div>}
-      </div>
-    );
-  }
-
-  if (status && status.server === 'nginx' && status.nginxVerified) {
-    return <div className="bg-green-100 text-green-800 p-3 rounded">Nginx browser cache rules are verified and active.</div>;
-  }
-
-  // --- Refactored Unified Form View ---
-
-  const rulesArePresent = status?.rulesPresent === true;
-  const isHtaccessReadOnly = status?.htaccessWritable === false;
-  const fieldsAreDisabled = isSaving || (rulesArePresent && isHtaccessReadOnly);
-  const showSaveButton = !(rulesArePresent && isHtaccessReadOnly);
 
   return (
-    <div className="space-y-4">
-      {rulesArePresent && (
-        <>
-          <div className="bg-green-100 text-green-800 p-3 rounded">
-            Browser cache is <b>active</b> (rules detected in <code>.htaccess</code>).<br />
-            TTL: <b>{status.settings.browserCacheTTL}</b> seconds.<br />
-            {isHtaccessReadOnly ? (
-              <>
-                The toggle is disabled because <code>.htaccess</code> is not writable.<br />
-                To disable browser cache, remove the rules manually from <code>.htaccess</code>.
-              </>
-            ) : (
-              <>
-                The toggle and TTL are now synced with the rules in <code>.htaccess</code>.<br />
-                You can edit settings below, or edit/remove the rules directly in <code>.htaccess</code>.
-              </>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1">Active .htaccess rules:</label>
-            <pre className="bg-gray-100 text-xs p-2 rounded overflow-x-auto select-text whitespace-pre-wrap font-mono text-black dark:bg-gray-900 dark:text-white" style={{ userSelect: 'text' }}>{status.rules}</pre>
-          </div>
-        </>
+    <div className="space-y-6">
+      {(status?.rules_present || status?.nginx_verified) && (
+        <div className="bg-green-100 text-green-800 p-3 rounded">
+          <p className="font-bold">Browser cache is active.</p>
+          <p className="text-sm">
+            Rules detected with a TTL of{" "}
+            <b>{status.settings.browser_cache_ttl}</b> seconds.
+          </p>
+          {status.server === "apache" && status.htaccess_writable === false && (
+            <p className="text-sm mt-1">
+              Settings are disabled because your <code>.htaccess</code> file is
+              not writable.
+            </p>
+          )}
+        </div>
       )}
 
       <Form {...form}>
-        <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
           <FormField
             control={form.control}
-            name="browserCacheEnabled"
+            name="browser_cache_enabled"
             render={({ field }) => (
-              <FormItem className="flex items-center justify-between">
-                <FormLabel>Browser Cache</FormLabel>
+              <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                <FormLabel>Enable Browser Cache</FormLabel>
                 <FormControl>
                   <Switch
                     checked={field.value}
                     onCheckedChange={field.onChange}
-                    disabled={fieldsAreDisabled}
+                    disabled={
+                      isSaving ||
+                      (status?.server === "apache" &&
+                        status.htaccess_writable === false)
+                    }
                   />
                 </FormControl>
-                <FormMessage />
               </FormItem>
             )}
           />
           <FormField
             control={form.control}
-            name="browserCacheTTL"
+            name="browser_cache_ttl"
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel>Browser Cache TTL (seconds)</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
-                    id="browser-cache-ttl"
                     type="number"
-                    min={14400}
-                    max={63072000}
-                    step={1}
-                    placeholder="31536000"
-                    disabled={fieldsAreDisabled}
-                    value={field.value ?? ''}
-                    onChange={e => field.onChange(Number(e.target.value))}
+                    min={0}
+                    disabled={
+                      isSaving ||
+                      (status?.server === "apache" &&
+                        status.htaccess_writable === false)
+                    }
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          {showSaveButton && (
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-          )}
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={
+                isSaving ||
+                (status?.server === "apache" &&
+                  status.htaccess_writable === false)
+              }
+            >
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </form>
       </Form>
     </div>

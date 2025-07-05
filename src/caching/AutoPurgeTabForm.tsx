@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea"; // Import Textarea
+import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
   FormControl,
@@ -15,21 +15,20 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-// Schema now expects an array.
 const autoPurgeSchema = z.object({
-  autoPurgeEntireSite: z.boolean().optional(),
-  autoPurgeFrontPage: z.boolean(),
-  autoPurgeHomePage: z.boolean(),
-  autoPurgePages: z.boolean(),
-  autoPurgeAuthorArchive: z.boolean(),
-  autoPurgePostTypeArchive: z.boolean(),
-  autoPurgeYearlyArchive: z.boolean(),
-  autoPurgeMonthlyArchive: z.boolean(),
-  autoPurgeDailyArchive: z.boolean(),
-  autoPurgeTermArchive: z.boolean(),
-  purgeOnUpgrade: z.boolean().optional(),
-  serveStale: z.boolean().optional(),
-  customPurgeHooks: z.array(z.string()).optional(),
+  auto_purge_entire_site: z.boolean().optional(),
+  auto_purge_front_page: z.boolean(),
+  auto_purge_home_page: z.boolean(),
+  auto_purge_pages: z.boolean(),
+  auto_purge_author_archive: z.boolean(),
+  auto_purge_post_type_archive: z.boolean(),
+  auto_purge_yearly_archive: z.boolean(),
+  auto_purge_monthly_archive: z.boolean(),
+  auto_purge_daily_archive: z.boolean(),
+  auto_purge_term_archive: z.boolean(),
+  purge_on_upgrade: z.boolean().optional(),
+  serve_stale: z.boolean().optional(),
+  custom_purge_hooks: z.array(z.string()).optional(),
 });
 
 export type AutoPurgeFormData = z.infer<typeof autoPurgeSchema>;
@@ -41,78 +40,74 @@ interface AutoPurgeTabFormProps {
 }
 
 const formatLabel = (key: string) => {
-  const result = key.replace('autoPurge', '').replace(/([A-Z])/g, " $1");
-  return result.charAt(0).toUpperCase() + result.slice(1).trim();
+  const result = key.replace("auto_purge_", "").replace(/_/g, " ");
+  return result.charAt(0).toUpperCase() + result.slice(1);
 };
 
-export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFormProps) {
+export function AutoPurgeTabForm({
+  initial,
+  onSubmit,
+  isSaving,
+}: AutoPurgeTabFormProps) {
   const form = useForm<AutoPurgeFormData>({
     resolver: zodResolver(autoPurgeSchema),
-    defaultValues: {
-      autoPurgeEntireSite: initial.autoPurgeEntireSite ?? false,
-      autoPurgeFrontPage: initial.autoPurgeFrontPage ?? false,
-      autoPurgeHomePage: initial.autoPurgeHomePage ?? false,
-      autoPurgePages: initial.autoPurgePages ?? false,
-      autoPurgeAuthorArchive: initial.autoPurgeAuthorArchive ?? false,
-      autoPurgePostTypeArchive: initial.autoPurgePostTypeArchive ?? false,
-      autoPurgeYearlyArchive: initial.autoPurgeYearlyArchive ?? false,
-      autoPurgeMonthlyArchive: initial.autoPurgeMonthlyArchive ?? false,
-      autoPurgeDailyArchive: initial.autoPurgeDailyArchive ?? false,
-      autoPurgeTermArchive: initial.autoPurgeTermArchive ?? false,
-      purgeOnUpgrade: initial.purgeOnUpgrade ?? false,
-      serveStale: initial.serveStale ?? false,
-      customPurgeHooks: initial.customPurgeHooks ?? [],
+    values: {
+      // Use values to keep the form controlled and in sync
+      auto_purge_entire_site: initial.auto_purge_entire_site ?? false,
+      auto_purge_front_page: initial.auto_purge_front_page ?? false,
+      auto_purge_home_page: initial.auto_purge_home_page ?? false,
+      auto_purge_pages: initial.auto_purge_pages ?? false,
+      auto_purge_author_archive: initial.auto_purge_author_archive ?? false,
+      auto_purge_post_type_archive:
+        initial.auto_purge_post_type_archive ?? false,
+      auto_purge_yearly_archive: initial.auto_purge_yearly_archive ?? false,
+      auto_purge_monthly_archive: initial.auto_purge_monthly_archive ?? false,
+      auto_purge_daily_archive: initial.auto_purge_daily_archive ?? false,
+      auto_purge_term_archive: initial.auto_purge_term_archive ?? false,
+      purge_on_upgrade: initial.purge_on_upgrade ?? false,
+      serve_stale: initial.serve_stale ?? false,
+      custom_purge_hooks: initial.custom_purge_hooks ?? [],
     },
   });
 
-  React.useEffect(() => {
-    form.reset(initial);
-  }, [initial, form]);
-
-  const handleSubmit = (data: AutoPurgeFormData) => {
-    const allKeys = [
-      "autoPurgeEntireSite", "autoPurgeFrontPage", "autoPurgeHomePage", "autoPurgePages",
-      "autoPurgeAuthorArchive", "autoPurgePostTypeArchive", "autoPurgeYearlyArchive",
-      "autoPurgeMonthlyArchive", "autoPurgeDailyArchive", "autoPurgeTermArchive",
-      "purgeOnUpgrade", "serveStale"
-    ];
-    const completeData = { ...data };
-    allKeys.forEach((key) => {
-      if (typeof completeData[key as keyof AutoPurgeFormData] !== "boolean") {
-        // If missing, set to false
-        (completeData as any)[key] = false;
-      }
-    });
-    return onSubmit(completeData);
-  };
-
-  // Define which keys are part of the "Auto Purge Rules For Publish/Update" group
   const autoPurgeRuleKeys = [
-    "autoPurgeEntireSite", "autoPurgeFrontPage", "autoPurgeHomePage", "autoPurgePages",
-    "autoPurgeAuthorArchive", "autoPurgePostTypeArchive", "autoPurgeYearlyArchive",
-    "autoPurgeMonthlyArchive", "autoPurgeDailyArchive", "autoPurgeTermArchive"
+    "auto_purge_entire_site",
+    "auto_purge_front_page",
+    "auto_purge_home_page",
+    "auto_purge_pages",
+    "auto_purge_author_archive",
+    "auto_purge_post_type_archive",
+    "auto_purge_yearly_archive",
+    "auto_purge_monthly_archive",
+    "auto_purge_daily_archive",
+    "auto_purge_term_archive",
   ] as const;
-
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        {/* ... other FormFields are unchanged ... */}
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           control={form.control}
-          name="purgeOnUpgrade"
+          name="purge_on_upgrade"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
-              <FormLabel>Purge All Cache on Plugin/Theme/Core Upgrade</FormLabel>
+              <FormLabel>
+                Purge All Cache on Plugin/Theme/Core Upgrade
+              </FormLabel>
               <FormControl>
-                <Switch checked={field.value ?? false} onCheckedChange={field.onChange} disabled={isSaving}/>
+                <Switch
+                  checked={field.value ?? false}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
         <div className="space-y-3 pt-4">
-          <span className="text-base font-medium block border-b pb-2 mb-3">Auto Purge Rules for Publish/Update Actions</span>
+          <span className="text-base font-medium block border-b pb-2 mb-3">
+            Auto Purge Rules for Publish/Update Actions
+          </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {autoPurgeRuleKeys.map((key) => (
               <FormField
@@ -124,15 +119,19 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
                     <FormControl>
                       <Checkbox
                         id={key}
-                        checked={field.value as boolean}
+                        checked={field.value}
                         onCheckedChange={field.onChange}
                         disabled={isSaving}
                       />
                     </FormControl>
-                    <FormLabel htmlFor={key} className="text-sm font-normal cursor-pointer flex-grow">
-                      {formatLabel(key.replace('EntireSite', 'Entire Site Cache'))}
+                    <FormLabel
+                      htmlFor={key}
+                      className="text-sm font-normal cursor-pointer flex-grow"
+                    >
+                      {formatLabel(
+                        key.replace("entire_site", "Entire Site Cache")
+                      )}
                     </FormLabel>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -141,36 +140,40 @@ export function AutoPurgeTabForm({ initial, onSubmit, isSaving }: AutoPurgeTabFo
         </div>
         <FormField
           control={form.control}
-          name="customPurgeHooks"
+          name="custom_purge_hooks"
           render={({ field }) => (
             <FormItem className="pt-4">
               <FormLabel>Custom Purge Hooks</FormLabel>
               <FormControl>
                 <Textarea
-                  className="w-full min-h-[80px] border rounded-md p-2 font-mono text-xs bg-white text-black dark:bg-gray-900 dark:text-white"
+                  className="w-full min-h-[80px] font-mono text-xs"
                   placeholder="Enter one hook per line (e.g. switch_theme)"
-                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
-                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
+                  value={
+                    Array.isArray(field.value) ? field.value.join("\n") : ""
+                  }
+                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
                   disabled={isSaving}
                 />
               </FormControl>
               <div className="text-xs text-muted-foreground mt-1">
-                When any of these hooks fire, the entire cache will be purged. Default hooks: <code>switch_theme</code>, <code>deactivated_plugin</code>, <code>activated_plugin</code>, <code>wp_update_nav_menu</code>, <code>wp_update_nav_menu_item</code>.
+                When any of these hooks fire, the entire cache will be purged.
               </div>
-              <FormMessage />
             </FormItem>
           )}
         />
         <FormField
           control={form.control}
-          name="serveStale"
+          name="serve_stale"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between pt-4">
               <FormLabel>Serve Stale Cache While Regenerating</FormLabel>
               <FormControl>
-                <Switch checked={field.value ?? false} onCheckedChange={field.onChange} disabled={isSaving} />
+                <Switch
+                  checked={field.value ?? false}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />

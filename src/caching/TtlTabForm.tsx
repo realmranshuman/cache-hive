@@ -1,3 +1,4 @@
+// src/caching/TtlTabForm.tsx
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -13,30 +14,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-const MIN_TTL = 300; // 5 minutes
-const MAX_TTL = 63072000; // 2 years
+const MIN_TTL = 300;
+const MAX_TTL = 63072000;
 
 const ttlSchema = z.object({
-  publicCacheTTL: z
-    .number()
-    .min(MIN_TTL, `Must be at least ${MIN_TTL} seconds`)
-    .max(MAX_TTL, `Must be less than ${MAX_TTL} seconds`),
-  privateCacheTTL: z
-    .number()
-    .min(MIN_TTL, `Must be at least ${MIN_TTL} seconds`)
-    .max(MAX_TTL, `Must be less than ${MAX_TTL} seconds`),
-  frontPageTTL: z
-    .number()
-    .min(MIN_TTL, `Must be at least ${MIN_TTL} seconds`)
-    .max(MAX_TTL, `Must be less than ${MAX_TTL} seconds`),
-  feedTTL: z
-    .number()
-    .min(MIN_TTL, `Must be at least ${MIN_TTL} seconds`)
-    .max(MAX_TTL, `Must be less than ${MAX_TTL} seconds`),
-  restTTL: z
-    .number()
-    .min(MIN_TTL, `Must be at least ${MIN_TTL} seconds`)
-    .max(MAX_TTL, `Must be less than ${MAX_TTL} seconds`),
+  public_cache_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
+  private_cache_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
+  front_page_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
+  feed_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
+  rest_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
 });
 
 export type TtlFormData = z.infer<typeof ttlSchema>;
@@ -50,51 +36,34 @@ interface TtlTabFormProps {
 export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
   const form = useForm<TtlFormData>({
     resolver: zodResolver(ttlSchema),
-    defaultValues: {
-      publicCacheTTL: Number(initial.publicCacheTTL) || MIN_TTL,
-      privateCacheTTL: Number(initial.privateCacheTTL) || MIN_TTL,
-      frontPageTTL: Number(initial.frontPageTTL) || MIN_TTL,
-      feedTTL: Number(initial.feedTTL) || MIN_TTL,
-      restTTL: Number(initial.restTTL) || MIN_TTL,
+    values: {
+      public_cache_ttl: initial.public_cache_ttl || MIN_TTL,
+      private_cache_ttl: initial.private_cache_ttl || MIN_TTL,
+      front_page_ttl: initial.front_page_ttl || MIN_TTL,
+      feed_ttl: initial.feed_ttl || MIN_TTL,
+      rest_ttl: initial.rest_ttl || MIN_TTL,
     },
   });
-
-  React.useEffect(() => {
-    form.reset({
-      publicCacheTTL: Number(initial.publicCacheTTL) || MIN_TTL,
-      privateCacheTTL: Number(initial.privateCacheTTL) || MIN_TTL,
-      frontPageTTL: Number(initial.frontPageTTL) || MIN_TTL,
-      feedTTL: Number(initial.feedTTL) || MIN_TTL,
-      restTTL: Number(initial.restTTL) || MIN_TTL,
-    });
-  }, [initial, form.reset]);
-
-  async function handleSubmit(data: TtlFormData) {
-    await onSubmit(data);
-  }
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(handleSubmit)}
+        onSubmit={form.handleSubmit(onSubmit)}
         className="grid grid-cols-1 md:grid-cols-2 gap-4"
       >
         <FormField
           control={form.control}
-          name="publicCacheTTL"
+          name="public_cache_ttl"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Default TTL for Public Cache (seconds)</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  id="public-cache-ttl"
                   type="number"
                   min={MIN_TTL}
                   max={MAX_TTL}
                   disabled={isSaving}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />
@@ -103,20 +72,17 @@ export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
         />
         <FormField
           control={form.control}
-          name="privateCacheTTL"
+          name="private_cache_ttl"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Default TTL for Private Cache (seconds)</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  id="private-cache-ttl"
                   type="number"
                   min={MIN_TTL}
                   max={MAX_TTL}
                   disabled={isSaving}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />
@@ -125,20 +91,17 @@ export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
         />
         <FormField
           control={form.control}
-          name="frontPageTTL"
+          name="front_page_ttl"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Default TTL for Front Page (seconds)</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  id="front-page-ttl"
                   type="number"
                   min={MIN_TTL}
                   max={MAX_TTL}
                   disabled={isSaving}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />
@@ -147,20 +110,17 @@ export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
         />
         <FormField
           control={form.control}
-          name="feedTTL"
+          name="feed_ttl"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Default TTL for Feeds (seconds)</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  id="feed-ttl"
                   type="number"
                   min={MIN_TTL}
                   max={MAX_TTL}
                   disabled={isSaving}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />
@@ -169,20 +129,17 @@ export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
         />
         <FormField
           control={form.control}
-          name="restTTL"
+          name="rest_ttl"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Default TTL for REST API (seconds)</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  id="rest-ttl"
                   type="number"
                   min={MIN_TTL}
                   max={MAX_TTL}
                   disabled={isSaving}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />

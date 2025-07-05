@@ -14,14 +14,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-// Schema now expects an array of strings from the start. No transformation needed.
 const cacheSchema = z.object({
-  enableCache: z.boolean(),
-  cacheLoggedUsers: z.boolean(),
-  cacheCommenters: z.boolean(),
-  cacheRestApi: z.boolean(),
-  cacheMobile: z.boolean(),
-  mobileUserAgents: z.array(z.string()).optional(),
+  enable_cache: z.boolean(),
+  cache_logged_users: z.boolean(),
+  cache_commenters: z.boolean(),
+  cache_rest_api: z.boolean(),
+  cache_mobile: z.boolean(),
+  mobile_user_agents: z.array(z.string()).optional(),
 });
 
 export type CacheFormData = z.infer<typeof cacheSchema>;
@@ -32,39 +31,34 @@ interface CacheTabFormProps {
   isSaving: boolean;
 }
 
-export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps) {
-  // The form is now typed with the final data shape.
+export function CacheTabForm({
+  initial,
+  onSubmit,
+  isSaving,
+}: CacheTabFormProps) {
   const form = useForm<CacheFormData>({
     resolver: zodResolver(cacheSchema),
-    // `initial` data is already in the correct format from the API.
-    defaultValues: {
-      enableCache: initial.enableCache ?? false,
-      cacheLoggedUsers: initial.cacheLoggedUsers ?? false,
-      cacheCommenters: initial.cacheCommenters ?? false,
-      cacheRestApi: initial.cacheRestApi ?? false,
-      cacheMobile: initial.cacheMobile ?? false,
-      mobileUserAgents: initial.mobileUserAgents ?? [],
+    values: {
+      enable_cache: initial.enable_cache ?? false,
+      cache_logged_users: initial.cache_logged_users ?? false,
+      cache_commenters: initial.cache_commenters ?? false,
+      cache_rest_api: initial.cache_rest_api ?? false,
+      cache_mobile: initial.cache_mobile ?? false,
+      mobile_user_agents: initial.mobile_user_agents ?? [],
     },
   });
 
   const cacheMobileValue = useWatch({
     control: form.control,
-    name: "cacheMobile",
+    name: "cache_mobile",
   });
-
-  // useEffect now correctly resets the form with the API data structure.
-  React.useEffect(() => {
-    form.reset(initial);
-  }, [initial, form]);
 
   return (
     <Form {...form}>
-      {/* The `handleSubmit` call is now simple and type-safe. */}
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {/* ... other FormFields are unchanged ... */}
         <FormField
           control={form.control}
-          name="enableCache"
+          name="enable_cache"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Enable Full-Page Caching</FormLabel>
@@ -75,13 +69,12 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
                   disabled={isSaving}
                 />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
         <FormField
           control={form.control}
-          name="cacheLoggedUsers"
+          name="cache_logged_users"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Cache for Logged-in Users</FormLabel>
@@ -92,13 +85,12 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
                   disabled={isSaving}
                 />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
         <FormField
           control={form.control}
-          name="cacheCommenters"
+          name="cache_commenters"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Cache for Commenters</FormLabel>
@@ -109,13 +101,12 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
                   disabled={isSaving}
                 />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
         <FormField
           control={form.control}
-          name="cacheRestApi"
+          name="cache_rest_api"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Cache REST API Requests</FormLabel>
@@ -126,13 +117,12 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
                   disabled={isSaving}
                 />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
         <FormField
           control={form.control}
-          name="cacheMobile"
+          name="cache_mobile"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between">
               <FormLabel>Cache for Mobile Devices</FormLabel>
@@ -143,27 +133,25 @@ export function CacheTabForm({ initial, onSubmit, isSaving }: CacheTabFormProps)
                   disabled={isSaving}
                 />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
         {cacheMobileValue && (
           <FormField
             control={form.control}
-            name="mobileUserAgents"
+            name="mobile_user_agents"
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel>Custom Mobile User Agent List</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder={`Enter one user agent per line:\nMobile\nAndroid\niPhone\niPad`}
+                    placeholder={`Enter one user agent per line:\nMobile\nAndroid\niPhone`}
                     rows={4}
-                    // SOLID FIX: Transform the array to a string for display.
-                    value={Array.isArray(field.value) ? field.value.join('\n') : ''}
-                    // SOLID FIX: Transform the string back to an array on change.
-                    onChange={(e) => field.onChange(e.target.value.split('\n'))}
+                    value={
+                      Array.isArray(field.value) ? field.value.join("\n") : ""
+                    }
+                    onChange={(e) => field.onChange(e.target.value.split("\n"))}
                     disabled={isSaving}
-                    className="bg-white text-black dark:bg-gray-900 dark:text-white"
                   />
                 </FormControl>
                 <FormMessage />

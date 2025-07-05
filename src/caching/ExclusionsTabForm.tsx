@@ -1,3 +1,4 @@
+// src/caching/ExclusionsTabForm.tsx
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -18,12 +19,11 @@ import { wrapPromise } from "@/utils/wrapPromise";
 import { getRoles } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
 
-// Schemas expect arrays from the start.
 const exclusionsSchema = z.object({
-  excludeUris: z.array(z.string()).optional(),
-  excludeQueryStrings: z.array(z.string()).optional(),
-  excludeCookies: z.array(z.string()).optional(),
-  excludeRoles: z.array(z.string()).optional(),
+  exclude_uris: z.array(z.string()).optional(),
+  exclude_query_strings: z.array(z.string()).optional(),
+  exclude_cookies: z.array(z.string()).optional(),
+  exclude_roles: z.array(z.string()).optional(),
 });
 
 export type ExclusionsFormData = z.infer<typeof exclusionsSchema>;
@@ -48,7 +48,7 @@ function ExclusionsRolesField({
   return (
     <FormField
       control={form.control}
-      name="excludeRoles"
+      name="exclude_roles"
       render={() => (
         <FormItem className="space-y-3">
           <FormLabel className="text-base font-medium">
@@ -59,7 +59,7 @@ function ExclusionsRolesField({
               <FormField
                 key={role.id}
                 control={form.control}
-                name="excludeRoles"
+                name="exclude_roles"
                 render={({ field }) => (
                   <FormItem className="flex items-center space-x-2 p-2 border rounded-md hover:bg-accent hover:text-accent-foreground">
                     <FormControl>
@@ -70,7 +70,9 @@ function ExclusionsRolesField({
                           const currentValue = field.value || [];
                           return checked
                             ? field.onChange([...currentValue, role.id])
-                            : field.onChange(currentValue.filter((r) => r !== role.id));
+                            : field.onChange(
+                                currentValue.filter((r) => r !== role.id)
+                              );
                         }}
                         disabled={isSaving}
                       />
@@ -100,44 +102,32 @@ export function ExclusionsTabForm({
 }: ExclusionsTabFormProps) {
   const form = useForm<ExclusionsFormData>({
     resolver: zodResolver(exclusionsSchema),
-    defaultValues: {
-      excludeUris: initial.excludeUris ?? [],
-      excludeQueryStrings: initial.excludeQueryStrings ?? [],
-      excludeCookies: initial.excludeCookies ?? [],
-      excludeRoles: initial.excludeRoles ?? [],
+    values: {
+      exclude_uris: initial.exclude_uris ?? [],
+      exclude_query_strings: initial.exclude_query_strings ?? [],
+      exclude_cookies: initial.exclude_cookies ?? [],
+      exclude_roles: initial.exclude_roles ?? [],
     },
   });
 
-  React.useEffect(() => {
-    form.reset(initial);
-  }, [initial, form]);
-
-  const handleSubmit = (data: ExclusionsFormData) => {
-    const payload = {
-      ...data,
-      excludeRoles: data.excludeRoles || [],
-    };
-    return onSubmit(payload);
-  };
-
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           control={form.control}
-          name="excludeUris"
+          name="exclude_uris"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>URIs to Exclude from Caching</FormLabel>
               <FormControl>
                 <Textarea
-                  id="exclude-uris"
-                  placeholder={`Enter one URI pattern per line:\n/wp-admin/\n/my-account/.*\n/cart/\n/checkout/`}
+                  placeholder={`Enter one URI pattern per line:\n/wp-admin/\n/my-account/.*\n/cart/`}
                   rows={4}
-                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
-                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
+                  value={
+                    Array.isArray(field.value) ? field.value.join("\n") : ""
+                  }
+                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
                   disabled={isSaving}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />
@@ -146,19 +136,19 @@ export function ExclusionsTabForm({
         />
         <FormField
           control={form.control}
-          name="excludeQueryStrings"
+          name="exclude_query_strings"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Query Strings to Exclude from Caching</FormLabel>
               <FormControl>
                 <Textarea
-                  id="exclude-query-strings"
-                  placeholder={`Enter one query string key per line:\npreview\nedit\n_ga\nfbclid`}
+                  placeholder={`Enter one query string key per line:\npreview\nedit\n_ga`}
                   rows={4}
-                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
-                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
+                  value={
+                    Array.isArray(field.value) ? field.value.join("\n") : ""
+                  }
+                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
                   disabled={isSaving}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />
@@ -167,19 +157,19 @@ export function ExclusionsTabForm({
         />
         <FormField
           control={form.control}
-          name="excludeCookies"
+          name="exclude_cookies"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Cookies to Exclude from Caching</FormLabel>
               <FormControl>
                 <Textarea
-                  id="exclude-cookies"
-                  placeholder={`Enter one cookie name (or partial name) per line:\nwordpress_logged_in\ncomment_author_\nwoocommerce_cart_\nwp-postpass_`}
+                  placeholder={`Enter one cookie name (or partial name) per line:\nwordpress_logged_in\ncomment_author_`}
                   rows={4}
-                  value={Array.isArray(field.value) ? field.value.join('\n') : ''}
-                  onChange={(e) => field.onChange(e.target.value.split('\n'))}
+                  value={
+                    Array.isArray(field.value) ? field.value.join("\n") : ""
+                  }
+                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
                   disabled={isSaving}
-                  className="bg-white text-black dark:bg-gray-900 dark:text-white"
                 />
               </FormControl>
               <FormMessage />

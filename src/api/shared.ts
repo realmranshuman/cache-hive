@@ -11,4 +11,7 @@ declare global {
     };
   }
 }
-export const wpApiSettings = window.wpApiSettings || { root: '/wp-json/', nonce: '' };
+export const wpApiSettings = window.wpApiSettings || {
+  root: "/wp-json/",
+  nonce: "",
+};

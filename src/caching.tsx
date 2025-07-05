@@ -4,36 +4,17 @@ import * as React from "react";
 import { Suspense, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CacheTabForm, CacheFormData } from "./caching/CacheTabForm";
-import { TtlTabForm, TtlFormData } from "./caching/TtlTabForm";
-import { CacheSettingsSkeleton } from "@/components/skeletons/cache-settings-skeleton";
-import {
-  AutoPurgeTabForm,
-  AutoPurgeFormData,
-} from "./caching/AutoPurgeTabForm";
-import {
-  ExclusionsTabForm,
-  ExclusionsFormData,
-} from "./caching/ExclusionsTabForm";
+import { CacheTabForm } from "./caching/CacheTabForm";
+import { TtlTabForm } from "./caching/TtlTabForm";
+import { AutoPurgeTabForm } from "./caching/AutoPurgeTabForm";
+import { ExclusionsTabForm } from "./caching/ExclusionsTabForm";
 import { ObjectCacheTabForm } from "./caching/ObjectCacheTabForm";
 import { BrowserCacheTabForm } from "./caching/BrowserCacheTabForm";
-import {
-  getCacheSettings,
-  updateCacheSettings,
-  getTtlSettings,
-  updateTtlSettings,
-  getAutoPurgeSettings,
-  updateAutoPurgeSettings,
-  getExclusionsSettings,
-  updateExclusionsSettings,
-  getObjectCacheSettings,
-  updateObjectCacheSettings,
-  getBrowserCacheSettings,
-  updateBrowserCacheSettings,
-} from "./api";
+import * as API from "./api";
 import { toast as sonnerToast } from "sonner";
 import { ErrorBoundary } from "@/utils/ErrorBoundary";
 import { wrapPromise } from "@/utils/wrapPromise";
+import { CacheSettingsSkeleton } from "@/components/skeletons/cache-settings-skeleton";
 import { TtlSettingsSkeleton } from "@/components/skeletons/ttl-settings-skeleton";
 import { AutoPurgeSettingsSkeleton } from "@/components/skeletons/autopurge-settings-skeleton";
 import { ExclusionsSettingsSkeleton } from "@/components/skeletons/exclusions-settings-skeleton";
@@ -43,18 +24,15 @@ import { BrowserCacheSettingsSkeleton } from "@/components/skeletons/browser-cac
 function SectionSuspense({
   resource,
   children,
-  fallback,
 }: {
   resource: any;
   children: (data: any) => React.ReactNode;
-  fallback: React.ReactNode;
 }) {
   const data = resource.read();
   return children(data);
 }
 
 export function Caching() {
-  // Tabs
   const tabList = [
     "cache",
     "ttl",
@@ -64,8 +42,6 @@ export function Caching() {
     "browser",
   ];
   const [activeTab, setActiveTab] = useState("cache");
-
-  // Per-section saving state
   const [saving, setSaving] = useState({
     cache: false,
     ttl: false,
@@ -74,87 +50,62 @@ export function Caching() {
     object: false,
     browser: false,
   });
-
-  // Per-section resources, only fetch on demand
   const [resources, setResources] = useState<{ [key: string]: any }>({});
+  const [browserError, setBrowserError] = useState<{
+    message: string;
+    rules: string;
+  } | null>(null);
 
-  // browserError state
-  const [browserError, setBrowserError] = useState<{ message: string; rules: string } | null>(null);
-
-  // Fetch data for a tab if not already fetched
   const ensureResource = useCallback(
     (tab: string) => {
-      if (!resources[tab]) {
-        let fetcher: () => Promise<any>;
-        switch (tab) {
-          case "cache":
-            fetcher = getCacheSettings;
-            break;
-          case "ttl":
-            fetcher = getTtlSettings;
-            break;
-          case "autopurge":
-            fetcher = getAutoPurgeSettings;
-            break;
-          case "exclusions":
-            fetcher = getExclusionsSettings;
-            break;
-          case "object":
-            fetcher = getObjectCacheSettings;
-            break;
-          case "browser":
-            fetcher = getBrowserCacheSettings;
-            break;
-          default:
-            return;
-        }
-        setResources((prev) => ({ ...prev, [tab]: wrapPromise(fetcher()) }));
+      if (resources[tab]) return;
+      const fetcherMap: { [key: string]: () => Promise<any> } = {
+        cache: API.getCacheSettings,
+        ttl: API.getTtlSettings,
+        autopurge: API.getAutoPurgeSettings,
+        exclusions: API.getExclusionsSettings,
+        object: API.getObjectCacheSettings,
+        browser: API.getBrowserCacheSettings,
+      };
+      if (fetcherMap[tab]) {
+        setResources((prev) => ({
+          ...prev,
+          [tab]: wrapPromise(fetcherMap[tab]()),
+        }));
       }
     },
     [resources]
   );
 
-  // Fetch on tab change
   React.useEffect(() => {
     ensureResource(activeTab);
   }, [activeTab, ensureResource]);
 
-  // Refactor handleSave to apply the instant update logic to all forms.
   const handleSave = useCallback(
     (section: string, updater: (data: any) => Promise<any>) =>
       async (data: any) => {
         setSaving((prev) => ({ ...prev, [section]: true }));
         if (section === "browser") setBrowserError(null);
 
-        // This promise handles the API call and subsequent state update.
         const savePromise = updater(data)
           .then((newSettings) => {
-            // UNIVERSAL SUCCESS HANDLER:
-            // On a successful save, the API returns the new state.
-            // We use it to directly update our resource, preventing a re-fetch and skeleton loader.
             setResources((prev) => ({
               ...prev,
               [section]: wrapPromise(Promise.resolve(newSettings)),
             }));
-            return { name: "Settings" }; // For the toast success message
+            return { name: "Settings" };
           })
           .catch((err) => {
-            // SPECIALIZED ERROR HANDLER (currently only for browser cache):
-            // If the error is for the browser cache and contains `currentStatus`,
-            // we revert the UI to match the actual state on the server.
             if (section === "browser" && err.currentStatus) {
               setResources((prev) => ({
                 ...prev,
                 [section]: wrapPromise(Promise.resolve(err.currentStatus)),
               }));
               setBrowserError({
-                message:
-                  (err.message || "Could not save settings.") +
-                  (err.rules ? " Please update/replace the existing browser cache rules with the following:" : ""),
+                message: err.message || "Could not save.",
                 rules: err.rules || "",
               });
             }
-            // Re-throw the error so the toast can display the message.
             throw err;
           });
 
@@ -173,6 +124,63 @@ export function Caching() {
     [setResources]
   );
 
+  const skeletonMap: { [key: string]: React.ReactNode } = {
+    cache: <CacheSettingsSkeleton />,
+    ttl: <TtlSettingsSkeleton />,
+    autopurge: <AutoPurgeSettingsSkeleton />,
+    exclusions: <ExclusionsSettingsSkeleton />,
+    object: <ObjectCacheSettingsSkeleton />,
+    browser: <BrowserCacheSettingsSkeleton />,
+  };
+
+  const formMap: { [key: string]: (initial: any) => React.ReactNode } = {
+    cache: (initial) => (
+      <CacheTabForm
+        initial={initial}
+        onSubmit={handleSave("cache", API.updateCacheSettings)}
+        isSaving={saving.cache}
+      />
+    ),
+    ttl: (initial) => (
+      <TtlTabForm
+        initial={initial}
+        onSubmit={handleSave("ttl", API.updateTtlSettings)}
+        isSaving={saving.ttl}
+      />
+    ),
+    autopurge: (initial) => (
+      <AutoPurgeTabForm
+        initial={initial}
+        onSubmit={handleSave("autopurge", API.updateAutoPurgeSettings)}
+        isSaving={saving.autopurge}
+      />
+    ),
+    exclusions: (initial) => (
+      <ExclusionsTabForm
+        initial={initial}
+        onSubmit={handleSave("exclusions", API.updateExclusionsSettings)}
+        isSaving={saving.exclusions}
+      />
+    ),
+    object: (initial) => (
+      <ObjectCacheTabForm
+        initial={initial}
+        onSubmit={handleSave("object", API.updateObjectCacheSettings)}
+        isSaving={saving.object}
+      />
+    ),
+    browser: (initial) => (
+      <BrowserCacheTabForm
+        initial={initial.settings}
+        onSubmit={handleSave("browser", API.updateBrowserCacheSettings)}
+        isSaving={saving.browser}
+        status={initial}
+        error={browserError}
+        manualRules={browserError?.rules}
+      />
+    ),
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -180,120 +188,34 @@ export function Caching() {
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
-            <TabsTrigger value="cache">Cache</TabsTrigger>
-            <TabsTrigger value="ttl">TTL</TabsTrigger>
-            <TabsTrigger value="autopurge">Auto Purge</TabsTrigger>
-            <TabsTrigger value="exclusions">Exclusions</TabsTrigger>
-            <TabsTrigger value="object">Object Cache</TabsTrigger>
-            <TabsTrigger value="browser">Browser Cache</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+            {tabList.map((tab) => (
+              <TabsTrigger key={tab} value={tab}>
+                {tab.charAt(0).toUpperCase() +
+                  tab
+                    .slice(1)
+                    .replace("object", "Object Cache")
+                    .replace("browser", "Browser Cache")}
+              </TabsTrigger>
+            ))}
           </TabsList>
-
-          {/* Only render the active tab's content and fetch data for it */}
           {tabList.map((tab) => (
-            <TabsContent key={tab} value={tab} className="space-y-6 mt-6">
+            <TabsContent key={tab} value={tab} className="mt-6">
               {activeTab === tab && (
                 <ErrorBoundary
                   fallback={
                     <div className="p-4 text-red-600">
-                      Error loading {tab} settings.
+                      Error loading settings.
                     </div>
                   }
                 >
-                  {resources[tab] ? (
-                    <Suspense
-                      fallback={
-                        tab === "cache" ? (
-                          <CacheSettingsSkeleton />
-                        ) : tab === "ttl" ? (
-                          <TtlSettingsSkeleton />
-                        ) : tab === "autopurge" ? (
-                          <AutoPurgeSettingsSkeleton />
-                        ) : tab === "exclusions" ? (
-                          <ExclusionsSettingsSkeleton />
-                        ) : tab === "object" ? (
-                          <ObjectCacheSettingsSkeleton />
-                        ) : (
-                          <BrowserCacheSettingsSkeleton />
-                        )
-                      }
-                    >
-                      <SectionSuspense
-                        resource={resources[tab]}
-                        fallback={null}
-                      >
-                        {(initial: any) =>
-                          tab === "cache" ? (
-                            <CacheTabForm
-                              initial={initial}
-                              onSubmit={handleSave(
-                                "cache",
-                                updateCacheSettings
-                              )}
-                              isSaving={saving.cache}
-                            />
-                          ) : tab === "ttl" ? (
-                            <TtlTabForm
-                              initial={initial}
-                              onSubmit={handleSave("ttl", updateTtlSettings)}
-                              isSaving={saving.ttl}
-                            />
-                          ) : tab === "autopurge" ? (
-                            <AutoPurgeTabForm
-                              initial={initial}
-                              onSubmit={handleSave(
-                                "autopurge",
-                                updateAutoPurgeSettings
-                              )}
-                              isSaving={saving.autopurge}
-                            />
-                          ) : tab === "exclusions" ? (
-                            <ExclusionsTabForm
-                              initial={initial}
-                              onSubmit={handleSave(
-                                "exclusions",
-                                updateExclusionsSettings
-                              )}
-                              isSaving={saving.exclusions}
-                            />
-                          ) : tab === "object" ? (
-                            <ObjectCacheTabForm
-                              initial={initial}
-                              onSubmit={handleSave(
-                                "object",
-                                updateObjectCacheSettings
-                              )}
-                              isSaving={saving.object}
-                            />
-                          ) : (
-                            <BrowserCacheTabForm
-                              initial={initial.settings}
-                              onSubmit={handleSave(
-                                "browser",
-                                updateBrowserCacheSettings
-                              )}
-                              isSaving={saving.browser}
-                              status={initial}
-                              error={browserError}
-                              manualRules={browserError?.rules}
-                            />
-                          )
-                        }
+                  <Suspense fallback={skeletonMap[tab]}>
+                    {resources[tab] && (
+                      <SectionSuspense resource={resources[tab]}>
+                        {(initial: any) => formMap[tab](initial)}
                       </SectionSuspense>
-                    </Suspense>
-                  ) : tab === "cache" ? (
-                    <CacheSettingsSkeleton />
-                  ) : tab === "ttl" ? (
-                    <TtlSettingsSkeleton />
-                  ) : tab === "autopurge" ? (
-                    <AutoPurgeSettingsSkeleton />
-                  ) : tab === "exclusions" ? (
-                    <ExclusionsSettingsSkeleton />
-                  ) : tab === "object" ? (
-                    <ObjectCacheSettingsSkeleton />
-                  ) : (
-                    <BrowserCacheSettingsSkeleton />
-                  )}
+                    )}
+                  </Suspense>
                 </ErrorBoundary>
               )}
             </TabsContent>
