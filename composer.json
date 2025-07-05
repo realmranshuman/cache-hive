@@ -18,7 +18,8 @@
         "squizlabs/php_codesniffer": "*",
         "wp-coding-standards/wpcs": "^3.0",
         "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
-        "phpcompatibility/phpcompatibility-wp": "*"
+        "phpcompatibility/phpcompatibility-wp": "*",
+        "humbug/php-scoper": "^0.18.17"
     },
     "scripts": {
         "lint": "vendor/bin/phpcs --standard=phpcs.ruleset.xml .",

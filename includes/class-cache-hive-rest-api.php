@@ -2,9 +2,24 @@
 /**
  * Manages all REST API endpoints for Cache Hive.
  *
- * @since 1.0.0
  * @package Cache_Hive
+ * @since 1.0.0
  */
+
+namespace Cache_Hive\Includes;
+
+use Cache_Hive\Includes\API\Cache_Hive_REST_Autopurge;
+use Cache_Hive\Includes\API\Cache_Hive_REST_BrowserCache;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Cache;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Exclusions;
+use Cache_Hive\Includes\API\Cache_Hive_REST_ObjectCache;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_CSS;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_HTML;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_JS;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_Media;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Roles;
+use Cache_Hive\Includes\API\Cache_Hive_REST_TTL;
+use WP_REST_Server;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -23,11 +38,7 @@ require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-html.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-media.php';
 
 /**
- * Final class for managing all REST API endpoints for Cache Hive.
- *
- * This class registers all the routes and handles the master permission checks.
- *
- * @since 1.0.0
+ * Manages all REST API endpoints for Cache Hive.
  */
 final class Cache_Hive_REST_API {
 
@@ -40,8 +51,6 @@ final class Cache_Hive_REST_API {
 
 	/**
 	 * Initialize the REST API hooks.
-	 *
-	 * @since 1.0.0
 	 */
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
@@ -49,184 +58,50 @@ final class Cache_Hive_REST_API {
 
 	/**
 	 * Register all REST API routes.
-	 *
-	 * @since 1.0.0
 	 */
 	public static function register_routes() {
-		// Cache Settings Routes.
-		register_rest_route(
-			self::$namespace,
-			'/cache',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Cache', 'get_cache_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_Cache', 'update_cache_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
+		$routes = array(
+			'/cache'            => Cache_Hive_REST_Cache::class,
+			'/ttl'              => Cache_Hive_REST_TTL::class,
+			'/autopurge'        => Cache_Hive_REST_Autopurge::class,
+			'/exclusions'       => Cache_Hive_REST_Exclusions::class,
+			'/object-cache'     => Cache_Hive_REST_ObjectCache::class,
+			'/browser-cache'    => Cache_Hive_REST_BrowserCache::class,
+			'/optimizers/css'   => Cache_Hive_REST_Optimizers_CSS::class,
+			'/optimizers/js'    => Cache_Hive_REST_Optimizers_JS::class,
+			'/optimizers/html'  => Cache_Hive_REST_Optimizers_HTML::class,
+			'/optimizers/media' => Cache_Hive_REST_Optimizers_Media::class,
 		);
-		register_rest_route(
-			self::$namespace,
-			'/ttl',
-			array(
+
+		foreach ( $routes as $endpoint => $class ) {
+			register_rest_route(
+				self::$namespace,
+				$endpoint,
 				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_TTL', 'get_ttl_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_TTL', 'update_ttl_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/autopurge',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_AutoPurge', 'get_autopurge_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_AutoPurge', 'update_autopurge_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/exclusions',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Exclusions', 'get_exclusions_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_Exclusions', 'update_exclusions_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/object-cache',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_ObjectCache', 'get_object_cache_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_ObjectCache', 'update_object_cache_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/browser-cache',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_BrowserCache', 'get_browser_cache_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_BrowserCache', 'update_browser_cache_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
+					array(
+						'methods'             => WP_REST_Server::READABLE,
+						'callback'            => array( $class, 'get_settings' ),
+						'permission_callback' => array( __CLASS__, 'permissions_check' ),
+					),
+					array(
+						'methods'             => WP_REST_Server::EDITABLE,
+						'callback'            => array( $class, 'update_settings' ),
+						'permission_callback' => array( __CLASS__, 'permissions_check' ),
+					),
+				)
+			);
+		}
+
 		register_rest_route(
 			self::$namespace,
 			'/browser-cache/verify-nginx',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => array( 'Cache_Hive_REST_BrowserCache', 'verify_nginx_browser_cache' ),
+				'callback'            => array( Cache_Hive_REST_BrowserCache::class, 'verify_nginx_browser_cache' ),
 				'permission_callback' => array( __CLASS__, 'permissions_check' ),
 			)
 		);
 
-		// Page Optimization Routes.
-		register_rest_route(
-			self::$namespace,
-			'/optimizers/css',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_CSS', 'get_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_CSS', 'update_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/optimizers/js',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_JS', 'get_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_JS', 'update_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/optimizers/html',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_HTML', 'get_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_HTML', 'update_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-		register_rest_route(
-			self::$namespace,
-			'/optimizers/media',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_Media', 'get_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-				array(
-					'methods'             => WP_REST_Server::EDITABLE,
-					'callback'            => array( 'Cache_Hive_REST_Optimizers_Media', 'update_settings' ),
-					'permission_callback' => array( __CLASS__, 'permissions_check' ),
-				),
-			)
-		);
-
-		// Route for performing actions.
 		register_rest_route(
 			self::$namespace,
 			'/actions/(?P<action>\S+)',
@@ -237,14 +112,13 @@ final class Cache_Hive_REST_API {
 			)
 		);
 
-		// Route for getting WordPress roles.
 		register_rest_route(
 			self::$namespace,
 			'/roles',
 			array(
 				array(
 					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( 'Cache_Hive_REST_Roles', 'get_roles' ),
+					'callback'            => array( Cache_Hive_REST_Roles::class, 'get_roles' ),
 					'permission_callback' => array( __CLASS__, 'permissions_check' ),
 				),
 			)
@@ -254,10 +128,40 @@ final class Cache_Hive_REST_API {
 	/**
 	 * Check if the user has permissions to access the endpoint.
 	 *
-	 * @since 1.0.0
 	 * @return bool
 	 */
 	public static function permissions_check() {
 		return current_user_can( 'manage_options' );
+	}
+
+	/**
+	 * Perform a specified action.
+	 *
+	 * @param \WP_REST_Request $request The request object.
+	 * @return \WP_REST_Response
+	 */
+	public static function perform_action( \WP_REST_Request $request ) {
+		$action = $request->get_param( 'action' );
+
+		switch ( $action ) {
+			case 'purge_all':
+				Cache_Hive_Purge::purge_all();
+				return new \WP_REST_Response(
+					array(
+						'success' => true,
+						'message' => 'Entire cache purged.',
+					),
+					200
+				);
+			// Add other actions here.
+			default:
+				return new \WP_REST_Response(
+					array(
+						'success' => false,
+						'message' => 'Invalid action.',
+					),
+					400
+				);
+		}
 	}
 }

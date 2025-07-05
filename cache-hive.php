@@ -3,7 +3,7 @@
  * Plugin Name:       Cache Hive
  * Plugin URI:        https://github.com/realmranshuman/cache-hive
  * Description:       A powerful caching and performance optimization plugin for WordPress.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Author:            Anshuman
  * Author URI:        https://github.com/realmranshuman
  * License:           GPL-2.0-or-later
@@ -14,40 +14,33 @@
  * @package           Cache_Hive
  */
 
+use Cache_Hive\Includes\Cache_Hive_Lifecycle;
+use Cache_Hive\Includes\Cache_Hive_Main;
+use Cache_Hive\Includes\Cache_Hive_Purge;
+use Cache_Hive\Includes\Cache_Hive_Settings;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
 // =========================================================================
-// PLUGIN CONSTANTS & VITE CONFIG
+// PLUGIN CONSTANTS
 // =========================================================================
-define( 'CACHE_HIVE_VERSION', '1.0.0' );
+define( 'CACHE_HIVE_VERSION', '1.1.0' );
 define( 'CACHE_HIVE_FILE', __FILE__ );
 define( 'CACHE_HIVE_BASE', plugin_basename( CACHE_HIVE_FILE ) );
 define( 'CACHE_HIVE_DIR', plugin_dir_path( CACHE_HIVE_FILE ) );
 define( 'CACHE_HIVE_URL', plugin_dir_url( CACHE_HIVE_FILE ) );
 define( 'CACHE_HIVE_CACHE_DIR', WP_CONTENT_DIR . '/cache/cache-hive' );
 define( 'CACHE_HIVE_CONFIG_DIR', WP_CONTENT_DIR . '/cache-hive-config' );
-define( 'CACHE_HIVE_VITE_DEV_SERVER', 'http://localhost:5173' );
-define( 'CACHE_HIVE_VITE_ENTRY_POINT', 'src/index.tsx' );
 
 // =========================================================================
-// BOOTSTRAP COMPOSER AUTOLOADER
+// BOOTSTRAP COMPOSER AUTOLOADER & PLUGIN FILES
 // =========================================================================
-if ( file_exists( CACHE_HIVE_DIR . 'vendor/autoload.php' ) ) {
-	require_once CACHE_HIVE_DIR . 'vendor/autoload.php';
+if ( file_exists( CACHE_HIVE_DIR . 'lib/autoload.php' ) ) {
+	require_once CACHE_HIVE_DIR . 'lib/autoload.php';
 }
 
-// =========================================================================
-// PLUGIN LIFECYCLE HOOKS
-// =========================================================================
-require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
-register_activation_hook( __FILE__, array( 'Cache_Hive_Lifecycle', 'on_activation' ) );
-register_deactivation_hook( __FILE__, array( 'Cache_Hive_Lifecycle', 'on_deactivation' ) );
-
-// =========================================================================
-// REQUIRE PLUGIN FILES
-// =========================================================================
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-settings.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-disk.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-engine.php';
@@ -60,6 +53,7 @@ require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-js-optimizer
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-media-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
+require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-object-cache.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/interface-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php';
@@ -69,140 +63,154 @@ require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-memcached-
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-array-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-object-cache-factory.php';
 
-// Register hooks for cache purging on logout.
-if ( class_exists( 'Cache_Hive_Disk' ) ) {
+
+// =========================================================================
+// PLUGIN LIFECYCLE & INITIALIZATION
+// =========================================================================
+register_activation_hook( __FILE__, array( Cache_Hive_Lifecycle::class, 'on_activation' ) );
+register_deactivation_hook( __FILE__, array( Cache_Hive_Lifecycle::class, 'on_deactivation' ) );
+
+if ( class_exists( Cache_Hive_Purge::class ) ) {
 	Cache_Hive_Purge::register_hooks();
 }
+
+/**
+ * Begins execution of the plugin.
+ *
+ * @since 1.0.0
+ * @return Cache_Hive_Main
+ */
+function cache_hive_run() {
+	return Cache_Hive_Main::instance();
+}
+add_action( 'plugins_loaded', 'cache_hive_run' );
+
 
 // =========================================================================
 // ADMIN UI SETUP
 // =========================================================================
 
-// Add Settings link on Plugins page.
-add_filter(
-	'plugin_action_links_' . CACHE_HIVE_BASE,
-	function ( $links ) {
-		$settings_link = '<a href="' . admin_url( 'admin.php?page=cache-hive' ) . '">' . __( 'Settings', 'cache-hive' ) . '</a>';
-		array_unshift( $links, $settings_link );
-		return $links;
-	}
-);
+/**
+ * Adds a settings link to the plugin's action links.
+ *
+ * @since 1.0.0
+ * @param array $links An array of plugin action links.
+ * @return array The modified array of links.
+ */
+function cache_hive_add_settings_link( $links ) {
+	$settings_link = '<a href="' . admin_url( 'admin.php?page=cache-hive' ) . '">' . esc_html__( 'Settings', 'cache-hive' ) . '</a>';
+	array_unshift( $links, $settings_link );
+	return $links;
+}
+add_filter( 'plugin_action_links_' . CACHE_HIVE_BASE, 'cache_hive_add_settings_link' );
 
-add_action(
-	'admin_menu',
-	function () {
-		add_menu_page(
-			'Cache Hive',
-			'Cache Hive',
-			'manage_options',
-			'cache-hive',
-			'cache_hive_admin_page',
-			'dashicons-performance',
-			80
-		);
-		add_submenu_page(
-			'cache-hive',
-			'Dashboard',
-			'Dashboard',
-			'manage_options',
-			'cache-hive',
-			'cache_hive_admin_page'
-		);
-		add_submenu_page(
-			'cache-hive',
-			'Caching Settings',
-			'Caching',
-			'manage_options',
-			'cache-hive-caching',
-			'cache_hive_admin_page'
-		);
-		add_submenu_page(
-			'cache-hive',
-			'Page Optimization',
-			'Page Optimization',
-			'manage_options',
-			'cache-hive-optimization',
-			'cache_hive_admin_page'
-		);
-		add_submenu_page(
-			'cache-hive',
-			'Cloudflare',
-			'Cloudflare',
-			'manage_options',
-			'cache-hive-cloudflare',
-			'cache_hive_admin_page'
-		);
-	}
-);
+/**
+ * Registers the admin menu pages for Cache Hive.
+ *
+ * @since 1.0.0
+ */
+function cache_hive_register_admin_menu() {
+	add_menu_page(
+		'Cache Hive',
+		'Cache Hive',
+		'manage_options',
+		'cache-hive',
+		'cache_hive_render_admin_page',
+		'dashicons-performance',
+		80
+	);
+	add_submenu_page(
+		'cache-hive',
+		'Dashboard',
+		'Dashboard',
+		'manage_options',
+		'cache-hive',
+		'cache_hive_render_admin_page'
+	);
+	add_submenu_page(
+		'cache-hive',
+		'Caching Settings',
+		'Caching',
+		'manage_options',
+		'cache-hive-caching',
+		'cache_hive_render_admin_page'
+	);
+	add_submenu_page(
+		'cache-hive',
+		'Page Optimization',
+		'Page Optimization',
+		'manage_options',
+		'cache-hive-optimization',
+		'cache_hive_render_admin_page'
+	);
+	add_submenu_page(
+		'cache-hive',
+		'Cloudflare',
+		'Cloudflare',
+		'manage_options',
+		'cache-hive-cloudflare',
+		'cache_hive_render_admin_page'
+	);
+}
+add_action( 'admin_menu', 'cache_hive_register_admin_menu' );
 
 /**
  * Renders the root div for the React admin application.
  *
  * @since 1.0.0
  */
-function cache_hive_admin_page() {
+function cache_hive_render_admin_page() {
 	echo '<div id="cache-hive-root"></div>';
 }
 
-add_action(
-	'admin_enqueue_scripts',
-	function ( $hook ) {
-		// Only load assets on Cache Hive admin pages.
-		if ( false === strpos( $hook, 'cache-hive' ) ) {
-			return;
-		}
-
-		// Always enqueue the built JS file.
-		$plugin_url   = plugin_dir_url( __FILE__ );
-		$js_file_path = plugin_dir_path( __FILE__ ) . 'build/index.js';
-		if ( file_exists( $js_file_path ) ) {
-			wp_enqueue_script(
-				'cache-hive-app',
-				$plugin_url . 'build/index.js',
-				array( 'wp-element' ),
-				filemtime( $js_file_path ),
-				true
-			);
-			// Localize REST API settings for JS.
-			wp_localize_script(
-				'cache-hive-app',
-				'wpApiSettings',
-				array(
-					'root'  => esc_url_raw( rest_url() ),
-					'nonce' => wp_create_nonce( 'wp_rest' ),
-				)
-			);
-		}
-
-		$css_file_path = plugin_dir_path( __FILE__ ) . 'build/index.css';
-		if ( file_exists( $css_file_path ) ) {
-			wp_enqueue_style(
-				'cache-hive-style',
-				$plugin_url . 'build/index.css',
-				array(),
-				filemtime( $css_file_path )
-			);
-
-			// This ensures the React app can go full-width.
-			$custom_css = "
-            body[class*='_page_cache-hive'] #wpcontent {
-                padding-left: 0;
-            }
-        ";
-			wp_add_inline_style( 'cache-hive-style', $custom_css );
-		}
-	},
-	100
-);
-
 /**
- * Begins execution of the plugin.
+ * Enqueues scripts and styles for the admin area.
  *
  * @since 1.0.0
+ * @param string $hook The current admin page hook.
  */
-function cache_hive_run() {
-	return Cache_Hive_Main::instance();
-}
+function cache_hive_enqueue_admin_assets( $hook ) {
+	if ( false === strpos( $hook, 'cache-hive' ) ) {
+		return;
+	}
 
-// Let's get this party started.
-cache_hive_run();
+	$script_path = CACHE_HIVE_DIR . 'build/index.js';
+	$style_path  = CACHE_HIVE_DIR . 'build/index.css';
+
+	if ( file_exists( $script_path ) ) {
+		wp_enqueue_script(
+			'cache-hive-app',
+			CACHE_HIVE_URL . 'build/index.js',
+			array( 'wp-element', 'wp-i18n' ),
+			filemtime( $script_path ),
+			true
+		);
+
+		wp_localize_script(
+			'cache-hive-app',
+			'wpApiSettings',
+			array(
+				'root'  => esc_url_raw( rest_url() ),
+				'nonce' => wp_create_nonce( 'wp_rest' ),
+			)
+		);
+	}
+
+	if ( file_exists( $style_path ) ) {
+		wp_enqueue_style(
+			'cache-hive-style',
+			CACHE_HIVE_URL . 'build/index.css',
+			array(),
+			filemtime( $style_path )
+		);
+
+		// This ensures the React app can go full-width.
+		$custom_css = "
+		body[class*='_page_cache-hive'] #wpcontent {
+			padding-left: 0;
+		}
+		";
+		wp_add_inline_style( 'cache-hive-style', $custom_css );
+	}
+}
+add_action( 'admin_enqueue_scripts', 'cache_hive_enqueue_admin_assets', 100 );

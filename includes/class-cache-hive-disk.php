@@ -2,68 +2,59 @@
 /**
  * Class for handling all disk-related operations.
  *
- * @since 1.0.0
  * @package Cache_Hive
+ * @since 1.0.0
  */
+
+namespace Cache_Hive\Includes;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Final class for handling all disk-related operations for Cache Hive.
- *
- * This class is responsible for low-level file and directory operations only.
- *
- * @since 1.0.0
+ * Handles all disk-related operations for Cache Hive.
  */
 final class Cache_Hive_Disk {
+
 	/**
 	 * Get the full path to the cache file for the current request.
 	 *
-	 * @since 1.0.0
 	 * @return string The cache file path.
 	 */
 	public static function get_cache_file_path() {
-		$uri = isset( $_SERVER['REQUEST_URI'] ) ? strtok( esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ), '?' ) : '';
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$uri = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
 		$uri = rtrim( $uri, '/' );
-		if ( empty( $uri ) ) {
-			$uri = '/__index__';
-		}
+		$uri = empty( $uri ) ? '/__index__' : $uri;
 
-		$host     = isset( $_SERVER['HTTP_HOST'] ) ? strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) ) : '';
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$host     = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
 		$dir_path = CACHE_HIVE_CACHE_DIR . '/' . $host . $uri;
 
-		// For logged-in users, add a hashed user folder. This maintains the subdirectory structure.
 		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) {
 			$settings = Cache_Hive_Settings::get_settings();
-			if ( ! empty( $settings['cacheLoggedUsers'] ) ) {
-				$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive';
+			if ( ! empty( $settings['cache_logged_users'] ) ) {
+				$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cache_hive_default_salt';
 				$user      = wp_get_current_user();
 				$user_hash = 'user_' . md5( $user->ID . $auth_key );
 				$dir_path .= '/' . $user_hash;
 			}
 		}
 
-		// Use different filenames for mobile and desktop cache.
-		$file_name = ( method_exists( 'Cache_Hive_Engine', 'is_mobile' ) && Cache_Hive_Engine::is_mobile() ) ? 'index-mobile.html' : 'index.html';
+		$file_name = ( method_exists( Cache_Hive_Engine::class, 'is_mobile' ) && Cache_Hive_Engine::is_mobile() ) ? 'index-mobile.html' : 'index.html';
 		return $dir_path . '/' . $file_name;
 	}
 
 	/**
 	 * Creates a static HTML file and its metadata file after running optimizations.
 	 *
-	 * @since 1.0.0
 	 * @param string $buffer The page content to cache.
 	 */
 	public static function cache_page( $buffer ) {
-		// INTEGRATION POINT: Run all enabled optimizations on the buffer before caching.
 		$optimized_buffer = Cache_Hive_Base_Optimizer::optimize( $buffer );
+		$final_buffer     = ! empty( $optimized_buffer ) ? $optimized_buffer : $buffer;
 
-		// If optimization returned something valid, use it. Otherwise, fall back to original.
-		$final_buffer = ! empty( $optimized_buffer ) ? $optimized_buffer : $buffer;
-
-		// Don't cache empty pages.
 		if ( empty( trim( $final_buffer ) ) ) {
 			return;
 		}
@@ -78,33 +69,33 @@ final class Cache_Hive_Disk {
 			}
 		}
 
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
 		$cache_created = file_put_contents( $cache_file, $final_buffer . self::get_cache_signature(), LOCK_EX );
 
 		if ( $cache_created ) {
-			if ( false !== strpos( $cache_file, '/user_' ) ) {
-				$settings = Cache_Hive_Settings::get_settings();
-				$ttl      = $settings['privateCacheTTL'] ?? 1800;
-			} else {
-				$ttl = Cache_Hive_Settings::get_current_page_ttl();
-			}
+			$ttl = str_contains( $cache_file, '/user_' )
+				? ( Cache_Hive_Settings::get( 'private_cache_ttl' ) ?? 1800 )
+				: Cache_Hive_Settings::get_current_page_ttl();
 
-			$http_host   = isset( $_SERVER['HTTP_HOST'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : '';
-			$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$http_host = $_SERVER['HTTP_HOST'] ?? '';
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$request_uri = $_SERVER['REQUEST_URI'] ?? '';
 			$url         = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ? 'https' : 'http' ) . '://' . $http_host . $request_uri;
 
 			$meta_data = array(
 				'created' => time(),
 				'ttl'     => (int) $ttl,
-				'url'     => $url,
+				'url'     => esc_url_raw( $url ),
 			);
-			file_put_contents( $meta_file, json_encode( $meta_data ), LOCK_EX );
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
+			file_put_contents( $meta_file, wp_json_encode( $meta_data ), LOCK_EX );
 		}
 	}
 
 	/**
 	 * Returns the cache signature comment appended to cached files.
 	 *
-	 * @since 1.0.0
 	 * @return string
 	 */
 	public static function get_cache_signature() {

@@ -2,9 +2,11 @@
 /**
  * Main plugin class for Cache Hive.
  *
- * @since 1.0.0
  * @package Cache_Hive
+ * @since 1.0.0
  */
+
+namespace Cache_Hive\Includes;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -13,29 +15,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * The main Cache Hive plugin class.
  *
- * This class is responsible for initializing the plugin, loading components,
- * and setting up the necessary hooks. It follows a singleton pattern
- * to ensure only one instance exists.
- *
- * @since 1.0.0
+ * Initializes the plugin, loads components, and sets up hooks.
  */
 final class Cache_Hive_Main {
 
 	/**
 	 * The single instance of the class.
 	 *
-	 * @var Cache_Hive_Main
+	 * @var Cache_Hive_Main|null
 	 */
-	private static $instance;
+	private static $instance = null;
 
 	/**
 	 * Main Cache_Hive_Main Instance.
 	 *
-	 * Ensures only one instance of Cache_Hive_Main is loaded or can be loaded.
-	 *
-	 * @since 1.0.0
 	 * @static
-	 * @return Cache_Hive_Main - Main instance.
+	 * @return Cache_Hive_Main Main instance.
 	 */
 	public static function instance() {
 		if ( is_null( self::$instance ) ) {
@@ -46,8 +41,6 @@ final class Cache_Hive_Main {
 
 	/**
 	 * Constructor.
-	 *
-	 * @since 1.0.0
 	 */
 	private function __construct() {
 		$this->define_hooks();
@@ -56,60 +49,33 @@ final class Cache_Hive_Main {
 
 	/**
 	 * Initialize plugin components.
-	 *
-	 * @since 1.0.0
 	 */
 	private function init_components() {
 		Cache_Hive_REST_API::init();
 		Cache_Hive_Purge::init();
-		Cache_Hive_Object_Cache::init(); // Explicitly initialize object cache.
-		// Cache_Hive_Cloudflare::init(); // Uncomment when ready.
-		// Cache_Hive_HTML_Optimizer::init(); // Uncomment when ready.
-		// Cache_Hive_CSS_Optimizer::init(); // Uncomment when ready.
-		// Cache_Hive_JS_Optimizer::init(); // Uncomment when ready.
-		// Cache_Hive_Media_Optimizer::init(); // Uncomment when ready.
+		Cache_Hive_Object_Cache::init();
+		// Future components can be initialized here.
+		// Cache_Hive_Cloudflare::init();
+		// Cache_Hive_HTML_Optimizer::init();
+		// Cache_Hive_CSS_Optimizer::init();
+		// Cache_Hive_JS_Optimizer::init();
+		// Cache_Hive_Media_Optimizer::init();
 	}
 
 	/**
 	 * Define all plugin hooks.
-	 *
-	 * @since 1.0.0
 	 */
 	private function define_hooks() {
-		// Activation & deactivation are handled by hooks in the main plugin file.
-		// Uninstallation is handled by the dedicated uninstall.php file.
-		// This keeps the main class clean.
-
 		// Core plugin initialization.
-		add_action( 'init', array( 'Cache_Hive_Engine', 'start' ), 0 );
+		add_action( 'init', array( Cache_Hive_Engine::class, 'start' ), 0 );
 		add_action( 'init', array( $this, 'load_textdomain' ) );
-		add_action( 'init', array( 'Cache_Hive_Base_Optimizer', 'init_hooks' ) );
+		add_action( 'init', array( Cache_Hive_Base_Optimizer::class, 'init_hooks' ) );
 	}
 
 	/**
 	 * Load plugin textdomain.
-	 *
-	 * @since 1.0.0
 	 */
 	public function load_textdomain() {
 		load_plugin_textdomain( 'cache-hive', false, dirname( CACHE_HIVE_BASE ) . '/languages' );
-	}
-
-	/**
-	 * Add plugin action links.
-	 *
-	 * @since 1.0.0
-	 * @param  array $links Action links.
-	 * @return array Modified action links.
-	 */
-	public function add_plugin_action_links( $links ) {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return $links;
-		}
-
-		$settings_link = '<a href="' . admin_url( 'admin.php?page=cache-hive' ) . '">' . esc_html__( 'Settings', 'cache-hive' ) . '</a>';
-		array_unshift( $links, $settings_link );
-
-		return $links;
 	}
 }

@@ -5,6 +5,13 @@
  * @package Cache_Hive
  */
 
+namespace Cache_Hive\Includes\API;
+
+use Cache_Hive\Includes\Cache_Hive_Lifecycle;
+use Cache_Hive\Includes\Cache_Hive_Settings;
+use WP_REST_Request;
+use WP_REST_Response;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -12,107 +19,46 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Handles REST API endpoints for auto-purge settings.
  */
-class Cache_Hive_REST_AutoPurge {
+class Cache_Hive_REST_Autopurge {
+
 	/**
 	 * Retrieves the current auto-purge settings.
 	 *
-	 * @since 1.0.0
 	 * @return WP_REST_Response The response object.
 	 */
-	public static function get_autopurge_settings() {
-		$settings           = Cache_Hive_Settings::get_settings();
-		$autopurge_settings = array(
-			'autoPurgeEntireSite'      => $settings['autoPurgeEntireSite'] ?? false,
-			'autoPurgeFrontPage'       => $settings['autoPurgeFrontPage'] ?? false,
-			'autoPurgeHomePage'        => $settings['autoPurgeHomePage'] ?? false,
-			'autoPurgePages'           => $settings['autoPurgePages'] ?? false,
-			'autoPurgeAuthorArchive'   => $settings['autoPurgeAuthorArchive'] ?? false,
-			'autoPurgePostTypeArchive' => $settings['autoPurgePostTypeArchive'] ?? false,
-			'autoPurgeYearlyArchive'   => $settings['autoPurgeYearlyArchive'] ?? false,
-			'autoPurgeMonthlyArchive'  => $settings['autoPurgeMonthlyArchive'] ?? false,
-			'autoPurgeDailyArchive'    => $settings['autoPurgeDailyArchive'] ?? false,
-			'autoPurgeTermArchive'     => $settings['autoPurgeTermArchive'] ?? false,
-			'purgeOnUpgrade'           => $settings['purgeOnUpgrade'] ?? false,
-			'serveStale'               => $settings['serveStale'] ?? false,
-			'customPurgeHooks'         => $settings['customPurgeHooks'] ?? array(),
+	public static function get_settings() {
+		$settings      = Cache_Hive_Settings::get_settings();
+		$response_data = array(
+			'auto_purge_entire_site'       => (bool) ( $settings['auto_purge_entire_site'] ?? false ),
+			'auto_purge_front_page'        => (bool) ( $settings['auto_purge_front_page'] ?? true ),
+			'auto_purge_home_page'         => (bool) ( $settings['auto_purge_home_page'] ?? false ),
+			'auto_purge_pages'             => (bool) ( $settings['auto_purge_pages'] ?? false ),
+			'auto_purge_author_archive'    => (bool) ( $settings['auto_purge_author_archive'] ?? true ),
+			'auto_purge_post_type_archive' => (bool) ( $settings['auto_purge_post_type_archive'] ?? true ),
+			'auto_purge_yearly_archive'    => (bool) ( $settings['auto_purge_yearly_archive'] ?? true ),
+			'auto_purge_monthly_archive'   => (bool) ( $settings['auto_purge_monthly_archive'] ?? true ),
+			'auto_purge_daily_archive'     => (bool) ( $settings['auto_purge_daily_archive'] ?? true ),
+			'auto_purge_term_archive'      => (bool) ( $settings['auto_purge_term_archive'] ?? true ),
+			'purge_on_upgrade'             => (bool) ( $settings['purge_on_upgrade'] ?? true ),
+			'serve_stale'                  => (bool) ( $settings['serve_stale'] ?? false ),
+			'custom_purge_hooks'           => $settings['custom_purge_hooks'] ?? array(),
 		);
-		return new WP_REST_Response( $autopurge_settings, 200 );
+		return new WP_REST_Response( $response_data, 200 );
 	}
 
 	/**
 	 * Updates the auto-purge settings.
 	 *
-	 * @since 1.0.0
 	 * @param WP_REST_Request $request The request object containing the new settings.
 	 * @return WP_REST_Response The response object with the updated settings.
 	 */
-	public static function update_autopurge_settings( WP_REST_Request $request ) {
-		$params           = $request->get_json_params();
-		$settings         = Cache_Hive_Settings::get_settings();
-		$updated_settings = $settings;
+	public static function update_settings( WP_REST_Request $request ) {
+		$params       = $request->get_json_params();
+		$new_settings = Cache_Hive_Settings::sanitize_settings( $params );
 
-		foreach ( $params as $key => $value ) {
-			switch ( $key ) {
-				case 'autoPurgeEntireSite':
-				case 'autoPurgeFrontPage':
-				case 'autoPurgeHomePage':
-				case 'autoPurgePages':
-				case 'autoPurgeAuthorArchive':
-				case 'autoPurgePostTypeArchive':
-				case 'autoPurgeYearlyArchive':
-				case 'autoPurgeMonthlyArchive':
-				case 'autoPurgeDailyArchive':
-				case 'autoPurgeTermArchive':
-				case 'purgeOnUpgrade':
-				case 'serveStale':
-					$updated_settings[ $key ] = filter_var( $value, FILTER_VALIDATE_BOOLEAN );
-					break;
-				case 'customPurgeHooks':
-					if ( is_array( $value ) ) {
-						// Sanitize all incoming hook names first.
-						$sanitized_hooks = array_map( 'sanitize_text_field', $value );
-
-						// Filter the array, keeping only hooks that actually exist in WordPress.
-						$validated_hooks = array_filter(
-							$sanitized_hooks,
-							function ( $hook ) {
-								// A hook is considered valid if it is registered as either an action or a filter.
-								return has_action( $hook ) || has_filter( $hook );
-							}
-						);
-
-						// Re-index the array to ensure it's a simple, 0-indexed array for JSON conversion.
-						$updated_settings[ $key ] = array_values( $validated_hooks );
-					} else {
-						// If the input isn't an array for some reason, default to an empty array.
-						$updated_settings[ $key ] = array();
-					}
-					break;
-				default:
-					continue 2;
-			}
-		}
-
-		$new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
 		update_option( 'cache_hive_settings', $new_settings, 'yes' );
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
-		// Manually build the response from the known fresh data.
-		$response_data = array(
-			'autoPurgeEntireSite'      => $new_settings['autoPurgeEntireSite'] ?? false,
-			'autoPurgeFrontPage'       => $new_settings['autoPurgeFrontPage'] ?? false,
-			'autoPurgeHomePage'        => $new_settings['autoPurgeHomePage'] ?? false,
-			'autoPurgePages'           => $new_settings['autoPurgePages'] ?? false,
-			'autoPurgeAuthorArchive'   => $new_settings['autoPurgeAuthorArchive'] ?? false,
-			'autoPurgePostTypeArchive' => $new_settings['autoPurgePostTypeArchive'] ?? false,
-			'autoPurgeYearlyArchive'   => $new_settings['autoPurgeYearlyArchive'] ?? false,
-			'autoPurgeMonthlyArchive'  => $new_settings['autoPurgeMonthlyArchive'] ?? false,
-			'autoPurgeDailyArchive'    => $new_settings['autoPurgeDailyArchive'] ?? false,
-			'autoPurgeTermArchive'     => $new_settings['autoPurgeTermArchive'] ?? false,
-			'purgeOnUpgrade'           => $new_settings['purgeOnUpgrade'] ?? false,
-			'serveStale'               => $new_settings['serveStale'] ?? false,
-			'customPurgeHooks'         => $new_settings['customPurgeHooks'] ?? array(),
-		);
-		return new WP_REST_Response( $response_data, 200 );
+		return self::get_settings();
 	}
 }

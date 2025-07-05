@@ -5,6 +5,10 @@
  * @package Cache_Hive
  */
 
+namespace Cache_Hive\Includes\API;
+
+use WP_REST_Response;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -16,7 +20,9 @@ class Cache_Hive_REST_Roles {
 	/**
 	 * Retrieves all editable WordPress user roles.
 	 *
-	 * @since 1.0.0
+	 * This method is named get_roles to be consistent, but it doesn't have a corresponding
+	 * update_roles method, so it's treated specially in the main REST API class.
+	 *
 	 * @return WP_REST_Response The response object containing the roles.
 	 */
 	public static function get_roles() {

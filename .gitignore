@@ -32,3 +32,4 @@ Thumbs.db
 # should be ignored if you were running git from a parent directory.
 *.crt
 *.pem
+lib

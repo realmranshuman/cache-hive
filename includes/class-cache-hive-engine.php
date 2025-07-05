@@ -2,9 +2,11 @@
 /**
  * Class for handling the core caching engine operations.
  *
- * @since 1.0.0
  * @package Cache_Hive
+ * @since 1.0.0
  */
+
+namespace Cache_Hive\Includes;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -47,11 +49,7 @@ final class Cache_Hive_Engine {
 	 */
 	private function __construct() {
 		self::$settings = Cache_Hive_Settings::get_settings();
-
-		// This hook is for when the drop-in misses, but WordPress can still serve cache.
 		add_action( 'template_redirect', array( __CLASS__, 'deliver_cache' ), 0 );
-
-		// If no cache was delivered, start output buffering to capture the page.
 		add_action( 'template_redirect', array( __CLASS__, 'start_buffering' ), 1 );
 	}
 
@@ -68,14 +66,13 @@ final class Cache_Hive_Engine {
 			return false;
 		}
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : 'GET';
-		if ( 'GET' !== $request_method ) {
+		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
 			return false;
 		}
-		if ( ! ( Cache_Hive_Settings::get( 'enableCache' ) ?? false ) ) {
+		if ( ! Cache_Hive_Settings::get( 'enable_cache', false ) ) {
 			return false;
 		}
-		if ( defined( 'REST_REQUEST' ) && REST_REQUEST && ! ( Cache_Hive_Settings::get( 'cacheRestApi' ) ?? false ) ) {
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST && ! Cache_Hive_Settings::get( 'cache_rest_api', false ) ) {
 			return false;
 		}
 		return true;
@@ -94,17 +91,18 @@ final class Cache_Hive_Engine {
 
 		if ( self::is_cache_valid( $cache_file ) ) {
 			header( 'X-Cache-Hive: Hit (Engine)' );
-		} elseif ( ( self::$settings['serveStale'] ?? false ) && file_exists( $cache_file ) ) {
+		} elseif ( ( self::$settings['serve_stale'] ?? false ) && file_exists( $cache_file ) ) {
 			header( 'X-Cache-Hive: Stale (Engine)' );
 		} else {
 			header( 'X-Cache-Hive: Miss (Engine)' );
 			return;
 		}
 
-		if ( class_exists( 'Cache_Hive_Browser_Cache' ) ) {
+		if ( class_exists( Cache_Hive_Browser_Cache::class ) ) {
 			Cache_Hive_Browser_Cache::send_headers( self::$settings );
 		}
 
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		readfile( $cache_file );
 		exit;
 	}
@@ -113,10 +111,9 @@ final class Cache_Hive_Engine {
 	 * Starts output buffering to capture the page if no cache was delivered.
 	 */
 	public static function start_buffering() {
-		if ( self::bypass_cache() ) {
-			return;
+		if ( ! self::bypass_cache() ) {
+			ob_start( array( __CLASS__, 'end_buffering' ) );
 		}
-		ob_start( array( __CLASS__, 'end_buffering' ) );
 	}
 
 	/**
@@ -143,67 +140,62 @@ final class Cache_Hive_Engine {
 		if ( strlen( $buffer ) < 255 ) {
 			return false;
 		}
-		if ( ! preg_match( '/<html|<!DOCTYPE/i', $buffer ) ) {
-			return false;
-		}
-		if ( preg_match( '/<?xml/i', $buffer ) && ! preg_match( '/<!DOCTYPE/i', $buffer ) ) {
-			return false;
-		}
-		return true;
+		return (bool) preg_match( '/<html|<!DOCTYPE/i', $buffer );
 	}
 
 	/**
 	 * The master list of exclusion rules checked during a full WordPress load.
+	 *
+	 * @return bool
 	 */
 	private static function bypass_cache() {
 		if ( is_404() || is_search() || is_preview() || is_trackback() || post_password_required() ) {
 			return true;
 		}
-		// Special handling for feeds, which have their own TTL.
-		if ( is_feed() && ( self::$settings['feedTTL'] ?? 604800 ) <= 0 ) {
+		if ( is_feed() && ( self::$settings['feed_ttl'] ?? 604800 ) <= 0 ) {
 			return true;
 		}
 
-		if ( ! ( self::$settings['cacheLoggedUsers'] ?? false ) && is_user_logged_in() ) {
-			return true;
-		}
-		if ( ! ( self::$settings['cacheCommenters'] ?? false ) && isset( $_COOKIE[ 'comment_author_' . COOKIEHASH ] ) ) {
-			return true;
-		}
-
-		if ( is_user_logged_in() && ! empty( self::$settings['excludeRoles'] ) ) {
+		if ( is_user_logged_in() ) {
+			if ( ! ( self::$settings['cache_logged_users'] ?? false ) ) {
+				return true;
+			}
 			$user = wp_get_current_user();
-			if ( ! empty( array_intersect( (array) $user->roles, self::$settings['excludeRoles'] ) ) ) {
+			if ( ! empty( self::$settings['exclude_roles'] ) && ! empty( array_intersect( (array) $user->roles, self::$settings['exclude_roles'] ) ) ) {
 				return true;
 			}
 		}
 
-		$request_uri = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ) );
-		if ( ! empty( self::$settings['excludeUris'] ) ) {
-			foreach ( self::$settings['excludeUris'] as $pattern ) {
-				if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $request_uri ) ) {
+		if ( ! ( self::$settings['cache_commenters'] ?? false ) && isset( $_COOKIE[ 'comment_author_' . COOKIEHASH ] ) ) {
+			return true;
+		}
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+		if ( ! empty( self::$settings['exclude_uris'] ) ) {
+			foreach ( self::$settings['exclude_uris'] as $pattern ) {
+				if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $request_uri ) ) {
 					return true;
 				}
 			}
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( ! empty( $_GET ) && ! empty( self::$settings['excludeQueryStrings'] ) ) {
-			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			$get_keys = array_keys( $_GET );
+		if ( ! empty( $_GET ) && ! empty( self::$settings['exclude_query_strings'] ) ) {
+			$get_keys = array_keys( wp_unslash( $_GET ) );
 			foreach ( $get_keys as $query_key ) {
-				foreach ( self::$settings['excludeQueryStrings'] as $pattern ) {
-					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $query_key ) ) {
+				foreach ( self::$settings['exclude_query_strings'] as $pattern ) {
+					if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $query_key ) ) {
 						return true;
 					}
 				}
 			}
 		}
 
-		if ( ! empty( $_COOKIE ) && ! empty( self::$settings['excludeCookies'] ) ) {
-			foreach ( array_keys( $_COOKIE ) as $cookie_name ) {
-				foreach ( self::$settings['excludeCookies'] as $pattern ) {
-					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $cookie_name ) ) {
+		if ( ! empty( $_COOKIE ) && ! empty( self::$settings['exclude_cookies'] ) ) {
+			$cookie_keys = array_keys( wp_unslash( $_COOKIE ) );
+			foreach ( $cookie_keys as $cookie_name ) {
+				foreach ( self::$settings['exclude_cookies'] as $pattern ) {
+					if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $cookie_name ) ) {
 						return true;
 					}
 				}
@@ -216,55 +208,38 @@ final class Cache_Hive_Engine {
 	/**
 	 * Checks if the current visitor is a mobile device.
 	 *
-	 * @since 1.0.0
 	 * @return bool
 	 */
 	public static function is_mobile() {
-		if ( empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
-			return false;
-		}
-		if ( ! ( self::$settings['cacheMobile'] ?? false ) ) {
-			return false;
-		}
-
-		$user_agents = self::$settings['mobileUserAgents'] ?? array();
-		if ( empty( $user_agents ) ) {
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+		if ( empty( $user_agent ) || ! ( self::$settings['cache_mobile'] ?? false ) ) {
 			return false;
 		}
 
-		$user_agent = sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) );
-		foreach ( $user_agents as $pattern ) {
-			if ( ! empty( $pattern ) ) {
-				// SOLID FIX: Use preg_quote to escape special regex characters in user agent strings.
-				if ( preg_match( '#' . preg_quote( $pattern, '#' ) . '#i', $user_agent ) ) {
-					return true;
-				}
-			}
+		$mobile_user_agents = self::$settings['mobile_user_agents'] ?? array();
+		if ( empty( $mobile_user_agents ) ) {
+			return false;
 		}
 
-		return false;
+		$regex = '/' . implode( '|', array_map( 'preg_quote', $mobile_user_agents, array( '/' ) ) ) . '/i';
+		return (bool) preg_match( $regex, $user_agent );
 	}
 
 	/**
 	 * Checks if a cache file is valid (exists and is not expired).
 	 *
-	 * @since 1.0.0
 	 * @param string $cache_file The full path to the cache file.
 	 * @return bool
 	 */
 	public static function is_cache_valid( $cache_file ) {
 		$meta_file = $cache_file . '.meta';
-
 		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
 			return false;
 		}
 
-		$meta_data_json = @file_get_contents( $meta_file );
-		if ( ! $meta_data_json ) {
-			return false;
-		}
-
-		$meta_data = json_decode( $meta_data_json, true );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$meta_data = json_decode( @file_get_contents( $meta_file ), true );
 
 		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
 			return false;

@@ -5,6 +5,13 @@
  * @package Cache_Hive
  */
 
+namespace Cache_Hive\Includes\API;
+
+use Cache_Hive\Includes\Cache_Hive_Lifecycle;
+use Cache_Hive\Includes\Cache_Hive_Settings;
+use WP_REST_Request;
+use WP_REST_Response;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -15,68 +22,35 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Cache_Hive_REST_Optimizers_CSS {
 
 	/**
-	 * Returns the key prefix for CSS settings.
-	 *
-	 * @return string
-	 */
-	private static function get_prefix() {
-		return 'css_';
-	}
-
-	/**
 	 * Retrieves the current CSS optimization settings.
 	 *
-	 * @since 1.2.0
 	 * @return WP_REST_Response The response object.
 	 */
 	public static function get_settings() {
-		$settings = Cache_Hive_Settings::get_settings();
-		$prefix   = self::get_prefix();
-
-		$css_settings = array(
-			'minify'                => $settings[ $prefix . 'minify' ] ?? false,
-			'combine'               => $settings[ $prefix . 'combine' ] ?? false,
-			'combineExternalInline' => $settings[ $prefix . 'combine_external_inline' ] ?? false,
-			'fontOptimization'      => $settings[ $prefix . 'font_optimization' ] ?? 'default',
-			'excludes'              => $settings[ $prefix . 'excludes' ] ?? array(),
+		$settings      = Cache_Hive_Settings::get_settings();
+		$response_data = array(
+			'css_minify'                  => (bool) ( $settings['css_minify'] ?? false ),
+			'css_combine'                 => (bool) ( $settings['css_combine'] ?? false ),
+			'css_combine_external_inline' => (bool) ( $settings['css_combine_external_inline'] ?? false ),
+			'css_font_optimization'       => $settings['css_font_optimization'] ?? 'default',
+			'css_excludes'                => $settings['css_excludes'] ?? array(),
 		);
-
-		return new WP_REST_Response( $css_settings, 200 );
+		return new WP_REST_Response( $response_data, 200 );
 	}
 
 	/**
 	 * Updates the CSS optimization settings.
 	 *
-	 * @since 1.2.0
 	 * @param WP_REST_Request $request The request object containing the new settings.
 	 * @return WP_REST_Response The response object with the updated settings.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
-		$params           = $request->get_json_params();
-		$settings         = Cache_Hive_Settings::get_settings();
-		$updated_settings = $settings;
-		$prefix           = self::get_prefix();
+		$params       = $request->get_json_params();
+		$new_settings = Cache_Hive_Settings::sanitize_settings( $params );
 
-		// Map frontend keys to backend setting keys.
-		$key_map = array(
-			'minify'                => $prefix . 'minify',
-			'combine'               => $prefix . 'combine',
-			'combineExternalInline' => $prefix . 'combine_external_inline',
-			'fontOptimization'      => $prefix . 'font_optimization',
-			'excludes'              => $prefix . 'excludes',
-		);
-
-		foreach ( $key_map as $frontend_key => $backend_key ) {
-			if ( isset( $params[ $frontend_key ] ) ) {
-				$updated_settings[ $backend_key ] = $params[ $frontend_key ];
-			}
-		}
-
-		$new_settings = Cache_Hive_Settings::sanitize_settings( $updated_settings );
 		update_option( 'cache_hive_settings', $new_settings, 'yes' );
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
-		// Return the new state of this section for optimistic UI updates.
 		return self::get_settings();
 	}
 }

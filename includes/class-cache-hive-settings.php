@@ -2,21 +2,20 @@
 /**
  * Handles all settings for Cache Hive.
  *
- * @since 1.0.0
  * @package Cache_Hive
+ * @since 1.0.0
  */
+
+namespace Cache_Hive\Includes;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Final class for managing Cache Hive settings.
+ * Manages Cache Hive settings.
  *
- * This class provides a centralized way to get, set, and sanitize
- * all plugin settings, using a static singleton pattern for the settings array.
- *
- * @since 1.0.0
+ * Provides a centralized way to get, set, and sanitize all plugin settings.
  */
 final class Cache_Hive_Settings {
 
@@ -30,62 +29,50 @@ final class Cache_Hive_Settings {
 	/**
 	 * Get all settings, merged with defaults and wp-config.php overrides.
 	 *
-	 * @since 1.0.0
 	 * @param bool $force_refresh Whether to force a refresh from the database.
 	 * @return array The plugin settings.
 	 */
 	public static function get_settings( $force_refresh = false ) {
-		if ( ! isset( self::$settings ) || $force_refresh ) {
-			$db_settings = get_option( 'cache_hive_settings', array() );
-			$defaults    = self::get_default_settings();
-
-			// Base settings: DB values parsed over defaults.
-			$merged_settings = wp_parse_args( $db_settings, $defaults );
-
-			// Self-correction for migrating old string values to arrays.
-			foreach ( $merged_settings as $key => &$value ) {
-				if ( isset( $defaults[ $key ] ) && is_array( $defaults[ $key ] ) && is_string( $value ) ) {
-					$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
-				}
-			}
-
-			// Get wp-config.php overrides and merge them on top. They have the final say.
-			// Pass the currently merged settings so the override logic can be method-aware.
-			$wp_config_overrides = self::get_wp_config_overrides( $merged_settings );
-			$merged_settings     = array_merge( $merged_settings, $wp_config_overrides );
-
-			self::$settings = $merged_settings;
+		if ( isset( self::$settings ) && ! $force_refresh ) {
+			return self::$settings;
 		}
+
+		$db_settings = get_option( 'cache_hive_settings', array() );
+		$defaults    = self::get_default_settings();
+
+		$merged_settings = wp_parse_args( $db_settings, $defaults );
+
+		// Self-correction for migrating old string values to arrays.
+		foreach ( $merged_settings as $key => &$value ) {
+			if ( isset( $defaults[ $key ] ) && is_array( $defaults[ $key ] ) && is_string( $value ) ) {
+				$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
+			}
+		}
+
+		$wp_config_overrides = self::get_wp_config_overrides( $merged_settings );
+		self::$settings      = array_merge( $merged_settings, $wp_config_overrides );
+
 		return self::$settings;
 	}
 
 	/**
 	 * Gathers all defined object cache constants from wp-config.php.
 	 *
-	 * This function is "method-aware" and uses a data-driven approach to check
-	 * only for the allowed, specific constants for the active cache method.
-	 *
-	 * @since 1.1.0
-	 * @param array $current_settings The current settings array, used to determine the method if not defined in a constant.
+	 * @param array $current_settings The current settings array.
 	 * @return array An array of settings defined in wp-config.php.
 	 */
 	private static function get_wp_config_overrides( $current_settings ) {
 		$overrides = array();
+		$method    = defined( 'CACHE_HIVE_OBJECT_CACHE_METHOD' ) ? CACHE_HIVE_OBJECT_CACHE_METHOD : ( $current_settings['object_cache_method'] ?? 'redis' );
 
-		// Determine the active method (priority: constant > settings).
-		$method = defined( 'CACHE_HIVE_OBJECT_CACHE_METHOD' )
-			? constant( 'CACHE_HIVE_OBJECT_CACHE_METHOD' )
-			: ( $current_settings['objectCacheMethod'] ?? 'redis' );
-
-		// Handle non-method-specific constants first.
 		$simple_constants = array(
-			'objectCacheMethod'               => 'CACHE_HIVE_OBJECT_CACHE_METHOD',
-			'objectCacheClient'               => 'CACHE_HIVE_OBJECT_CACHE_CLIENT',
-			'objectCacheHost'                 => 'CACHE_HIVE_OBJECT_CACHE_HOST',
-			'objectCachePort'                 => 'CACHE_HIVE_OBJECT_CACHE_PORT',
-			'objectCacheTimeout'              => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
-			'objectCacheLifetime'             => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
-			'objectCachePersistentConnection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
+			'object_cache_method'                => 'CACHE_HIVE_OBJECT_CACHE_METHOD',
+			'object_cache_client'                => 'CACHE_HIVE_OBJECT_CACHE_CLIENT',
+			'object_cache_host'                  => 'CACHE_HIVE_OBJECT_CACHE_HOST',
+			'object_cache_port'                  => 'CACHE_HIVE_OBJECT_CACHE_PORT',
+			'object_cache_timeout'               => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
+			'object_cache_lifetime'              => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
+			'object_cache_persistent_connection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
 		);
 
 		foreach ( $simple_constants as $setting_key => $constant_name ) {
@@ -94,33 +81,26 @@ final class Cache_Hive_Settings {
 			}
 		}
 
-		// Define the mapping of settings to their method-specific constants.
 		$method_specific_constants = array(
-			'objectCacheUsername' => array(
+			'object_cache_username' => array(
 				'redis'     => 'CACHE_HIVE_REDIS_USERNAME',
 				'memcached' => 'CACHE_HIVE_MEMCACHED_USERNAME',
 			),
-			'objectCachePassword' => array(
+			'object_cache_password' => array(
 				'redis'     => 'CACHE_HIVE_REDIS_PASSWORD',
 				'memcached' => 'CACHE_HIVE_MEMCACHED_PASSWORD',
 			),
-			'objectCacheDatabase' => array(
+			'object_cache_database' => array(
 				'redis' => 'CACHE_HIVE_REDIS_DATABASE',
 			),
 		);
 
-		// Process the method-specific constants based on the active method.
 		foreach ( $method_specific_constants as $setting_key => $method_map ) {
-			// Check if there is a constant defined for the current setting and active method.
-			if ( isset( $method_map[ $method ] ) ) {
-				$constant_name = $method_map[ $method ];
-				if ( defined( $constant_name ) ) {
-					$overrides[ $setting_key ] = constant( $constant_name );
-				}
+			if ( isset( $method_map[ $method ] ) && defined( $method_map[ $method ] ) ) {
+				$overrides[ $setting_key ] = constant( $method_map[ $method ] );
 			}
 		}
 
-		// Handle Redis-specific TLS options.
 		$tls_constants = array(
 			'ca_cert'     => 'CACHE_HIVE_REDIS_TLS_CA_CERT',
 			'verify_peer' => 'CACHE_HIVE_REDIS_TLS_VERIFY_PEER',
@@ -128,10 +108,7 @@ final class Cache_Hive_Settings {
 
 		foreach ( $tls_constants as $nested_key => $nested_constant ) {
 			if ( defined( $nested_constant ) ) {
-				if ( ! isset( $overrides['objectCacheTlsOptions'] ) ) {
-					$overrides['objectCacheTlsOptions'] = array();
-				}
-				$overrides['objectCacheTlsOptions'][ $nested_key ] = constant( $nested_constant );
+				$overrides['object_cache_tls_options'][ $nested_key ] = constant( $nested_constant );
 			}
 		}
 
@@ -141,225 +118,151 @@ final class Cache_Hive_Settings {
 	/**
 	 * Returns an array of setting keys that are currently overridden by wp-config.php constants.
 	 *
-	 * THIS IS THE NEW PUBLIC METHOD
-	 *
-	 * @since 1.1.1
 	 * @return string[] An array of setting keys.
 	 */
 	public static function get_overridden_keys() {
-		// We pass an empty array because at this stage we only care about which keys are defined,
-		// and the logic correctly falls back to checking all possibilities.
 		return array_keys( self::get_wp_config_overrides( array() ) );
 	}
 
 	/**
 	 * Get a specific setting value.
 	 *
-	 * @since 1.0.0
-	 * @param string $key The setting key.
+	 * @param string $key           The setting key.
 	 * @param mixed  $default_value The default value if not found.
 	 * @return mixed The setting value.
 	 */
 	public static function get( $key, $default_value = null ) {
 		$settings = self::get_settings();
-		return isset( $settings[ $key ] ) ? $settings[ $key ] : $default_value;
+		return $settings[ $key ] ?? $default_value;
 	}
 
 	/**
 	 * Get the default settings structure for the entire plugin.
 	 *
-	 * @since 1.0.0
 	 * @return array The default settings.
 	 */
 	public static function get_default_settings() {
-		// All multi-line textareas are now defined as arrays by default.
-		$default_mobile_agents   = array(
-			'Mobile',
-			'Android',
-			'Silk/',
-			'Kindle',
-			'BlackBerry',
-			'Opera Mini',
-			'Opera Mobi',
-			'iPhone',
-			'iPad',
-		);
-		$default_exclude_uris    = array(
-			'/wp-admin/',
-			'/wp-login.php',
-			'/cart/',
-			'/checkout/',
-			'/my-account/.*',
-		);
-		$default_exclude_queries = array(
-			'utm_source',
-			'utm_medium',
-			'utm_campaign',
-			'fbclid',
-			'preview',
-			'edit',
-			'_ga',
-		);
-		$default_exclude_cookies = array(
-			'wordpress_logged_in',
-			'wp-postpass',
-			'woocommerce_cart_hash',
-			'comment_author_',
-		);
-		$default_custom_hooks    = array(
-			'switch_theme',
-			'deactivated_plugin',
-			'activated_plugin',
-			'wp_update_nav_menu',
-			'wp_update_nav_menu_item',
-		);
-
 		return array(
-			// Cache Settings.
-			'enableCache'                     => true,
-			'cacheLoggedUsers'                => false,
-			'cacheCommenters'                 => false,
-			'cacheRestApi'                    => false,
-			'cacheMobile'                     => false,
-			'mobileUserAgents'                => $default_mobile_agents,
-			'serveStale'                      => false,
-			'purgeOnUpgrade'                  => true,
-			// TTL Settings.
-			'publicCacheTTL'                  => 604800,
-			'privateCacheTTL'                 => 1800,
-			'frontPageTTL'                    => 604800,
-			'feedTTL'                         => 604800,
-			'restTTL'                         => 604800,
-			// Auto Purge Settings.
-			'autoPurgeEntireSite'             => false,
-			'autoPurgeFrontPage'              => true,
-			'autoPurgeHomePage'               => false,
-			'autoPurgePages'                  => false,
-			'autoPurgeAuthorArchive'          => true,
-			'autoPurgePostTypeArchive'        => true,
-			'autoPurgeYearlyArchive'          => true,
-			'autoPurgeMonthlyArchive'         => true,
-			'autoPurgeDailyArchive'           => true,
-			'autoPurgeTermArchive'            => true,
-			'customPurgeHooks'                => $default_custom_hooks,
-			// Exclusion Settings.
-			'excludeUris'                     => $default_exclude_uris,
-			'excludeQueryStrings'             => $default_exclude_queries,
-			'excludeCookies'                  => $default_exclude_cookies,
-			'excludeRoles'                    => array(),
-			// Browser Cache Settings.
-			'browserCacheEnabled'             => false,
-			'browserCacheTTL'                 => 604800,
-			// Object Cache Settings.
-			'objectCacheEnabled'              => false,
-			'objectCacheMethod'               => 'redis',
-			'objectCacheClient'               => 'phpredis',
-			'objectCacheHost'                 => '127.0.0.1',
-			'objectCachePort'                 => 6379,
-			'objectCacheLifetime'             => 3600,
-			'objectCacheUsername'             => '',
-			'objectCachePassword'             => '',
-			'objectCacheDatabase'             => 0,
-			'objectCacheTimeout'              => 2.0,
-			'objectCacheKey'                  => '',
-			'objectCacheGlobalGroups'         => array(
-				'blog-details',
-				'blog-lookup',
-				'global-posts',
-				'networks',
-				'rss',
-				'sites',
-				'site-details',
-				'site-lookup',
-				'site-options',
-				'site-transient',
-				'users',
-				'useremail',
-				'userlogins',
-				'usermeta',
-				'user_meta',
-				'userslugs',
-				'blog_meta',
-				'image_editor',
-				'network-queries',
-				'site-queries',
-				'theme_files',
-				'translation_files',
-				'user-queries',
-			),
-			'objectCacheNoCacheGroups'        => array(
-				'comment',
-				'plugins',
-				'theme_json',
-				'themes',
-				'wc_session_id',
-			),
-			'objectCacheTlsOptions'           => array(),
-			'objectCachePersistentConnection' => false,
-			'prefetch'                        => true,
-			'flush_async'                     => true,
-			// Cloudflare Settings.
-			'cloudflare_enabled'              => false,
-			'cloudflare_api_method'           => 'token',
-			'cloudflare_api_key'              => '',
-			'cloudflare_api_token'            => '',
-			'cloudflare_email'                => '',
-			'cloudflare_domain'               => '',
-			'cloudflare_zone_id'              => '',
-			// Page Optimization - CSS.
-			'css_minify'                      => false,
-			'css_combine'                     => false,
-			'css_combine_external_inline'     => false,
-			'css_font_optimization'           => 'default',
-			'css_excludes'                    => array(),
-			// Page Optimization - JS.
-			'js_minify'                       => false,
-			'js_combine'                      => false,
-			'js_combine_external_inline'      => false,
-			'js_defer_mode'                   => 'off',
-			'js_excludes'                     => array(),
-			'js_defer_excludes'               => array(),
-			// Page Optimization - HTML.
-			'html_minify'                     => false,
-			'html_dns_prefetch'               => array(),
-			'html_dns_preconnect'             => array(),
-			'auto_dns_prefetch'               => false,
-			'google_fonts_async'              => false,
-			'html_keep_comments'              => false,
-			'remove_emoji_scripts'            => false,
-			'html_remove_noscript'            => false,
-			// Page Optimization - Media.
-			'media_lazyload_images'           => false,
-			'media_lazyload_iframes'          => false,
-			'media_image_excludes'            => array(),
-			'media_iframe_excludes'           => array(),
-			'media_add_missing_sizes'         => false,
-			'media_responsive_placeholder'    => false,
-			'media_optimize_uploads'          => false,
-			'media_optimization_quality'      => 82,
-			'media_auto_resize_uploads'       => false,
-			'media_resize_width'              => 0,
-			'media_resize_height'             => 0,
+			// General Cache Settings
+			'enable_cache'                       => true,
+			'cache_logged_users'                 => false,
+			'cache_commenters'                   => false,
+			'cache_rest_api'                     => false,
+			'cache_mobile'                       => false,
+			'mobile_user_agents'                 => array( 'Mobile', 'Android', 'Silk/', 'Kindle', 'BlackBerry', 'Opera Mini', 'Opera Mobi', 'iPhone', 'iPad' ),
+			'serve_stale'                        => false,
+			'purge_on_upgrade'                   => true,
+
+			// TTL Settings
+			'public_cache_ttl'                   => 604800,
+			'private_cache_ttl'                  => 1800,
+			'front_page_ttl'                     => 604800,
+			'feed_ttl'                           => 604800,
+			'rest_ttl'                           => 604800,
+
+			// Auto Purge Settings
+			'auto_purge_entire_site'             => false,
+			'auto_purge_front_page'              => true,
+			'auto_purge_home_page'               => false,
+			'auto_purge_pages'                   => false,
+			'auto_purge_author_archive'          => true,
+			'auto_purge_post_type_archive'       => true,
+			'auto_purge_yearly_archive'          => true,
+			'auto_purge_monthly_archive'         => true,
+			'auto_purge_daily_archive'           => true,
+			'auto_purge_term_archive'            => true,
+			'custom_purge_hooks'                 => array( 'switch_theme', 'deactivated_plugin', 'activated_plugin', 'wp_update_nav_menu', 'wp_update_nav_menu_item' ),
+
+			// Exclusion Settings
+			'exclude_uris'                       => array( '/wp-admin/', '/wp-login.php', '/cart/', '/checkout/', '/my-account/.*' ),
+			'exclude_query_strings'              => array( 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'preview', 'edit', '_ga' ),
+			'exclude_cookies'                    => array( 'wordpress_logged_in', 'wp-postpass', 'woocommerce_cart_hash', 'comment_author_' ),
+			'exclude_roles'                      => array(),
+
+			// Browser Cache Settings
+			'browser_cache_enabled'              => false,
+			'browser_cache_ttl'                  => 604800,
+
+			// Object Cache Settings
+			'object_cache_enabled'               => false,
+			'object_cache_method'                => 'redis',
+			'object_cache_client'                => 'phpredis',
+			'object_cache_host'                  => '127.0.0.1',
+			'object_cache_port'                  => 6379,
+			'object_cache_lifetime'              => 3600,
+			'object_cache_username'              => '',
+			'object_cache_password'              => '',
+			'object_cache_database'              => 0,
+			'object_cache_timeout'               => 2.0,
+			'object_cache_key'                   => '',
+			'object_cache_global_groups'         => array( 'blog-details', 'blog-lookup', 'global-posts', 'networks', 'rss', 'sites', 'site-details', 'site-lookup', 'site-options', 'site-transient', 'users', 'useremail', 'userlogins', 'usermeta', 'user_meta', 'userslugs', 'blog_meta', 'image_editor', 'network-queries', 'site-queries', 'theme_files', 'translation_files', 'user-queries' ),
+			'object_cache_no_cache_groups'       => array( 'comment', 'plugins', 'theme_json', 'themes', 'wc_session_id' ),
+			'object_cache_tls_options'           => array(),
+			'object_cache_persistent_connection' => false,
+			'prefetch'                           => true,
+			'flush_async'                        => true,
+
+			// Cloudflare Settings
+			'cloudflare_enabled'                 => false,
+			'cloudflare_api_method'              => 'token',
+			'cloudflare_api_key'                 => '',
+			'cloudflare_api_token'               => '',
+			'cloudflare_email'                   => '',
+			'cloudflare_domain'                  => '',
+			'cloudflare_zone_id'                 => '',
+
+			// Page Optimization - CSS
+			'css_minify'                         => false,
+			'css_combine'                        => false,
+			'css_combine_external_inline'        => false,
+			'css_font_optimization'              => 'default',
+			'css_excludes'                       => array(),
+
+			// Page Optimization - JS
+			'js_minify'                          => false,
+			'js_combine'                         => false,
+			'js_combine_external_inline'         => false,
+			'js_defer_mode'                      => 'off',
+			'js_excludes'                        => array(),
+			'js_defer_excludes'                  => array(),
+
+			// Page Optimization - HTML
+			'html_minify'                        => false,
+			'html_dns_prefetch'                  => array(),
+			'html_dns_preconnect'                => array(),
+			'auto_dns_prefetch'                  => false,
+			'google_fonts_async'                 => false,
+			'html_keep_comments'                 => false,
+			'remove_emoji_scripts'               => false,
+			'html_remove_noscript'               => false,
+
+			// Page Optimization - Media
+			'media_lazyload_images'              => false,
+			'media_lazyload_iframes'             => false,
+			'media_image_excludes'               => array(),
+			'media_iframe_excludes'              => array(),
+			'media_add_missing_sizes'            => false,
+			'media_responsive_placeholder'       => false,
+			'media_optimize_uploads'             => false,
+			'media_optimization_quality'         => 82,
+			'media_auto_resize_uploads'          => false,
+			'media_resize_width'                 => 0,
+			'media_resize_height'                => 0,
 		);
 	}
 
 	/**
 	 * Builds the final, unified runtime configuration array for the backends and drop-in.
 	 *
-	 * This method translates the stored camelCase settings into the simple key format
-	 * expected by the backend clients. It is now method-aware to avoid sending
-	 * incorrect parameters to the backend.
-	 *
 	 * @param array $settings The combined settings from DB, UI, and wp-config.php.
 	 * @return array The derived runtime configuration.
 	 */
 	public static function get_object_cache_runtime_config( $settings ) {
 		$config = array();
-		$method = $settings['objectCacheMethod'] ?? 'redis';
+		$method = $settings['object_cache_method'] ?? 'redis';
 
-		// --- Common Configuration ---
-		$host = $settings['objectCacheHost'] ?? '127.0.0.1';
-		$port = (int) ( $settings['objectCachePort'] ?? ( 'redis' === $method ? 6379 : 11211 ) );
+		$host = $settings['object_cache_host'] ?? '127.0.0.1';
+		$port = (int) ( $settings['object_cache_port'] ?? ( 'redis' === $method ? 6379 : 11211 ) );
 
 		if ( str_starts_with( $host, 'tls://' ) ) {
 			$config['scheme'] = 'tls';
@@ -373,59 +276,43 @@ final class Cache_Hive_Settings {
 		}
 		$config['port'] = $port;
 
-		$config['user']            = $settings['objectCacheUsername'] ?? '';
-		$config['pass']            = $settings['objectCachePassword'] ?? '';
-		$config['timeout']         = (float) ( $settings['objectCacheTimeout'] ?? 2.0 );
-		$config['persistent']      = ! empty( $settings['objectCachePersistentConnection'] );
+		$config['user']            = $settings['object_cache_username'] ?? '';
+		$config['pass']            = $settings['object_cache_password'] ?? '';
+		$config['timeout']         = (float) ( $settings['object_cache_timeout'] ?? 2.0 );
+		$config['persistent']      = ! empty( $settings['object_cache_persistent_connection'] );
 		$config['prefetch']        = ! empty( $settings['prefetch'] );
 		$config['flush_async']     = ! empty( $settings['flush_async'] );
-		$config['key_prefix']      = $settings['objectCacheKey'] ?? '';
-		$config['lifetime']        = $settings['objectCacheLifetime'] ?? 3600;
-		$config['global_groups']   = $settings['objectCacheGlobalGroups'] ?? array();
-		$config['no_cache_groups'] = $settings['objectCacheNoCacheGroups'] ?? array();
-		$serializers_available     = array( 'igbinary' => extension_loaded( 'igbinary' ) );
-		$config['serializer']      = $serializers_available['igbinary'] ? 'igbinary' : 'php';
+		$config['key_prefix']      = $settings['object_cache_key'] ?? '';
+		$config['lifetime']        = $settings['object_cache_lifetime'] ?? 3600;
+		$config['global_groups']   = $settings['object_cache_global_groups'] ?? array();
+		$config['no_cache_groups'] = $settings['object_cache_no_cache_groups'] ?? array();
+		$config['serializer']      = extension_loaded( 'igbinary' ) ? 'igbinary' : 'php';
 
-		// --- Method-Specific Configuration ---
 		if ( 'redis' === $method ) {
-			$clients_available = array(
-				'phpredis' => class_exists( 'Redis' ),
-				'predis'   => class_exists( 'Predis\\Client' ),
-				'credis'   => class_exists( 'Credis_Client' ),
-			);
-
-			$config['client']   = $settings['objectCacheClient'] ?? ( $clients_available['phpredis'] ? 'phpredis' : ( $clients_available['predis'] ? 'predis' : 'credis' ) );
-			$config['database'] = (int) ( $settings['objectCacheDatabase'] ?? 0 );
+			$config['client']   = $settings['object_cache_client'] ?? ( class_exists( 'Redis' ) ? 'phpredis' : ( class_exists( 'Predis\\Client' ) ? 'predis' : 'credis' ) );
+			$config['database'] = (int) ( $settings['object_cache_database'] ?? 0 );
 
 			if ( 'phpredis' === $config['client'] ) {
-				$compression_available = array(
-					'zstd' => extension_loaded( 'zstd' ),
-					'lz4'  => extension_loaded( 'lz4' ),
-					'lzf'  => extension_loaded( 'lzf' ),
-				);
-				if ( $compression_available['zstd'] ) {
+				if ( extension_loaded( 'zstd' ) ) {
 					$config['compression'] = 'zstd';
-				} elseif ( $compression_available['lz4'] ) {
+				} elseif ( extension_loaded( 'lz4' ) ) {
 					$config['compression'] = 'lz4';
-				} elseif ( $compression_available['lzf'] ) {
+				} elseif ( extension_loaded( 'lzf' ) ) {
 					$config['compression'] = 'lzf';
 				} else {
 					$config['compression'] = 'none';
 				}
 			}
 
-			// Handle TLS options with a secure default.
 			if ( 'tls' === $config['scheme'] ) {
 				$tls_defaults          = array(
 					'verify_peer' => true,
 					'ca_cert'     => null,
 				);
-				$config['tls_options'] = wp_parse_args( $settings['objectCacheTlsOptions'] ?? array(), $tls_defaults );
+				$config['tls_options'] = wp_parse_args( $settings['object_cache_tls_options'] ?? array(), $tls_defaults );
 			}
 		} elseif ( 'memcached' === $method ) {
 			$config['client'] = 'memcached';
-			// Memcached does not use database, compression, or TLS options in this context.
-			// The config array remains clean of these Redis-specific values.
 		}
 
 		return $config;
@@ -434,37 +321,36 @@ final class Cache_Hive_Settings {
 	/**
 	 * Sanitizes settings received from the REST API.
 	 *
-	 * @since 1.0.0
 	 * @param array $input The raw settings array from a specific form.
 	 * @return array The fully merged and sanitized settings array.
 	 */
 	public static function sanitize_settings( $input ) {
-		// Start with the current complete settings to preserve unsent data.
-		$sanitized = self::get_settings( true ); // Force refresh from DB.
+		$sanitized = self::get_settings( true );
 		$defaults  = self::get_default_settings();
 
 		foreach ( $input as $key => $value ) {
-			if ( array_key_exists( $key, $defaults ) ) {
-				if ( 'objectCachePassword' === $key && '********' === $value ) {
-					// Don't update the password if the obfuscated string is sent back.
-					continue;
+			if ( ! array_key_exists( $key, $defaults ) ) {
+				continue;
+			}
+
+			if ( 'object_cache_password' === $key && '********' === $value ) {
+				continue;
+			}
+
+			$default_value = $defaults[ $key ];
+			if ( is_bool( $default_value ) ) {
+				$sanitized[ $key ] = (bool) $value;
+			} elseif ( is_int( $default_value ) ) {
+				$sanitized[ $key ] = absint( $value );
+			} elseif ( is_float( $default_value ) ) {
+				$sanitized[ $key ] = (float) $value;
+			} elseif ( is_array( $default_value ) ) {
+				if ( is_string( $value ) ) {
+					$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
 				}
-				$default_value = $defaults[ $key ];
-				if ( is_bool( $default_value ) ) {
-					$sanitized[ $key ] = (bool) $value;
-				} elseif ( is_int( $default_value ) ) {
-					$sanitized[ $key ] = absint( $value );
-				} elseif ( is_float( $default_value ) ) {
-					$sanitized[ $key ] = (float) $value;
-				} elseif ( is_array( $default_value ) ) {
-					// Handle both array and string (from textarea) inputs.
-					if ( is_string( $value ) ) {
-						$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
-					}
-					$sanitized[ $key ] = is_array( $value ) ? array_values( array_filter( array_map( 'sanitize_text_field', $value ) ) ) : array();
-				} else {
-					$sanitized[ $key ] = sanitize_text_field( $value );
-				}
+				$sanitized[ $key ] = is_array( $value ) ? array_map( 'sanitize_text_field', $value ) : array();
+			} else {
+				$sanitized[ $key ] = sanitize_text_field( $value );
 			}
 		}
 
@@ -474,23 +360,22 @@ final class Cache_Hive_Settings {
 	/**
 	 * Gets the TTL (time to live) for the current page based on context.
 	 *
-	 * @since 1.0.0
 	 * @return int TTL in seconds.
 	 */
 	public static function get_current_page_ttl() {
 		$settings = self::get_settings();
 		if ( function_exists( 'is_front_page' ) && ( is_front_page() || is_home() ) ) {
-			return $settings['frontPageTTL'] ?? 0;
+			return $settings['front_page_ttl'] ?? 0;
 		}
 		if ( function_exists( 'is_feed' ) && is_feed() ) {
-			return $settings['feedTTL'] ?? 0;
+			return $settings['feed_ttl'] ?? 0;
 		}
 		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-			return $settings['restTTL'] ?? 0;
+			return $settings['rest_ttl'] ?? 0;
 		}
 		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) {
-			return $settings['privateCacheTTL'] ?? 0;
+			return $settings['private_cache_ttl'] ?? 0;
 		}
-		return $settings['publicCacheTTL'] ?? 0;
+		return $settings['public_cache_ttl'] ?? 0;
 	}
 }
