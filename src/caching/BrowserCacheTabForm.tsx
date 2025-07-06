@@ -13,8 +13,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { verifyNginxBrowserCache, BrowserCacheStatus } from "@/api";
+import {
+  verifyNginxBrowserCache,
+  BrowserCacheStatus,
+  getBrowserCacheSettings,
+} from "@/api";
 import { toast as sonnerToast } from "sonner";
+import { wrapPromise } from "@/utils/wrapPromise";
 
 const browserCacheSchema = z.object({
   browser_cache_enabled: z.boolean(),
@@ -27,22 +32,93 @@ type Props = {
   initial: BrowserCacheStatus["settings"];
   onSubmit: (data: BrowserCacheFormData) => Promise<void>;
   isSaving: boolean;
-  status?: BrowserCacheStatus;
+  status: BrowserCacheStatus; // The full initial status object
   error?: { message: string; rules: string } | null;
   manualRules?: string | null;
 };
+
+const nginxStatusCache = new Map<string, any>();
+
+function getFinalNginxStatusResource(): { read: () => BrowserCacheStatus } {
+  // Use a constant key to ensure we only fetch once.
+  const cacheKey = "nginx-verification";
+  if (!nginxStatusCache.has(cacheKey)) {
+    const promise = (async () => {
+      // 1. Actively verify Nginx by checking headers.
+      const verifyRes = await verifyNginxBrowserCache();
+      // 2. Get the latest settings from the backend.
+      const latestSettings = await getBrowserCacheSettings();
+      // 3. Return a new, definitive status object.
+      return {
+        ...latestSettings,
+        nginx_verified: verifyRes.verified,
+      };
+    })();
+    // Wrap the promise and store it in our cache.
+    nginxStatusCache.set(cacheKey, wrapPromise(promise));
+  }
+  return nginxStatusCache.get(cacheKey);
+}
+
+function NginxStatusView() {
+  const finalStatus = getFinalNginxStatusResource().read();
+
+  async function handleCopy(rules: string) {
+    await navigator.clipboard.writeText(rules);
+    sonnerToast.success("Rules copied to clipboard!");
+  }
+
+  if (finalStatus.nginx_verified) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-green-100 text-green-800 p-3 rounded">
+          <p className="font-bold">Browser cache is active.</p>
+          <p className="text-sm">
+            Rules detected with a TTL of{" "}
+            <b>{finalStatus.settings.browser_cache_ttl}</b> seconds.
+          </p>
+        </div>
+        <div className="text-sm text-gray-600 dark:text-gray-400 p-4 border rounded-lg">
+          Your server is running Nginx. Browser cache settings must be
+          configured directly in your Nginx server configuration file and cannot
+          be changed from WordPress for security reasons.
+        </div>
+      </div>
+    );
+  } else {
+    // Verification failed
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">
+          Nginx config appears to be missing browser cache rules. Please add the
+          following to your Nginx config, reload the service, and refresh this
+          page.
+        </div>
+        <textarea
+          className="w-full font-mono text-xs"
+          rows={8}
+          readOnly
+          value={finalStatus.rules}
+        />
+        <div className="flex gap-2">
+          <Button onClick={() => handleCopy(finalStatus.rules)}>
+            Copy Rules
+          </Button>
+          <Button onClick={() => window.location.reload()}>Refresh</Button>
+        </div>
+      </div>
+    );
+  }
+}
 
 export function BrowserCacheTabForm({
   initial,
   onSubmit,
   isSaving,
-  status,
+  status: initialStatus,
   error,
   manualRules,
 }: Props) {
-  const [verifyLoading, setVerifyLoading] = React.useState(false);
-  const [verifyMessage, setVerifyMessage] = React.useState<string | null>(null);
-
   const form = useForm<BrowserCacheFormData>({
     resolver: zodResolver(browserCacheSchema),
     values: {
@@ -54,22 +130,6 @@ export function BrowserCacheTabForm({
   async function handleCopy(rules: string) {
     await navigator.clipboard.writeText(rules);
     sonnerToast.success("Rules copied to clipboard!");
-  }
-
-  async function handleVerifyNginx() {
-    setVerifyLoading(true);
-    setVerifyMessage(null);
-    try {
-      const verifyRes = await verifyNginxBrowserCache();
-      setVerifyMessage(
-        verifyRes.message ||
-          (verifyRes.verified ? "Verified!" : "Could not verify.")
-      );
-    } catch (e) {
-      setVerifyMessage("Verification failed.");
-    } finally {
-      setVerifyLoading(false);
-    }
   }
 
   if (error && manualRules) {
@@ -89,36 +149,16 @@ export function BrowserCacheTabForm({
     );
   }
 
-  if (status?.server === "nginx" && !status.nginx_verified) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-yellow-100 text-yellow-800 p-3 rounded">
-          Nginx config appears to be missing browser cache rules. Please add the
-          following to your Nginx config, reload the service, then click Verify.
-        </div>
-        <textarea
-          className="w-full font-mono text-xs"
-          rows={8}
-          readOnly
-          value={status.rules}
-        />
-        <div className="flex gap-2">
-          <Button onClick={() => handleCopy(status.rules)}>Copy Rules</Button>
-          <Button onClick={handleVerifyNginx} disabled={verifyLoading}>
-            {verifyLoading ? "Verifying..." : "Verify"}
-          </Button>
-        </div>
-        {verifyMessage && (
-          <div className="text-sm text-gray-700 mt-2">{verifyMessage}</div>
-        )}
-      </div>
-    );
+  if (initialStatus.server === "nginx") {
+    return <NginxStatusView />;
   }
 
+  // Handle Apache/LiteSpeed when .htaccess is not writable
   if (
-    (status?.server === "apache" || status?.server === "litespeed") &&
-    status.htaccess_writable === false &&
-    !status.rules_present
+    (initialStatus.server === "apache" ||
+      initialStatus.server === "litespeed") &&
+    initialStatus.htaccess_writable === false &&
+    !initialStatus.rules_present
   ) {
     return (
       <div className="space-y-4">
@@ -131,28 +171,25 @@ export function BrowserCacheTabForm({
           className="w-full font-mono text-xs"
           rows={10}
           readOnly
-          value={status.rules}
+          value={initialStatus.rules}
         />
-        <Button onClick={() => handleCopy(status.rules)}>Copy Rules</Button>
+        <Button onClick={() => handleCopy(initialStatus.rules)}>
+          Copy Rules
+        </Button>
       </div>
     );
   }
 
+  // Default view for manageable servers (Apache/LiteSpeed with writable .htaccess)
   return (
     <div className="space-y-6">
-      {(status?.rules_present || status?.nginx_verified) && (
+      {initialStatus.rules_present && (
         <div className="bg-green-100 text-green-800 p-3 rounded">
           <p className="font-bold">Browser cache is active.</p>
           <p className="text-sm">
             Rules detected with a TTL of{" "}
-            <b>{status.settings.browser_cache_ttl}</b> seconds.
+            <b>{initialStatus.settings.browser_cache_ttl}</b> seconds.
           </p>
-          {status.server === "apache" && status.htaccess_writable === false && (
-            <p className="text-sm mt-1">
-              Settings are disabled because your <code>.htaccess</code> file is
-              not writable.
-            </p>
-          )}
         </div>
       )}
 
@@ -169,9 +206,7 @@ export function BrowserCacheTabForm({
                     checked={field.value}
                     onCheckedChange={field.onChange}
                     disabled={
-                      isSaving ||
-                      (status?.server === "apache" &&
-                        status.htaccess_writable === false)
+                      isSaving || initialStatus.htaccess_writable === false
                     }
                   />
                 </FormControl>
@@ -190,9 +225,7 @@ export function BrowserCacheTabForm({
                     type="number"
                     min={0}
                     disabled={
-                      isSaving ||
-                      (status?.server === "apache" &&
-                        status.htaccess_writable === false)
+                      isSaving || initialStatus.htaccess_writable === false
                     }
                   />
                 </FormControl>
@@ -203,11 +236,7 @@ export function BrowserCacheTabForm({
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={
-                isSaving ||
-                (status?.server === "apache" &&
-                  status.htaccess_writable === false)
-              }
+              disabled={isSaving || initialStatus.htaccess_writable === false}
             >
               {isSaving ? "Saving..." : "Save Changes"}
             </Button>
