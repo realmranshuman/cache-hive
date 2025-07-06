@@ -45,8 +45,7 @@ export function JsSettingsForm({
 }: JsSettingsFormProps) {
   const form = useForm<JsFormData>({
     resolver: zodResolver(jsSchema),
-    // Use `values` to make the form a fully controlled component.
-    // It will now always stay in sync with the `initial` prop from the parent.
+    // CORRECT: Using `values` makes this a fully controlled component.
     values: {
       js_minify: initial.js_minify ?? false,
       js_combine: initial.js_combine ?? false,
@@ -56,6 +55,15 @@ export function JsSettingsForm({
       js_defer_excludes: initial.js_defer_excludes ?? [],
     },
   });
+
+  // REFACTOR: A robust handler for textareas that sync with string arrays.
+  const handleTextareaChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    field: any
+  ) => {
+    // Split by newline and filter out any empty strings from trailing newlines.
+    field.onChange(e.target.value.split("\n").filter(Boolean));
+  };
 
   return (
     <Form {...form}>
@@ -150,7 +158,7 @@ export function JsSettingsForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>
@@ -172,7 +180,7 @@ export function JsSettingsForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>

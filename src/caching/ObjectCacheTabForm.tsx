@@ -67,18 +67,7 @@ function StatusPanel({
     value,
     isBadge = false,
     variant = "secondary",
-  }: {
-    label: string;
-    value?: string | boolean | null;
-    isBadge?: boolean;
-    variant?:
-      | "default"
-      | "secondary"
-      | "destructive"
-      | "outline"
-      | null
-      | undefined;
-  }) => {
+  }: any) => {
     if (value === undefined || value === null || value === "") return null;
     return (
       <div className="flex justify-between items-center text-sm py-1">
@@ -270,7 +259,6 @@ export function ObjectCacheTabForm({
                 </FormItem>
               )}
             />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -338,7 +326,6 @@ export function ObjectCacheTabForm({
                 )}
               />
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -380,7 +367,6 @@ export function ObjectCacheTabForm({
                 )}
               />
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -424,7 +410,6 @@ export function ObjectCacheTabForm({
                 )}
               />
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -470,7 +455,6 @@ export function ObjectCacheTabForm({
                 )}
               />
             </div>
-
             <FormField
               control={form.control}
               name="object_cache_lifetime"
@@ -491,7 +475,6 @@ export function ObjectCacheTabForm({
                 </FormItem>
               )}
             />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
@@ -520,7 +503,6 @@ export function ObjectCacheTabForm({
                 )}
               />
             </div>
-
             <FormField
               control={form.control}
               name="object_cache_persistent_connection"
@@ -547,7 +529,6 @@ export function ObjectCacheTabForm({
                 </FormItem>
               )}
             />
-
             <div className="flex justify-end pt-4">
               <Button type="submit" disabled={isSaving}>
                 {isSaving ? "Saving..." : "Save Changes"}

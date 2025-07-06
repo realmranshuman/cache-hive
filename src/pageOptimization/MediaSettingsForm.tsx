@@ -45,7 +45,7 @@ export function MediaSettingsForm({
 }: MediaSettingsFormProps) {
   const form = useForm<MediaFormData>({
     resolver: zodResolver(mediaSchema),
-    // Use `values` to make the form a fully controlled component.
+    // CORRECT: Using `values` makes this a fully controlled component.
     values: {
       media_lazyload_images: initial.media_lazyload_images ?? false,
       media_lazyload_iframes: initial.media_lazyload_iframes ?? false,
@@ -61,6 +61,15 @@ export function MediaSettingsForm({
       media_resize_height: initial.media_resize_height ?? 0,
     },
   });
+
+  // REFACTOR: A robust handler for textareas that sync with string arrays.
+  const handleTextareaChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    field: any
+  ) => {
+    // Split by newline and filter out any empty strings from trailing newlines.
+    field.onChange(e.target.value.split("\n").filter(Boolean));
+  };
 
   return (
     <Form {...form}>
@@ -110,7 +119,7 @@ export function MediaSettingsForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>
@@ -147,7 +156,7 @@ export function MediaSettingsForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>
@@ -187,7 +196,6 @@ export function MediaSettingsForm({
             </FormItem>
           )}
         />
-        {/* I've added the missing fields from your config for completeness */}
         <FormField
           control={form.control}
           name="media_optimize_uploads"

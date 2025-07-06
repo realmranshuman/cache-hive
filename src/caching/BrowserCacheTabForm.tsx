@@ -32,29 +32,20 @@ type Props = {
   initial: BrowserCacheStatus["settings"];
   onSubmit: (data: BrowserCacheFormData) => Promise<void>;
   isSaving: boolean;
-  status: BrowserCacheStatus; // The full initial status object
+  status: BrowserCacheStatus;
   error?: { message: string; rules: string } | null;
   manualRules?: string | null;
 };
 
 const nginxStatusCache = new Map<string, any>();
-
 function getFinalNginxStatusResource(): { read: () => BrowserCacheStatus } {
-  // Use a constant key to ensure we only fetch once.
   const cacheKey = "nginx-verification";
   if (!nginxStatusCache.has(cacheKey)) {
     const promise = (async () => {
-      // 1. Actively verify Nginx by checking headers.
       const verifyRes = await verifyNginxBrowserCache();
-      // 2. Get the latest settings from the backend.
       const latestSettings = await getBrowserCacheSettings();
-      // 3. Return a new, definitive status object.
-      return {
-        ...latestSettings,
-        nginx_verified: verifyRes.verified,
-      };
+      return { ...latestSettings, nginx_verified: verifyRes.verified };
     })();
-    // Wrap the promise and store it in our cache.
     nginxStatusCache.set(cacheKey, wrapPromise(promise));
   }
   return nginxStatusCache.get(cacheKey);
@@ -80,13 +71,11 @@ function NginxStatusView() {
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400 p-4 border rounded-lg">
           Your server is running Nginx. Browser cache settings must be
-          configured directly in your Nginx server configuration file and cannot
-          be changed from WordPress for security reasons.
+          configured directly in your Nginx server configuration file.
         </div>
       </div>
     );
   } else {
-    // Verification failed
     return (
       <div className="space-y-4">
         <div className="bg-yellow-100 text-yellow-800 p-3 rounded">
@@ -153,7 +142,6 @@ export function BrowserCacheTabForm({
     return <NginxStatusView />;
   }
 
-  // Handle Apache/LiteSpeed when .htaccess is not writable
   if (
     (initialStatus.server === "apache" ||
       initialStatus.server === "litespeed") &&
@@ -180,7 +168,6 @@ export function BrowserCacheTabForm({
     );
   }
 
-  // Default view for manageable servers (Apache/LiteSpeed with writable .htaccess)
   return (
     <div className="space-y-6">
       {initialStatus.rules_present && (
@@ -192,7 +179,6 @@ export function BrowserCacheTabForm({
           </p>
         </div>
       )}
-
       <Form {...form}>
         <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
           <FormField

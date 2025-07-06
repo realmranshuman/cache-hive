@@ -44,7 +44,9 @@ export function CssSettingsForm({
 }: CssSettingsFormProps) {
   const form = useForm<CssFormData>({
     resolver: zodResolver(cssSchema),
-    // THE FIX: Use `values` to make the form fully controlled, just like TtlTabForm.
+    // REFACTOR: Using `values` makes this a "fully controlled" form.
+    // It will always reflect the `initial` prop, which is crucial when
+    // data is fetched asynchronously and updated after saving.
     values: {
       css_minify: initial.css_minify ?? false,
       css_combine: initial.css_combine ?? false,
@@ -57,7 +59,6 @@ export function CssSettingsForm({
   return (
     <Form {...form}>
       <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-        {/* Form fields are unchanged */}
         <FormField
           control={form.control}
           name="css_minify"

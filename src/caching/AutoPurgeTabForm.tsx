@@ -52,7 +52,6 @@ export function AutoPurgeTabForm({
   const form = useForm<AutoPurgeFormData>({
     resolver: zodResolver(autoPurgeSchema),
     values: {
-      // Use values to keep the form controlled and in sync
       auto_purge_entire_site: initial.auto_purge_entire_site ?? false,
       auto_purge_front_page: initial.auto_purge_front_page ?? false,
       auto_purge_home_page: initial.auto_purge_home_page ?? false,
@@ -82,6 +81,13 @@ export function AutoPurgeTabForm({
     "auto_purge_daily_archive",
     "auto_purge_term_archive",
   ] as const;
+
+  const handleTextareaChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    field: any
+  ) => {
+    field.onChange(e.target.value.split("\n").filter(Boolean));
+  };
 
   return (
     <Form {...form}>
@@ -151,7 +157,7 @@ export function AutoPurgeTabForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>

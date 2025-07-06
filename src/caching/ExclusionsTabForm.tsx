@@ -1,4 +1,3 @@
-// src/caching/ExclusionsTabForm.tsx
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -110,9 +109,17 @@ export function ExclusionsTabForm({
     },
   });
 
+  const handleTextareaChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    field: any
+  ) => {
+    field.onChange(e.target.value.split("\n").filter(Boolean));
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        {/* ... form fields are unchanged ... */}
         <FormField
           control={form.control}
           name="exclude_uris"
@@ -126,7 +133,7 @@ export function ExclusionsTabForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>
@@ -147,7 +154,7 @@ export function ExclusionsTabForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>
@@ -168,7 +175,7 @@ export function ExclusionsTabForm({
                   value={
                     Array.isArray(field.value) ? field.value.join("\n") : ""
                   }
-                  onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                  onChange={(e) => handleTextareaChange(e, field)}
                   disabled={isSaving}
                 />
               </FormControl>

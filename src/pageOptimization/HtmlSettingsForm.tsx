@@ -15,35 +15,14 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 
-// Helper function to check if a string is a valid absolute or protocol-relative URL.
 const isValidUrl = (url: string) => {
   if (typeof url !== "string" || !url.trim()) return false;
-
-  if (url.startsWith("//")) {
-    url = "http:" + url;
+  let effectiveUrl = url;
+  if (effectiveUrl.startsWith("//")) {
+    effectiveUrl = "http:" + effectiveUrl;
   }
-
-  if (
-    (url.startsWith("http:") || url.startsWith("https:")) &&
-    !url.startsWith("http://") &&
-    !url.startsWith("https://")
-  ) {
-    return false;
-  }
-
   try {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol)) return false;
-    if (
-      !parsed.hostname ||
-      !/^[a-zA-Z0-9.-]+$/.test(parsed.hostname) ||
-      !parsed.hostname.includes(".")
-    ) {
-      return false;
-    }
-    if (/\s/.test(url)) return false;
-    if (parsed.hash) return false;
-    if (!parsed.protocol || !parsed.hostname) return false;
+    new URL(effectiveUrl);
     return true;
   } catch {
     return false;
@@ -53,35 +32,25 @@ const isValidUrl = (url: string) => {
 const htmlSchema = z.object({
   html_minify: z.boolean(),
   html_dns_prefetch: z
-    .array(z.string())
+    .array(z.string().trim())
     .optional()
     .superRefine((urls, ctx) => {
-      if (urls) {
-        for (const url of urls) {
-          if (url && !isValidUrl(url)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "One or more entries is not a valid URL.",
-            });
-            break;
-          }
-        }
+      if (urls?.some((url) => url && !isValidUrl(url))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "One or more prefetch entries is not a valid URL.",
+        });
       }
     }),
   html_dns_preconnect: z
-    .array(z.string())
+    .array(z.string().trim())
     .optional()
     .superRefine((urls, ctx) => {
-      if (urls) {
-        for (const url of urls) {
-          if (url && !isValidUrl(url)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "One or more entries is not a valid URL.",
-            });
-            break;
-          }
-        }
+      if (urls?.some((url) => url && !isValidUrl(url))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "One or more preconnect entries is not a valid URL.",
+        });
       }
     }),
   auto_dns_prefetch: z.boolean(),
@@ -106,7 +75,7 @@ export function HtmlSettingsForm({
 }: HtmlSettingsFormProps) {
   const form = useForm<HtmlFormData>({
     resolver: zodResolver(htmlSchema),
-    // Use `values` to make the form a fully controlled component.
+    // REFACTOR: Use `values` to make the form a fully controlled component.
     values: {
       html_minify: initial.html_minify ?? false,
       html_dns_prefetch: initial.html_dns_prefetch ?? [],
@@ -123,7 +92,8 @@ export function HtmlSettingsForm({
     e: React.ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
-    field.onChange(e.target.value.split("\n"));
+    // Filter out empty strings that can result from trailing newlines
+    field.onChange(e.target.value.split("\n").filter(Boolean));
   };
 
   return (

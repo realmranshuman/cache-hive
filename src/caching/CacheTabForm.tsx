@@ -53,9 +53,17 @@ export function CacheTabForm({
     name: "cache_mobile",
   });
 
+  const handleTextareaChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    field: any
+  ) => {
+    field.onChange(e.target.value.split("\n").filter(Boolean));
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        {/* ... form fields are unchanged ... */}
         <FormField
           control={form.control}
           name="enable_cache"
@@ -150,7 +158,7 @@ export function CacheTabForm({
                     value={
                       Array.isArray(field.value) ? field.value.join("\n") : ""
                     }
-                    onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                    onChange={(e) => handleTextareaChange(e, field)}
                     disabled={isSaving}
                   />
                 </FormControl>

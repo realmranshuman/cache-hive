@@ -37,6 +37,20 @@ function SectionSuspense({
   return children(data);
 }
 
+const fetcherMap: { [key: string]: () => Promise<any> } = {
+  css: getCssSettings,
+  js: getJsSettings,
+  html: getHtmlSettings,
+  media: getMediaSettings,
+};
+
+const updaterMap: { [key: string]: (data: any) => Promise<any> } = {
+  css: updateCssSettings,
+  js: updateJsSettings,
+  html: updateHtmlSettings,
+  media: updateMediaSettings,
+};
+
 export function PageOptimization() {
   const tabList = ["css", "js", "html", "media"];
   const [activeTab, setActiveTab] = useState("css");
@@ -46,60 +60,46 @@ export function PageOptimization() {
     html: false,
     media: false,
   });
-  const [resources, setResources] = useState<{ [key: string]: any }>({});
 
-  const ensureResource = useCallback(
-    (tab: string) => {
-      if (resources[tab]) return;
-      const fetcherMap: { [key: string]: () => Promise<any> } = {
-        css: getCssSettings,
-        js: getJsSettings,
-        html: getHtmlSettings,
-        media: getMediaSettings,
-      };
+  const [resources, setResources] = useState<{ [key: string]: any }>(() => {
+    const initialResources: { [key: string]: any } = {};
+    tabList.forEach((tab) => {
       if (fetcherMap[tab]) {
-        setResources((prev) => ({
-          ...prev,
-          [tab]: wrapPromise(fetcherMap[tab]()),
-        }));
+        initialResources[tab] = wrapPromise(fetcherMap[tab]());
       }
-    },
-    [resources]
-  );
-
-  React.useEffect(() => {
-    ensureResource(activeTab);
-  }, [activeTab, ensureResource]);
+    });
+    return initialResources;
+  });
 
   const handleSave = useCallback(
-    (section: string, updater: (data: any) => Promise<any>) =>
-      async (data: any) => {
-        setSaving((prev) => ({ ...prev, [section]: true }));
+    (section: string) => async (data: any) => {
+      setSaving((prev) => ({ ...prev, [section]: true }));
+      const updater = updaterMap[section];
 
-        const savePromise = updater(data)
-          .then((newSettings) => {
-            setResources((prev) => ({
-              ...prev,
-              [section]: wrapPromise(Promise.resolve(newSettings)),
-            }));
-            return { name: `${section.toUpperCase()} Settings` };
-          })
-          .catch((err) => {
-            throw err;
-          });
-
-        sonnerToast.promise(savePromise, {
-          loading: "Saving...",
-          success: (data) => `${data.name} saved successfully.`,
-          error: (err) => err.message || "Could not save settings.",
+      const savePromise = updater(data)
+        .then((newSettings) => {
+          setResources((prev) => ({
+            ...prev,
+            [section]: { read: () => newSettings },
+          }));
+          return { name: `${section.toUpperCase()} Settings` };
+        })
+        .catch((err) => {
+          throw err;
         });
 
-        try {
-          await savePromise;
-        } finally {
-          setSaving((prev) => ({ ...prev, [section]: false }));
-        }
-      },
+      sonnerToast.promise(savePromise, {
+        loading: "Saving...",
+        success: (data) => `${data.name} saved successfully.`,
+        error: (err) => err.message || "Could not save settings.",
+      });
+
+      try {
+        await savePromise;
+      } finally {
+        setSaving((prev) => ({ ...prev, [section]: false }));
+      }
+    },
     []
   );
 
@@ -114,28 +114,28 @@ export function PageOptimization() {
     css: (initial) => (
       <CssSettingsForm
         initial={initial}
-        onSubmit={handleSave("css", updateCssSettings)}
+        onSubmit={handleSave("css")}
         isSaving={saving.css}
       />
     ),
     js: (initial) => (
       <JsSettingsForm
         initial={initial}
-        onSubmit={handleSave("js", updateJsSettings)}
+        onSubmit={handleSave("js")}
         isSaving={saving.js}
       />
     ),
     html: (initial) => (
       <HtmlSettingsForm
         initial={initial}
-        onSubmit={handleSave("html", updateHtmlSettings)}
+        onSubmit={handleSave("html")}
         isSaving={saving.html}
       />
     ),
     media: (initial) => (
       <MediaSettingsForm
         initial={initial}
-        onSubmit={handleSave("media", updateMediaSettings)}
+        onSubmit={handleSave("media")}
         isSaving={saving.media}
       />
     ),
@@ -154,13 +154,18 @@ export function PageOptimization() {
             <TabsTrigger value="html">HTML</TabsTrigger>
             <TabsTrigger value="media">Media</TabsTrigger>
           </TabsList>
+
           {tabList.map((tab) => (
-            <TabsContent key={tab} value={tab} className="mt-6">
-              {/*
-                THE FIX: By removing the '{activeTab === tab && ...}' check,
-                React will keep all TabContent components mounted. The Tabs component
-                will handle showing/hiding them with CSS, preserving the form state.
-              */}
+            // --- THE FIX ---
+            // Add the `hidden` attribute to toggle visibility.
+            // `forceMount` keeps the component in the DOM, and `hidden` shows/hides it.
+            <TabsContent
+              key={tab}
+              value={tab}
+              className="mt-6"
+              forceMount
+              hidden={activeTab !== tab}
+            >
               <ErrorBoundary
                 fallback={
                   <div className="p-4 text-red-600">
@@ -169,11 +174,9 @@ export function PageOptimization() {
                 }
               >
                 <Suspense fallback={skeletonMap[tab]}>
-                  {resources[tab] && (
-                    <SectionSuspense resource={resources[tab]}>
-                      {(initial: any) => formMap[tab](initial)}
-                    </SectionSuspense>
-                  )}
+                  <SectionSuspense resource={resources[tab]}>
+                    {(initial: any) => formMap[tab](initial)}
+                  </SectionSuspense>
                 </Suspense>
               </ErrorBoundary>
             </TabsContent>
