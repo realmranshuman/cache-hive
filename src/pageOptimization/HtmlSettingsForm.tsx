@@ -16,16 +16,13 @@ import {
 } from "@/components/ui/form";
 
 // Helper function to check if a string is a valid absolute or protocol-relative URL.
-// Accepts http, https, and protocol-relative URLs (//).
 const isValidUrl = (url: string) => {
   if (typeof url !== "string" || !url.trim()) return false;
 
-  // Allow protocol-relative URLs
   if (url.startsWith("//")) {
     url = "http:" + url;
   }
 
-  // Explicitly require '//' after protocol for absolute URLs
   if (
     (url.startsWith("http:") || url.startsWith("https:")) &&
     !url.startsWith("http://") &&
@@ -36,11 +33,7 @@ const isValidUrl = (url: string) => {
 
   try {
     const parsed = new URL(url);
-
-    // Only allow http(s) protocols
     if (!["http:", "https:"].includes(parsed.protocol)) return false;
-
-    // Hostname must be present and contain at least one dot (not localhost)
     if (
       !parsed.hostname ||
       !/^[a-zA-Z0-9.-]+$/.test(parsed.hostname) ||
@@ -48,46 +41,18 @@ const isValidUrl = (url: string) => {
     ) {
       return false;
     }
-
-    // Disallow spaces or control chars anywhere
     if (/\s/.test(url)) return false;
-
-    // Disallow fragments
     if (parsed.hash) return false;
-
-    // Disallow empty host or protocol
     if (!parsed.protocol || !parsed.hostname) return false;
-
     return true;
   } catch {
     return false;
   }
 };
 
-// The schema is updated to attach the validation error to the parent field.
 const htmlSchema = z.object({
-  minify: z.boolean(),
-  dnsPrefetch: z
-    .array(z.string())
-    .optional()
-    .superRefine((urls, ctx) => {
-      if (urls) {
-        for (const url of urls) {
-          // We only validate non-empty lines.
-          if (url && !isValidUrl(url)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "One or more entries is not a valid URL.",
-              // By OMITTING the `path` property, the error is attached
-              // to `dnsPrefetch` itself, which <FormMessage /> can read.
-            });
-            // We only need one error to invalidate the whole field, so we stop.
-            break;
-          }
-        }
-      }
-    }),
-  dnsPreconnect: z
+  html_minify: z.boolean(),
+  html_dns_prefetch: z
     .array(z.string())
     .optional()
     .superRefine((urls, ctx) => {
@@ -103,11 +68,27 @@ const htmlSchema = z.object({
         }
       }
     }),
-  autoDnsPrefetch: z.boolean(),
-  googleFontsAsync: z.boolean(),
-  keepComments: z.boolean(),
-  removeEmoji: z.boolean(),
-  removeNoscript: z.boolean(),
+  html_dns_preconnect: z
+    .array(z.string())
+    .optional()
+    .superRefine((urls, ctx) => {
+      if (urls) {
+        for (const url of urls) {
+          if (url && !isValidUrl(url)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "One or more entries is not a valid URL.",
+            });
+            break;
+          }
+        }
+      }
+    }),
+  auto_dns_prefetch: z.boolean(),
+  google_fonts_async: z.boolean(),
+  html_keep_comments: z.boolean(),
+  remove_emoji_scripts: z.boolean(),
+  html_remove_noscript: z.boolean(),
 });
 
 export type HtmlFormData = z.infer<typeof htmlSchema>;
@@ -125,21 +106,22 @@ export function HtmlSettingsForm({
 }: HtmlSettingsFormProps) {
   const form = useForm<HtmlFormData>({
     resolver: zodResolver(htmlSchema),
+    // Use `values` to make the form a fully controlled component.
     values: {
-      minify: initial.minify ?? false,
-      dnsPrefetch: initial.dnsPrefetch ?? [],
-      dnsPreconnect: initial.dnsPreconnect ?? [],
-      autoDnsPrefetch: initial.autoDnsPrefetch ?? false,
-      googleFontsAsync: initial.googleFontsAsync ?? false,
-      keepComments: initial.keepComments ?? false,
-      removeEmoji: initial.removeEmoji ?? false,
-      removeNoscript: initial.removeNoscript ?? false,
+      html_minify: initial.html_minify ?? false,
+      html_dns_prefetch: initial.html_dns_prefetch ?? [],
+      html_dns_preconnect: initial.html_dns_preconnect ?? [],
+      auto_dns_prefetch: initial.auto_dns_prefetch ?? false,
+      google_fonts_async: initial.google_fonts_async ?? false,
+      html_keep_comments: initial.html_keep_comments ?? false,
+      remove_emoji_scripts: initial.remove_emoji_scripts ?? false,
+      html_remove_noscript: initial.html_remove_noscript ?? false,
     },
   });
 
   const handleTextareaChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>,
-    field: any // The field object from react-hook-form's render prop
+    field: any
   ) => {
     field.onChange(e.target.value.split("\n"));
   };
@@ -149,7 +131,7 @@ export function HtmlSettingsForm({
       <form className="space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
         <FormField
           control={form.control}
-          name="minify"
+          name="html_minify"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Minify HTML</FormLabel>
@@ -163,16 +145,14 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="dnsPrefetch"
+          name="html_dns_prefetch"
           render={({ field }) => (
             <FormItem>
               <FormLabel>DNS Prefetch</FormLabel>
               <FormControl>
                 <Textarea
-                  id="dns-prefetch"
                   placeholder={
                     "https://fonts.googleapis.com\n//cdn.example.com"
                   }
@@ -193,16 +173,14 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="dnsPreconnect"
+          name="html_dns_preconnect"
           render={({ field }) => (
             <FormItem>
               <FormLabel>DNS Preconnect</FormLabel>
               <FormControl>
                 <Textarea
-                  id="dns-preconnect"
                   placeholder={"https://fonts.gstatic.com\n//cdn.example.com"}
                   rows={3}
                   value={
@@ -221,10 +199,9 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="autoDnsPrefetch"
+          name="auto_dns_prefetch"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
@@ -243,10 +220,9 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="googleFontsAsync"
+          name="google_fonts_async"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Load Google Fonts Asynchronously</FormLabel>
@@ -260,10 +236,9 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="keepComments"
+          name="html_keep_comments"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Keep HTML Comments</FormLabel>
@@ -277,10 +252,9 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="removeEmoji"
+          name="remove_emoji_scripts"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Remove WordPress Emoji Scripts</FormLabel>
@@ -294,10 +268,9 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="removeNoscript"
+          name="html_remove_noscript"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Remove noscript Tags</FormLabel>
@@ -311,7 +284,6 @@ export function HtmlSettingsForm({
             </FormItem>
           )}
         />
-
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}

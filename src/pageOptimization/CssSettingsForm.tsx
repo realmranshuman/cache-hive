@@ -22,11 +22,11 @@ import {
 } from "@/components/ui/form";
 
 const cssSchema = z.object({
-  minify: z.boolean(),
-  combine: z.boolean(),
-  combineExternalInline: z.boolean(),
-  fontOptimization: z.string(),
-  excludes: z.array(z.string()).optional(),
+  css_minify: z.boolean(),
+  css_combine: z.boolean(),
+  css_combine_external_inline: z.boolean(),
+  css_font_optimization: z.string(),
+  css_excludes: z.array(z.string()).optional(),
 });
 
 export type CssFormData = z.infer<typeof cssSchema>;
@@ -44,26 +44,23 @@ export function CssSettingsForm({
 }: CssSettingsFormProps) {
   const form = useForm<CssFormData>({
     resolver: zodResolver(cssSchema),
-    // THE FIX: Use `values` to make the form a controlled component.
-    // It will now automatically update when the `initial` prop changes.
+    // THE FIX: Use `values` to make the form fully controlled, just like TtlTabForm.
     values: {
-      minify: initial.minify ?? false,
-      combine: initial.combine ?? false,
-      combineExternalInline: initial.combineExternalInline ?? false,
-      fontOptimization: initial.fontOptimization ?? "default",
-      excludes: initial.excludes ?? [],
+      css_minify: initial.css_minify ?? false,
+      css_combine: initial.css_combine ?? false,
+      css_combine_external_inline: initial.css_combine_external_inline ?? false,
+      css_font_optimization: initial.css_font_optimization ?? "default",
+      css_excludes: initial.css_excludes ?? [],
     },
   });
-
-  // The `useEffect` with `form.reset` is no longer needed because
-  // the `values` prop keeps the form in sync.
 
   return (
     <Form {...form}>
       <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+        {/* Form fields are unchanged */}
         <FormField
           control={form.control}
-          name="minify"
+          name="css_minify"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Minify CSS</FormLabel>
@@ -77,10 +74,9 @@ export function CssSettingsForm({
             </FormItem>
           )}
         />
-        {/* ... other fields remain the same ... */}
         <FormField
           control={form.control}
-          name="combine"
+          name="css_combine"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Combine CSS</FormLabel>
@@ -96,7 +92,7 @@ export function CssSettingsForm({
         />
         <FormField
           control={form.control}
-          name="combineExternalInline"
+          name="css_combine_external_inline"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Combine External And Inline CSS</FormLabel>
@@ -112,7 +108,7 @@ export function CssSettingsForm({
         />
         <FormField
           control={form.control}
-          name="fontOptimization"
+          name="css_font_optimization"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Font Optimization</FormLabel>
@@ -137,7 +133,7 @@ export function CssSettingsForm({
         />
         <FormField
           control={form.control}
-          name="excludes"
+          name="css_excludes"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>CSS Minify/Combine Excludes</FormLabel>

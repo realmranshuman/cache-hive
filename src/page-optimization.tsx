@@ -40,37 +40,28 @@ function SectionSuspense({
 export function PageOptimization() {
   const tabList = ["css", "js", "html", "media"];
   const [activeTab, setActiveTab] = useState("css");
-
   const [saving, setSaving] = useState({
     css: false,
     js: false,
     html: false,
     media: false,
   });
-
   const [resources, setResources] = useState<{ [key: string]: any }>({});
 
   const ensureResource = useCallback(
     (tab: string) => {
-      if (!resources[tab]) {
-        let fetcher: () => Promise<any>;
-        switch (tab) {
-          case "css":
-            fetcher = getCssSettings;
-            break;
-          case "js":
-            fetcher = getJsSettings;
-            break;
-          case "html":
-            fetcher = getHtmlSettings;
-            break;
-          case "media":
-            fetcher = getMediaSettings;
-            break;
-          default:
-            return;
-        }
-        setResources((prev) => ({ ...prev, [tab]: wrapPromise(fetcher()) }));
+      if (resources[tab]) return;
+      const fetcherMap: { [key: string]: () => Promise<any> } = {
+        css: getCssSettings,
+        js: getJsSettings,
+        html: getHtmlSettings,
+        media: getMediaSettings,
+      };
+      if (fetcherMap[tab]) {
+        setResources((prev) => ({
+          ...prev,
+          [tab]: wrapPromise(fetcherMap[tab]()),
+        }));
       }
     },
     [resources]
@@ -109,18 +100,45 @@ export function PageOptimization() {
           setSaving((prev) => ({ ...prev, [section]: false }));
         }
       },
-    [setResources]
+    []
   );
 
-  // Helper to get the correct skeleton component
-  const getSkeleton = (tab: string) => {
-    const skeletons: { [key: string]: React.ReactNode } = {
-      css: <CssSettingsSkeleton />,
-      js: <JsSettingsSkeleton />,
-      html: <HtmlSettingsSkeleton />,
-      media: <MediaSettingsSkeleton />,
-    };
-    return skeletons[tab] || <CssSettingsSkeleton />;
+  const skeletonMap: { [key: string]: React.ReactNode } = {
+    css: <CssSettingsSkeleton />,
+    js: <JsSettingsSkeleton />,
+    html: <HtmlSettingsSkeleton />,
+    media: <MediaSettingsSkeleton />,
+  };
+
+  const formMap: { [key: string]: (initial: any) => React.ReactNode } = {
+    css: (initial) => (
+      <CssSettingsForm
+        initial={initial}
+        onSubmit={handleSave("css", updateCssSettings)}
+        isSaving={saving.css}
+      />
+    ),
+    js: (initial) => (
+      <JsSettingsForm
+        initial={initial}
+        onSubmit={handleSave("js", updateJsSettings)}
+        isSaving={saving.js}
+      />
+    ),
+    html: (initial) => (
+      <HtmlSettingsForm
+        initial={initial}
+        onSubmit={handleSave("html", updateHtmlSettings)}
+        isSaving={saving.html}
+      />
+    ),
+    media: (initial) => (
+      <MediaSettingsForm
+        initial={initial}
+        onSubmit={handleSave("media", updateMediaSettings)}
+        isSaving={saving.media}
+      />
+    ),
   };
 
   return (
@@ -136,71 +154,28 @@ export function PageOptimization() {
             <TabsTrigger value="html">HTML</TabsTrigger>
             <TabsTrigger value="media">Media</TabsTrigger>
           </TabsList>
-
           {tabList.map((tab) => (
-            <TabsContent key={tab} value={tab} className="space-y-6 mt-6">
-              {activeTab === tab && (
-                <ErrorBoundary
-                  fallback={
-                    <div className="p-4 text-red-600">
-                      Error loading {tab} settings.
-                    </div>
-                  }
-                >
-                  {resources[tab] ? (
-                    <Suspense fallback={getSkeleton(tab)}>
-                      <SectionSuspense resource={resources[tab]}>
-                        {(initial: any) => {
-                          switch (tab) {
-                            case "css":
-                              return (
-                                <CssSettingsForm
-                                  initial={initial}
-                                  onSubmit={handleSave("css", updateCssSettings)}
-                                  isSaving={saving.css}
-                                />
-                              );
-                            case "js":
-                              return (
-                                <JsSettingsForm
-                                  initial={initial}
-                                  onSubmit={handleSave("js", updateJsSettings)}
-                                  isSaving={saving.js}
-                                />
-                              );
-                            case "html":
-                              return (
-                                <HtmlSettingsForm
-                                  initial={initial}
-                                  onSubmit={handleSave(
-                                    "html",
-                                    updateHtmlSettings
-                                  )}
-                                  isSaving={saving.html}
-                                />
-                              );
-                            case "media":
-                              return (
-                                <MediaSettingsForm
-                                  initial={initial}
-                                  onSubmit={handleSave(
-                                    "media",
-                                    updateMediaSettings
-                                  )}
-                                  isSaving={saving.media}
-                                />
-                              );
-                            default:
-                              return null;
-                          }
-                        }}
-                      </SectionSuspense>
-                    </Suspense>
-                  ) : (
-                    getSkeleton(tab)
+            <TabsContent key={tab} value={tab} className="mt-6">
+              {/*
+                THE FIX: By removing the '{activeTab === tab && ...}' check,
+                React will keep all TabContent components mounted. The Tabs component
+                will handle showing/hiding them with CSS, preserving the form state.
+              */}
+              <ErrorBoundary
+                fallback={
+                  <div className="p-4 text-red-600">
+                    Error loading {tab} settings.
+                  </div>
+                }
+              >
+                <Suspense fallback={skeletonMap[tab]}>
+                  {resources[tab] && (
+                    <SectionSuspense resource={resources[tab]}>
+                      {(initial: any) => formMap[tab](initial)}
+                    </SectionSuspense>
                   )}
-                </ErrorBoundary>
-              )}
+                </Suspense>
+              </ErrorBoundary>
             </TabsContent>
           ))}
         </Tabs>

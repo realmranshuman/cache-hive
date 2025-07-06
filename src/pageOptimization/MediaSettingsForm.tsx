@@ -17,17 +17,17 @@ import {
 } from "@/components/ui/form";
 
 const mediaSchema = z.object({
-  lazyloadImages: z.boolean(),
-  lazyloadIframes: z.boolean(),
-  imageExcludes: z.array(z.string()).optional(),
-  iframeExcludes: z.array(z.string()).optional(),
-  addMissingSizes: z.boolean(),
-  responsivePlaceholder: z.boolean(),
-  optimizeUploads: z.boolean(),
-  optimizationQuality: z.coerce.number().min(1).max(100),
-  autoResizeUploads: z.boolean(),
-  resizeWidth: z.coerce.number().optional(),
-  resizeHeight: z.coerce.number().optional(),
+  media_lazyload_images: z.boolean(),
+  media_lazyload_iframes: z.boolean(),
+  media_image_excludes: z.array(z.string()).optional(),
+  media_iframe_excludes: z.array(z.string()).optional(),
+  media_add_missing_sizes: z.boolean(),
+  media_responsive_placeholder: z.boolean(),
+  media_optimize_uploads: z.boolean(),
+  media_optimization_quality: z.coerce.number().min(1).max(100),
+  media_auto_resize_uploads: z.boolean(),
+  media_resize_width: z.coerce.number().optional(),
+  media_resize_height: z.coerce.number().optional(),
 });
 
 export type MediaFormData = z.infer<typeof mediaSchema>;
@@ -45,19 +45,20 @@ export function MediaSettingsForm({
 }: MediaSettingsFormProps) {
   const form = useForm<MediaFormData>({
     resolver: zodResolver(mediaSchema),
-    // THE FIX: Use `values` to make the form a controlled component.
+    // Use `values` to make the form a fully controlled component.
     values: {
-      lazyloadImages: initial.lazyloadImages ?? false,
-      lazyloadIframes: initial.lazyloadIframes ?? false,
-      imageExcludes: initial.imageExcludes ?? [],
-      iframeExcludes: initial.iframeExcludes ?? [],
-      addMissingSizes: initial.addMissingSizes ?? false,
-      responsivePlaceholder: initial.responsivePlaceholder ?? false,
-      optimizeUploads: initial.optimizeUploads ?? false,
-      optimizationQuality: initial.optimizationQuality ?? 82,
-      autoResizeUploads: initial.autoResizeUploads ?? false,
-      resizeWidth: initial.resizeWidth ?? undefined,
-      resizeHeight: initial.resizeHeight ?? undefined,
+      media_lazyload_images: initial.media_lazyload_images ?? false,
+      media_lazyload_iframes: initial.media_lazyload_iframes ?? false,
+      media_image_excludes: initial.media_image_excludes ?? [],
+      media_iframe_excludes: initial.media_iframe_excludes ?? [],
+      media_add_missing_sizes: initial.media_add_missing_sizes ?? false,
+      media_responsive_placeholder:
+        initial.media_responsive_placeholder ?? false,
+      media_optimize_uploads: initial.media_optimize_uploads ?? false,
+      media_optimization_quality: initial.media_optimization_quality ?? 82,
+      media_auto_resize_uploads: initial.media_auto_resize_uploads ?? false,
+      media_resize_width: initial.media_resize_width ?? 0,
+      media_resize_height: initial.media_resize_height ?? 0,
     },
   });
 
@@ -80,10 +81,9 @@ export function MediaSettingsForm({
             .
           </AlertDescription>
         </Alert>
-
         <FormField
           control={form.control}
-          name="lazyloadImages"
+          name="media_lazyload_images"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Lazyload Images</FormLabel>
@@ -99,7 +99,7 @@ export function MediaSettingsForm({
         />
         <FormField
           control={form.control}
-          name="imageExcludes"
+          name="media_image_excludes"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Lazyload Image Excludes</FormLabel>
@@ -118,10 +118,9 @@ export function MediaSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="lazyloadIframes"
+          name="media_lazyload_iframes"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Lazyload iframes</FormLabel>
@@ -137,7 +136,7 @@ export function MediaSettingsForm({
         />
         <FormField
           control={form.control}
-          name="iframeExcludes"
+          name="media_iframe_excludes"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>Lazyload Iframe Excludes</FormLabel>
@@ -156,10 +155,9 @@ export function MediaSettingsForm({
             </FormItem>
           )}
         />
-
         <FormField
           control={form.control}
-          name="addMissingSizes"
+          name="media_add_missing_sizes"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Add Missing Image Sizes</FormLabel>
@@ -175,7 +173,7 @@ export function MediaSettingsForm({
         />
         <FormField
           control={form.control}
-          name="responsivePlaceholder"
+          name="media_responsive_placeholder"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Responsive Image Placeholder</FormLabel>
@@ -189,7 +187,86 @@ export function MediaSettingsForm({
             </FormItem>
           )}
         />
-
+        {/* I've added the missing fields from your config for completeness */}
+        <FormField
+          control={form.control}
+          name="media_optimize_uploads"
+          render={({ field }) => (
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
+              <FormLabel>Optimize Newly Uploaded Images</FormLabel>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="media_optimization_quality"
+          render={({ field }) => (
+            <FormItem className="space-y-2">
+              <FormLabel>Image Optimization Quality</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={isSaving}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="media_auto_resize_uploads"
+          render={({ field }) => (
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
+              <FormLabel>Auto-resize Newly Uploaded Images</FormLabel>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  disabled={isSaving}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="media_resize_width"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Resize Max Width (pixels)</FormLabel>
+                <FormControl>
+                  <Input {...field} type="number" min="0" disabled={isSaving} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="media_resize_height"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Resize Max Height (pixels)</FormLabel>
+                <FormControl>
+                  <Input {...field} type="number" min="0" disabled={isSaving} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}

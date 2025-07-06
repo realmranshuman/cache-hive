@@ -22,12 +22,12 @@ import {
 } from "@/components/ui/form";
 
 const jsSchema = z.object({
-  minify: z.boolean(),
-  combine: z.boolean(),
-  combineExternalInline: z.boolean(),
-  deferMode: z.string(),
-  excludes: z.array(z.string()).optional(),
-  deferExcludes: z.array(z.string()).optional(),
+  js_minify: z.boolean(),
+  js_combine: z.boolean(),
+  js_combine_external_inline: z.boolean(),
+  js_defer_mode: z.string(),
+  js_excludes: z.array(z.string()).optional(),
+  js_defer_excludes: z.array(z.string()).optional(),
 });
 
 export type JsFormData = z.infer<typeof jsSchema>;
@@ -45,24 +45,24 @@ export function JsSettingsForm({
 }: JsSettingsFormProps) {
   const form = useForm<JsFormData>({
     resolver: zodResolver(jsSchema),
-    // THE FIX: Use `values` to make the form a controlled component.
+    // Use `values` to make the form a fully controlled component.
+    // It will now always stay in sync with the `initial` prop from the parent.
     values: {
-      minify: initial.minify ?? false,
-      combine: initial.combine ?? false,
-      combineExternalInline: initial.combineExternalInline ?? false,
-      deferMode: initial.deferMode ?? "off",
-      excludes: initial.excludes ?? [],
-      deferExcludes: initial.deferExcludes ?? [],
+      js_minify: initial.js_minify ?? false,
+      js_combine: initial.js_combine ?? false,
+      js_combine_external_inline: initial.js_combine_external_inline ?? false,
+      js_defer_mode: initial.js_defer_mode ?? "off",
+      js_excludes: initial.js_excludes ?? [],
+      js_defer_excludes: initial.js_defer_excludes ?? [],
     },
   });
 
   return (
     <Form {...form}>
       <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-        {/* ... form fields remain the same ... */}
         <FormField
           control={form.control}
-          name="minify"
+          name="js_minify"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Minify JS</FormLabel>
@@ -78,7 +78,7 @@ export function JsSettingsForm({
         />
         <FormField
           control={form.control}
-          name="combine"
+          name="js_combine"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Combine JS</FormLabel>
@@ -94,7 +94,7 @@ export function JsSettingsForm({
         />
         <FormField
           control={form.control}
-          name="combineExternalInline"
+          name="js_combine_external_inline"
           render={({ field }) => (
             <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Combine External And Inline JS</FormLabel>
@@ -110,7 +110,7 @@ export function JsSettingsForm({
         />
         <FormField
           control={form.control}
-          name="deferMode"
+          name="js_defer_mode"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>JS Deferred Loading</FormLabel>
@@ -136,7 +136,7 @@ export function JsSettingsForm({
         />
         <FormField
           control={form.control}
-          name="excludes"
+          name="js_excludes"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>JS Minify/Combine Excludes</FormLabel>
@@ -160,7 +160,7 @@ export function JsSettingsForm({
         />
         <FormField
           control={form.control}
-          name="deferExcludes"
+          name="js_defer_excludes"
           render={({ field }) => (
             <FormItem className="space-y-2">
               <FormLabel>JS Deferred/Delayed Excludes</FormLabel>
