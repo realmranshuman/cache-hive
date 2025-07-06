@@ -14,14 +14,6 @@
     "predis/predis": "^3.0",
     "colinmollenhour/credis": "^1.17"
   },
-  "autoload": {
-    "psr-4": {
-      "Cache_Hive\\Vendor\\Predis\\": "lib/predis/predis/src/"
-    },
-    "classmap": [
-      "lib/colinmollenhour/credis/"
-    ]
-  },
   "require-dev": {
     "squizlabs/php_codesniffer": "*",
     "wp-coding-standards/wpcs": "^3.0",
@@ -31,7 +23,33 @@
   },
   "scripts": {
     "lint": "vendor/bin/phpcs --standard=phpcs.ruleset.xml .",
-    "fix": "vendor/bin/phpcbf --standard=phpcs.ruleset.xml ."
+    "fix": "vendor/bin/phpcbf --standard=phpcs.ruleset.xml .",
+    "build": [
+      "echo 'START: Cleaning up old builds...'",
+      "rm -rf dist lib build",
+      "echo 'DONE: Cleaning up.'",
+      "echo 'START: Building JavaScript assets...'",
+      "npm install && npm run build",
+      "echo 'DONE: JavaScript assets built.'",
+      "echo 'START: Scoping PHP dependencies...'",
+      "php-scoper add-prefix --output-dir=lib --force",
+      "echo 'DONE: PHP dependencies scoped to /lib.'",
+      "echo 'START: Assembling production package in /dist/cache-hive...'",
+      "mkdir -p dist/cache-hive",
+      "rsync -rc --exclude-from=.distignore . dist/cache-hive/",
+      "cp -R build/ dist/cache-hive/",
+      "cp -R lib/ dist/cache-hive/",
+      "cp composer.dist.json dist/cache-hive/composer.json",
+      "echo 'DONE: Package assembled.'",
+      "echo 'START: Generating production autoloader...'",
+      "cd dist/cache-hive && composer install --no-dev --optimize-autoloader && cd ../..",
+      "echo 'DONE: Production autoloader generated.'",
+      "echo 'START: Final cleanup...'",
+      "rm -rf dist/cache-hive/composer.json dist/cache-hive/composer.lock",
+      "rm -rf lib",
+      "echo 'DONE: Cleanup.'",
+      "echo '\\nSUCCESS! Production-ready plugin is in dist/cache-hive'"
+    ]
   },
   "config": {
     "allow-plugins": {

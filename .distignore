@@ -1,0 +1,31 @@
+# Git
+.git/
+.gitignore
+.distignore
+
+# Node
+node_modules/
+package.json
+package-lock.json
+postcss.config.js
+tailwind.config.js
+tsconfig.json
+vite.config.mjs
+src/
+
+# Composer / Scoper
+vendor/
+composer.json
+composer.lock
+composer.dist.json
+scoper.inc.php
+
+# Build artifacts
+dist/
+lib/
+build/
+
+# IDE / OS files
+.idea/
+.vscode/
+.DS_Store

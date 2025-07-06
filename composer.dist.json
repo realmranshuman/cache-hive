@@ -1,0 +1,14 @@
+{
+  "name": "realmranshuman/cache-hive",
+  "description": "A high-performance caching plugin for WordPress.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "autoload": {
+    "psr-4": {
+      "Cache_Hive\\Vendor\\Predis\\": "lib/predis/predis/src/"
+    },
+    "classmap": [
+      "lib/colinmollenhour/credis/"
+    ]
+  }
+}
