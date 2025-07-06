@@ -84,7 +84,6 @@ final class Cache_Hive_Advanced_Cache {
 	private function get_settings() {
 		$config_file = WP_CONTENT_DIR . '/cache-hive-config/config.php';
 		if ( @is_readable( $config_file ) ) {
-			// The config file returns a PHP array.
 			return include $config_file;
 		}
 		return false;
@@ -96,21 +95,18 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return bool True if caching should be bypassed.
 	 */
 	private function should_bypass_early() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
 			return true;
 		}
 
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		if ( ! empty( $_COOKIE ) ) {
 			$cookie_hash = defined( 'COOKIEHASH' ) ? COOKIEHASH : '';
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			foreach ( $_COOKIE as $name => $value ) {
 				if ( strpos( $name, 'wordpress_logged_in' ) === 0 ) {
 					$this->is_logged_in = true;
-					// Reliably extract User ID from the cookie. The last part is the user_id.
+					// SOLID FIX: Reliably extract User ID from the cookie.
 					$parts         = explode( '|', $value );
-					$this->user_id = isset( $parts[2] ) ? (int) $parts[2] : 0;
+					$this->user_id = (int) end( $parts ); // The last part is the user_id.
 					break;
 				}
 			}
@@ -135,37 +131,41 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return bool True if caching should be bypassed.
 	 */
 	private function should_bypass_exclusions() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
 
 		// Exclude URIs.
 		$exclude_uris = $this->settings['exclude_uris'] ?? array();
 		if ( ! empty( $exclude_uris ) ) {
 			foreach ( $exclude_uris as $pattern ) {
-				if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $request_uri ) ) {
-					if ( preg_last_error() !== PREG_NO_ERROR ) {
-						error_log( 'Cache Hive: Regex error in exclude_uris pattern "' . $pattern . '": ' . preg_last_error() );
+				if ( ! empty( $pattern ) ) {
+					$result = preg_match( '#' . $pattern . '#i', $request_uri );
+					if ( false === $result ) {
+						// Invalid regex, skip.
+						continue;
 					}
-					return true;
+					if ( $result ) {
+						return true;
+					}
 				}
 			}
 		}
 
 		// Exclude Query Strings.
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		if ( ! empty( $_SERVER['QUERY_STRING'] ) ) {
 			$exclude_qs = $this->settings['exclude_query_strings'] ?? array();
 			if ( ! empty( $exclude_qs ) ) {
-				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 				parse_str( $_SERVER['QUERY_STRING'], $query_params );
 				$query_keys = array_keys( $query_params );
 				foreach ( $query_keys as $key ) {
 					foreach ( $exclude_qs as $pattern ) {
-						if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $key ) ) {
-							if ( preg_last_error() !== PREG_NO_ERROR ) {
-								error_log( 'Cache Hive: Regex error in exclude_query_strings pattern "' . $pattern . '": ' . preg_last_error() );
+						if ( ! empty( $pattern ) ) {
+							$result = preg_match( '#' . $pattern . '#i', $key );
+							if ( false === $result ) {
+								continue;
 							}
-							return true;
+							if ( $result ) {
+								return true;
+							}
 						}
 					}
 				}
@@ -175,15 +175,17 @@ final class Cache_Hive_Advanced_Cache {
 		// Exclude Cookies.
 		$exclude_cookies = $this->settings['exclude_cookies'] ?? array();
 		if ( ! empty( $exclude_cookies ) ) {
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			$cookie_keys = array_keys( $_COOKIE );
 			foreach ( $cookie_keys as $key ) {
-				foreach ( $exclude_cookies as $pattern ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedForeach
-					if ( ! empty( $pattern ) && preg_match( '#' . str_replace( '#', '\#', $pattern ) . '#i', $key ) ) {
-						if ( preg_last_error() !== PREG_NO_ERROR ) {
-							error_log( 'Cache Hive: Regex error in exclude_cookies pattern "' . $pattern . '": ' . preg_last_error() );
+				foreach ( $exclude_cookies as $pattern ) {
+					if ( ! empty( $pattern ) ) {
+						$result = preg_match( '#' . $pattern . '#i', $key );
+						if ( false === $result ) {
+							continue;
 						}
-						return true;
+						if ( $result ) {
+							return true;
+						}
 					}
 				}
 			}
@@ -198,21 +200,20 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return bool
 	 */
 	private function check_if_mobile() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-		if ( ! ( $this->settings['cache_mobile'] ?? false ) || empty( $user_agent ) ) {
+		if ( ! ( $this->settings['cache_mobile'] ?? false ) || empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
 			return false;
 		}
-		$mobile_user_agents = $this->settings['mobile_user_agents'] ?? array();
-		if ( empty( $mobile_user_agents ) ) {
+		$user_agents = $this->settings['mobile_user_agents'] ?? array();
+		if ( empty( $user_agents ) ) {
 			return false;
 		}
-
-		$regex = '/' . implode( '|', array_map( 'preg_quote', $mobile_user_agents, array( '/' ) ) ) . '/i';
-		if ( preg_match( $regex, $user_agent ) ) {
-			return true;
+		// Use preg_quote to safely handle special characters in user agent strings.
+		$regex  = '/' . implode( '|', array_map( 'preg_quote', $user_agents, array_fill( 0, count( $user_agents ), '/' ) ) ) . '/i';
+		$result = preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
+		if ( false === $result ) {
+			return false;
 		}
-		return false;
+		return (bool) $result;
 	}
 
 	/**
@@ -232,24 +233,23 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return string The cache file path.
 	 */
 	private function get_cache_file_path() {
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$uri = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
 		$uri = rtrim( $uri, '/' );
 		if ( empty( $uri ) ) {
 			$uri = '/__index__';
 		}
 
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$host     = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
 		$dir_path = WP_CONTENT_DIR . '/cache/cache-hive/' . $host . $uri;
 
 		// Append user-specific hash for private cache.
 		if ( $this->is_logged_in && $this->user_id > 0 && ( $this->settings['cache_logged_users'] ?? false ) ) {
-			$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cache_hive_default_salt';
+			$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive';
 			$user_hash = 'user_' . md5( $this->user_id . $auth_key );
 			$dir_path .= '/' . $user_hash;
 		}
 
+		// SOLID FIX: Determine filename based on mobile status.
 		$file_name = $this->is_mobile ? 'index-mobile.html' : 'index.html';
 		return $dir_path . '/' . $file_name;
 	}
@@ -261,13 +261,12 @@ final class Cache_Hive_Advanced_Cache {
 	 */
 	private function serve_file( $file_path ) {
 		if ( $this->settings['browser_cache_enabled'] ?? false ) {
-			$ttl = absint( $this->settings['browser_cache_ttl'] ?? 0 );
+			$ttl = (int) ( $this->settings['browser_cache_ttl'] ?? 0 );
 			if ( $ttl > 0 ) {
 				header( 'Cache-Control: public, max-age=' . $ttl );
 				header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + $ttl ) . ' GMT' );
 			}
 		}
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		@readfile( $file_path );
 		exit;
 	}
@@ -280,26 +279,16 @@ final class Cache_Hive_Advanced_Cache {
 	 */
 	private function is_cache_valid( $cache_file ) {
 		$meta_file = $cache_file . '.meta';
-		if ( ! is_readable( $cache_file ) || ! is_readable( $meta_file ) ) {
+		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
 			return false;
 		}
-
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		$meta_content = file_get_contents( $meta_file );
-		if ( false === $meta_content ) {
-			error_log( 'Cache Hive: Could not read meta file: ' . $meta_file );
-			return false;
-		}
-		$meta_data = json_decode( $meta_content, true );
+		$meta_data = json_decode( @file_get_contents( $meta_file ), true );
 		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
 			return false;
 		}
-
-		// A TTL of 0 means the cache never expires on its own.
 		if ( 0 === (int) $meta_data['ttl'] ) {
 			return true;
 		}
-
 		return ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time();
 	}
 }
