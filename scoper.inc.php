@@ -15,31 +15,21 @@ return array(
 	// Tell Scoper which files to scope. We will target ONLY the Predis, Credis,
 	// and their required PSR dependency directories within the `vendor` folder.
 	'finders' => array(
+		// Find and scope all the production dependencies.
 		Finder::create()
 			->files()
-			->in( 'vendor' )
-			// Scope Predis and its PSR dependency.
-			->path( 'predis/predis/src' )
-			->path( 'psr/http-message/src' )
-			->path( 'psr/container/src' )
-			// Scope Credis.
-			->path( 'colinmollenhour/credis' ),
+			->in('vendor')
+			->path([
+				'predis/predis',
+				'colinmollenhour/credis',
+				'psr/log',
+				'psr/http-message',
+			]),
 
-		// We also need to include the top-level composer files for autoloading.
+		// Find and scope the Composer autoloader files.
 		Finder::create()
 			->files()
-			->in( 'vendor' )
-			->depth( '== 0' ) // important: only files in vendor/, not subdirectories.
-			->name( '/autoload_.*\.php/' ),
-
-		Finder::create()
-			->files()
-			->in( 'vendor/composer' )
-			->name( '/.*\.php/' ),
-
+			->in('vendor/composer')
+			->name('/.*\.php/'),
 	),
-
-	// By default, Scoper whitelists (exposes) all global functions, constants,
-	// and classes. This is generally safe and what we want, so we don't need
-	// to add a `patchers` or `expose-` array for this use case.
 );

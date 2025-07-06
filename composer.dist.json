@@ -5,7 +5,9 @@
   "license": "GPL-2.0-or-later",
   "autoload": {
     "psr-4": {
-      "Cache_Hive\\Vendor\\Predis\\": "lib/predis/predis/src/"
+      "Cache_Hive\\Vendor\\Predis\\": "lib/predis/predis/src/",
+      "Cache_Hive\\Vendor\\Psr\\Log\\": "lib/psr/log/src/",
+      "Cache_Hive\\Vendor\\Psr\\Http\\Message\\": "lib/psr/http-message/src/"
     },
     "classmap": [
       "lib/colinmollenhour/credis/"

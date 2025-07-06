@@ -68,7 +68,7 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 				}
 			}
 
-			$this->client = new \Predis\Client( $parameters );
+			$this->client = new \Cache_Hive\Vendor\Predis\Client( $parameters );
 			$this->client->connect();
 			$this->connected = $this->client->isConnected();
 		} catch ( \Exception $e ) {
