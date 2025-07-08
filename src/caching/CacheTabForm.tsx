@@ -51,6 +51,17 @@ export function CacheTabForm({
     },
   });
 
+  React.useEffect(() => {
+    form.reset({
+      enable_cache: initial.enable_cache ?? false,
+      cache_logged_users: initial.cache_logged_users ?? false,
+      cache_commenters: initial.cache_commenters ?? false,
+      cache_rest_api: initial.cache_rest_api ?? false,
+      cache_mobile: initial.cache_mobile ?? false,
+      mobile_user_agents: initial.mobile_user_agents ?? [],
+    });
+  }, [initial, form.reset]);
+
   const cacheMobileValue = useWatch({
     control: form.control,
     name: "cache_mobile",

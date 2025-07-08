@@ -35,7 +35,7 @@ interface TtlTabFormProps {
 export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
   const form = useForm<TtlFormData>({
     resolver: zodResolver(ttlSchema),
-    values: {
+    defaultValues: {
       public_cache_ttl: initial.public_cache_ttl || MIN_TTL,
       private_cache_ttl: initial.private_cache_ttl || MIN_TTL,
       front_page_ttl: initial.front_page_ttl || MIN_TTL,
@@ -44,13 +44,22 @@ export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
     },
   });
 
+  React.useEffect(() => {
+    form.reset({
+      public_cache_ttl: initial.public_cache_ttl || MIN_TTL,
+      private_cache_ttl: initial.private_cache_ttl || MIN_TTL,
+      front_page_ttl: initial.front_page_ttl || MIN_TTL,
+      feed_ttl: initial.feed_ttl || MIN_TTL,
+      rest_ttl: initial.rest_ttl || MIN_TTL,
+    });
+  }, [initial, form.reset]);
+
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className="grid grid-cols-1 md:grid-cols-2 gap-4"
       >
-        {/* ... form fields are unchanged ... */}
         <FormField
           control={form.control}
           name="public_cache_ttl"

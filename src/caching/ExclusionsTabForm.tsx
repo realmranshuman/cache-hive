@@ -13,7 +13,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Suspense } from "react";
 import { wrapPromise } from "@/utils/wrapPromise";
 import { getRoles } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
@@ -118,6 +117,15 @@ export function ExclusionsTabForm({
     },
   });
 
+  React.useEffect(() => {
+    form.reset({
+      exclude_uris: initial.exclude_uris ?? [],
+      exclude_query_strings: initial.exclude_query_strings ?? [],
+      exclude_cookies: initial.exclude_cookies ?? [],
+      exclude_roles: initial.exclude_roles ?? [],
+    });
+  }, [initial, form.reset]);
+
   const handleTextareaChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>,
     field: any
@@ -191,13 +199,13 @@ export function ExclusionsTabForm({
             </FormItem>
           )}
         />
-        <Suspense fallback={<ExclusionsRolesSkeleton />}>
+        <React.Suspense fallback={<ExclusionsRolesSkeleton />}>
           <ExclusionsRolesField
             roles={rolesResource.read()}
             form={form}
             isSaving={isSaving}
           />
-        </Suspense>
+        </React.Suspense>
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}

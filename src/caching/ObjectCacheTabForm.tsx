@@ -163,7 +163,7 @@ export function ObjectCacheTabForm({
 
   const form = useForm<ObjectCacheFormData>({
     resolver: zodResolver(objectCacheSchema),
-    values: {
+    defaultValues: {
       object_cache_enabled: initial.object_cache_enabled ?? false,
       object_cache_method: initial.object_cache_method ?? "redis",
       object_cache_client: initial.object_cache_client ?? "phpredis",
@@ -184,6 +184,29 @@ export function ObjectCacheTabForm({
         initial.object_cache_persistent_connection ?? false,
     },
   });
+
+  React.useEffect(() => {
+    form.reset({
+      object_cache_enabled: initial.object_cache_enabled ?? false,
+      object_cache_method: initial.object_cache_method ?? "redis",
+      object_cache_client: initial.object_cache_client ?? "phpredis",
+      object_cache_host: initial.object_cache_host ?? "127.0.0.1",
+      object_cache_port: initial.object_cache_port ?? 6379,
+      object_cache_username: initial.object_cache_username ?? "",
+      object_cache_password: initial.object_cache_password ?? "",
+      object_cache_database: initial.object_cache_database ?? 0,
+      object_cache_timeout: initial.object_cache_timeout ?? 2.0,
+      object_cache_lifetime: initial.object_cache_lifetime ?? 3600,
+      object_cache_global_groups: toTextarea(
+        initial.object_cache_global_groups
+      ),
+      object_cache_no_cache_groups: toTextarea(
+        initial.object_cache_no_cache_groups
+      ),
+      object_cache_persistent_connection:
+        initial.object_cache_persistent_connection ?? false,
+    });
+  }, [initial, form.reset]);
 
   const objectCacheMethod = form.watch("object_cache_method");
 

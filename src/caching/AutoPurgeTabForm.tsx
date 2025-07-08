@@ -54,23 +54,12 @@ export function AutoPurgeTabForm({
 }: AutoPurgeTabFormProps) {
   const form = useForm<AutoPurgeFormData>({
     resolver: zodResolver(autoPurgeSchema),
-    defaultValues: {
-      auto_purge_entire_site: initial.auto_purge_entire_site ?? false,
-      auto_purge_front_page: initial.auto_purge_front_page ?? false,
-      auto_purge_home_page: initial.auto_purge_home_page ?? false,
-      auto_purge_pages: initial.auto_purge_pages ?? false,
-      auto_purge_author_archive: initial.auto_purge_author_archive ?? false,
-      auto_purge_post_type_archive:
-        initial.auto_purge_post_type_archive ?? false,
-      auto_purge_yearly_archive: initial.auto_purge_yearly_archive ?? false,
-      auto_purge_monthly_archive: initial.auto_purge_monthly_archive ?? false,
-      auto_purge_daily_archive: initial.auto_purge_daily_archive ?? false,
-      auto_purge_term_archive: initial.auto_purge_term_archive ?? false,
-      purge_on_upgrade: initial.purge_on_upgrade ?? false,
-      serve_stale: initial.serve_stale ?? false,
-      custom_purge_hooks: initial.custom_purge_hooks ?? [],
-    },
+    defaultValues: initial,
   });
+
+  React.useEffect(() => {
+    form.reset(initial);
+  }, [initial, form.reset]);
 
   const autoPurgeRuleKeys = [
     "auto_purge_entire_site",

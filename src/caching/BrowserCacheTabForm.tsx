@@ -110,11 +110,18 @@ export function BrowserCacheTabForm({
 }: Props) {
   const form = useForm<BrowserCacheFormData>({
     resolver: zodResolver(browserCacheSchema),
-    values: {
+    defaultValues: {
       browser_cache_enabled: initial?.browser_cache_enabled ?? false,
       browser_cache_ttl: initial?.browser_cache_ttl ?? 31536000,
     },
   });
+
+  React.useEffect(() => {
+    form.reset({
+      browser_cache_enabled: initial?.browser_cache_enabled ?? false,
+      browser_cache_ttl: initial?.browser_cache_ttl ?? 31536000,
+    });
+  }, [initial, form.reset]);
 
   async function handleCopy(rules: string) {
     await navigator.clipboard.writeText(rules);
