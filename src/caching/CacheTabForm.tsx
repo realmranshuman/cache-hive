@@ -20,7 +20,10 @@ const cacheSchema = z.object({
   cache_commenters: z.boolean(),
   cache_rest_api: z.boolean(),
   cache_mobile: z.boolean(),
-  mobile_user_agents: z.array(z.string()).optional(),
+  mobile_user_agents: z
+    .array(z.string())
+    .optional()
+    .transform((val) => val?.filter(Boolean)),
 });
 
 export type CacheFormData = z.infer<typeof cacheSchema>;
@@ -38,7 +41,7 @@ export function CacheTabForm({
 }: CacheTabFormProps) {
   const form = useForm<CacheFormData>({
     resolver: zodResolver(cacheSchema),
-    values: {
+    defaultValues: {
       enable_cache: initial.enable_cache ?? false,
       cache_logged_users: initial.cache_logged_users ?? false,
       cache_commenters: initial.cache_commenters ?? false,
@@ -57,13 +60,12 @@ export function CacheTabForm({
     e: React.ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
-    field.onChange(e.target.value.split("\n").filter(Boolean));
+    field.onChange(e.target.value.split("\n"));
   };
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {/* ... form fields are unchanged ... */}
         <FormField
           control={form.control}
           name="enable_cache"

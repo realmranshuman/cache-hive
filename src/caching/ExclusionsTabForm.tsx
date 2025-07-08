@@ -19,9 +19,18 @@ import { getRoles } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
 
 const exclusionsSchema = z.object({
-  exclude_uris: z.array(z.string()).optional(),
-  exclude_query_strings: z.array(z.string()).optional(),
-  exclude_cookies: z.array(z.string()).optional(),
+  exclude_uris: z
+    .array(z.string())
+    .optional()
+    .transform((val) => val?.filter(Boolean)),
+  exclude_query_strings: z
+    .array(z.string())
+    .optional()
+    .transform((val) => val?.filter(Boolean)),
+  exclude_cookies: z
+    .array(z.string())
+    .optional()
+    .transform((val) => val?.filter(Boolean)),
   exclude_roles: z.array(z.string()).optional(),
 });
 
@@ -101,7 +110,7 @@ export function ExclusionsTabForm({
 }: ExclusionsTabFormProps) {
   const form = useForm<ExclusionsFormData>({
     resolver: zodResolver(exclusionsSchema),
-    values: {
+    defaultValues: {
       exclude_uris: initial.exclude_uris ?? [],
       exclude_query_strings: initial.exclude_query_strings ?? [],
       exclude_cookies: initial.exclude_cookies ?? [],
@@ -113,13 +122,12 @@ export function ExclusionsTabForm({
     e: React.ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
-    field.onChange(e.target.value.split("\n").filter(Boolean));
+    field.onChange(e.target.value.split("\n"));
   };
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {/* ... form fields are unchanged ... */}
         <FormField
           control={form.control}
           name="exclude_uris"

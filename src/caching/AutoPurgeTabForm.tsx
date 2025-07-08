@@ -28,7 +28,10 @@ const autoPurgeSchema = z.object({
   auto_purge_term_archive: z.boolean(),
   purge_on_upgrade: z.boolean().optional(),
   serve_stale: z.boolean().optional(),
-  custom_purge_hooks: z.array(z.string()).optional(),
+  custom_purge_hooks: z
+    .array(z.string())
+    .optional()
+    .transform((val) => val?.filter(Boolean)),
 });
 
 export type AutoPurgeFormData = z.infer<typeof autoPurgeSchema>;
@@ -51,7 +54,7 @@ export function AutoPurgeTabForm({
 }: AutoPurgeTabFormProps) {
   const form = useForm<AutoPurgeFormData>({
     resolver: zodResolver(autoPurgeSchema),
-    values: {
+    defaultValues: {
       auto_purge_entire_site: initial.auto_purge_entire_site ?? false,
       auto_purge_front_page: initial.auto_purge_front_page ?? false,
       auto_purge_home_page: initial.auto_purge_home_page ?? false,
@@ -86,7 +89,7 @@ export function AutoPurgeTabForm({
     e: React.ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
-    field.onChange(e.target.value.split("\n").filter(Boolean));
+    field.onChange(e.target.value.split("\n"));
   };
 
   return (
