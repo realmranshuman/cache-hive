@@ -56,6 +56,17 @@ class Cache_Hive_REST_Autopurge {
 		$params       = $request->get_json_params();
 		$new_settings = Cache_Hive_Settings::sanitize_settings( $params );
 
+		// Validate custom_purge_hooks: only keep hooks that actually exist.
+		if ( isset( $new_settings['custom_purge_hooks'] ) && is_array( $new_settings['custom_purge_hooks'] ) ) {
+			$valid_hooks = array();
+			foreach ( $new_settings['custom_purge_hooks'] as $hook ) {
+				if ( has_action( $hook ) || has_filter( $hook ) ) {
+					$valid_hooks[] = $hook;
+				}
+			}
+			$new_settings['custom_purge_hooks'] = $valid_hooks;
+		}
+
 		update_option( 'cache_hive_settings', $new_settings, 'yes' );
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
