@@ -11,9 +11,24 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	exit; }
+	exit;
+}
 if ( ! defined( 'WP_CACHE' ) || ! WP_CACHE ) {
-	return; }
+	return;
+}
+
+// WRAP: Check if constants are already defined to prevent warnings. This file loads before plugins.
+if ( ! defined( 'CACHE_HIVE_BASE_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_BASE_CACHE_DIR', ( defined( 'WP_CONTENT_DIR' ) ? WP_CONTENT_DIR : dirname( __DIR__ ) ) . '/cache/cache-hive' );
+}
+if ( ! defined( 'CACHE_HIVE_PUBLIC_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_PUBLIC_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/public' );
+}
+// UPDATE: Use the new professional directory name 'user_cache'.
+if ( ! defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/private/user_cache' );
+}
+// NOTE: The `/private/url_index` directory is not needed for reading cache, only for purging, so it is not defined here.
 
 /**
  * Main class for handling the advanced cache logic.
@@ -69,6 +84,7 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return array|false
 	 */
 	private function get_settings() {
+		// UPDATE: Use the correct config dir constant for consistency.
 		$config_file = ( defined( 'WP_CONTENT_DIR' ) ? WP_CONTENT_DIR : dirname( __DIR__ ) ) . '/cache-hive-config/config.php';
 		if ( @is_readable( $config_file ) ) {
 			return include $config_file; }
@@ -89,7 +105,9 @@ final class Cache_Hive_Advanced_Cache {
 				if ( strpos( $name, 'wordpress_logged_in' ) === 0 ) {
 					$this->is_logged_in = true;
 					$parts              = explode( '|', $value );
-					$this->username     = $parts[0];
+					if ( isset( $parts[0] ) ) {
+						$this->username = $parts[0];
+					}
 					break;
 				}
 			}
@@ -166,28 +184,77 @@ final class Cache_Hive_Advanced_Cache {
 	}
 
 	/**
-	 * Constructs the full path to the potential cache file.
+	 * Constructs the full path to the potential cache file by routing to the correct method.
 	 *
 	 * @return string The cache file path.
 	 */
 	private function get_cache_file_path() {
-		$uri = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
-		$uri = rtrim( $uri, '/' );
-		if ( empty( $uri ) ) {
-			$uri = '/__index__'; }
-
-		$host     = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
-		$dir_path = ( defined( 'WP_CONTENT_DIR' ) ? WP_CONTENT_DIR : dirname( __DIR__ ) ) . '/cache/cache-hive/' . $host . $uri;
-
-		if ( $this->is_logged_in && ! empty( $this->username ) && ( $this->settings['cache_logged_users'] ?? false ) ) {
-			$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive';
-			$user_hash = 'user_' . md5( $this->username . $auth_key );
-			$dir_path .= '/' . $user_hash;
+		$is_private_cache = $this->is_logged_in && ! empty( $this->username ) && ( $this->settings['cache_logged_users'] ?? false );
+		if ( $is_private_cache ) {
+			return $this->get_private_cache_path();
+		} else {
+			return $this->get_public_cache_path();
 		}
+	}
 
-		$file_name = $this->is_mobile ? 'index-mobile.html' : 'index.html';
+	/**
+	 * Constructs the path for a public cache file.
+	 *
+	 * @return string
+	 */
+	private function get_public_cache_path() {
+		$host      = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
+		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
+		$uri       = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
+		$uri       = rtrim( $uri, '/' );
+		$uri       = empty( $uri ) ? '/' : $uri;
+		$cache_key = $scheme . '://' . $host . $uri;
+		$url_hash  = md5( $cache_key );
+
+		$level1_dir    = substr( $url_hash, 0, 2 );
+		$level2_dir    = substr( $url_hash, 2, 2 );
+		$filename_base = substr( $url_hash, 4 );
+		$file_suffix   = $this->is_mobile ? '-mobile' : '';
+
+		$dir_path  = CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
+		$file_name = $filename_base . $file_suffix . '.html';
+
 		return $dir_path . '/' . $file_name;
 	}
+
+	/**
+	 * Constructs the path for a private cache file from the primary `/user_cache/` storage.
+	 *
+	 * @return string
+	 */
+	private function get_private_cache_path() {
+		if ( empty( $this->username ) ) {
+			return '';
+		}
+
+		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
+		$user_hash = md5( $this->username . $auth_key );
+
+		$user_level1_dir = substr( $user_hash, 0, 2 );
+		$user_level2_dir = substr( $user_hash, 2, 2 );
+		$user_dir_base   = substr( $user_hash, 4 );
+		// UPDATE: Use the correct constant for the primary user cache storage path.
+		$user_dir_path = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
+
+		$host      = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
+		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
+		$uri       = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
+		$uri       = rtrim( $uri, '/' );
+		$uri       = empty( $uri ) ? '/' : $uri;
+		$cache_key = $scheme . '://' . $host . $uri;
+		$url_hash  = md5( $cache_key );
+
+		$file_suffix = $this->is_mobile ? '-mobile' : '';
+		$file_name   = $url_hash . $file_suffix . '.html';
+
+		return $user_dir_path . '/' . $file_name;
+	}
+
 
 	/**
 	 * Serves the file with appropriate headers.
@@ -195,7 +262,7 @@ final class Cache_Hive_Advanced_Cache {
 	 * @param string $file_path The full path to the cache file.
 	 */
 	private function serve_file( $file_path ) {
-		if ( $this->settings['browser_cache_enabled'] ?? false ) {
+		if ( ( $this->settings['browser_cache_enabled'] ?? false ) ) {
 			$ttl = (int) ( $this->settings['browser_cache_ttl'] ?? 0 );
 			if ( $ttl > 0 ) {
 				header( 'Cache-Control: public, max-age=' . $ttl );
@@ -213,6 +280,9 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return bool
 	 */
 	private function is_cache_valid( $cache_file ) {
+		if ( empty( $cache_file ) ) {
+			return false;
+		}
 		$meta_file = $cache_file . '.meta';
 		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
 			return false; }

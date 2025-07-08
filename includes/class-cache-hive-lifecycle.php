@@ -74,9 +74,22 @@ final class Cache_Hive_Lifecycle {
 	private static function setup_site() {
 		// This will create the option with default values if it doesn't exist.
 		$settings = Cache_Hive_Settings::get_settings( true );
+
+		// On non-Windows systems, symlinks are reliable. On Windows, they require special
+		// permissions that a web server user typically does not have.
+		if ( strtoupper( substr( PHP_OS, 0, 3 ) ) === 'WIN' ) {
+			$settings['use_symlinks'] = false;
+		} else {
+			$settings['use_symlinks'] = true;
+		}
+		// Save the detected setting.
+		update_option( 'cache_hive_settings', $settings );
+
 		self::setup_environment();
+		// Re-create the config file with the new OS-aware setting.
 		self::create_config_file( $settings );
 	}
+
 
 	/**
 	 * Setup environment: create advanced-cache.php and set WP_CACHE constant.
@@ -90,8 +103,14 @@ final class Cache_Hive_Lifecycle {
 	 * Cleanup environment: remove advanced-cache.php and unset WP_CACHE constant.
 	 */
 	public static function cleanup_environment() {
-		if ( file_exists( WP_CONTENT_DIR . '/advanced-cache.php' ) ) {
-			@unlink( WP_CONTENT_DIR . '/advanced-cache.php' );
+		$advanced_cache_file = WP_CONTENT_DIR . '/advanced-cache.php';
+		if ( file_exists( $advanced_cache_file ) ) {
+			// To be safe, only delete the file if it's ours.
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_get_contents
+			$content = file_get_contents( $advanced_cache_file );
+			if ( false !== strpos( $content, 'Cache Hive - Advanced Cache Drop-in' ) ) {
+				@unlink( $advanced_cache_file );
+			}
 		}
 		self::set_wp_cache_constant( false );
 		self::delete_config_file();
@@ -120,7 +139,6 @@ final class Cache_Hive_Lifecycle {
 			$config_content = preg_replace( '/(<\?php\s*)/', '$1' . $define_string . "\n", $config_content, 1 );
 		}
 
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
 		file_put_contents( $config_path, $config_content, LOCK_EX );
 	}
 
@@ -134,7 +152,8 @@ final class Cache_Hive_Lifecycle {
 			@mkdir( CACHE_HIVE_CONFIG_DIR, 0755, true );
 		}
 		$config_file = CACHE_HIVE_CONFIG_DIR . '/config.php';
-		$contents    = '<?php return ' . var_export( $settings, true ) . ';';
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_var_export
+		$contents = '<?php return ' . var_export( $settings, true ) . ';';
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
 		file_put_contents( $config_file, $contents, LOCK_EX );
@@ -153,6 +172,7 @@ final class Cache_Hive_Lifecycle {
 			@unlink( $config_file );
 		}
 		if ( is_dir( CACHE_HIVE_CONFIG_DIR ) ) {
+			// phpcs:ignore WordPress.VIP.FileSystemWrites.rmdir
 			@rmdir( CACHE_HIVE_CONFIG_DIR );
 		}
 	}
@@ -169,7 +189,12 @@ final class Cache_Hive_Lifecycle {
 		$source      = CACHE_HIVE_DIR . 'class-cache-hive-advanced-cache.php';
 		$destination = WP_CONTENT_DIR . '/advanced-cache.php';
 
-		return is_readable( $source ) && copy( $source, $destination );
+		if ( ! is_readable( $source ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_copy
+		return copy( $source, $destination );
 	}
 
 	/**
@@ -192,6 +217,9 @@ final class Cache_Hive_Lifecycle {
 	 * Helper method to clean up a single site's environment.
 	 */
 	private static function cleanup_site() {
+		// Unschedule the cron job to keep the site clean.
+		wp_clear_scheduled_hook( 'cache_hive_garbage_collection' );
+
 		Cache_Hive_Purge::purge_all();
 		self::cleanup_environment();
 		Cache_Hive_Object_Cache::disable();
@@ -213,6 +241,7 @@ final class Cache_Hive_Lifecycle {
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-base.php';
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-direct.php';
 		$wp_filesystem = new WP_Filesystem_Direct( null );
-		$wp_filesystem->rmdir( CACHE_HIVE_CACHE_DIR, true );
+		// Use the correct base directory constant to ensure everything is deleted.
+		$wp_filesystem->rmdir( CACHE_HIVE_BASE_CACHE_DIR, true );
 	}
 }

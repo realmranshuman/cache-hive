@@ -3,7 +3,7 @@
  * Plugin Name:       Cache Hive
  * Plugin URI:        https://github.com/realmranshuman/cache-hive
  * Description:       A powerful caching and performance optimization plugin for WordPress.
- * Version:           1.1.0
+ * Version:           1.3.0
  * Author:            Anshuman
  * Author URI:        https://github.com/realmranshuman
  * License:           GPL-2.0-or-later
@@ -17,7 +17,6 @@
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Main;
 use Cache_Hive\Includes\Cache_Hive_Purge;
-use Cache_Hive\Includes\Cache_Hive_Settings;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
@@ -26,18 +25,97 @@ if ( ! defined( 'ABSPATH' ) ) {
 // =========================================================================
 // PLUGIN CONSTANTS
 // =========================================================================
-define( 'CACHE_HIVE_VERSION', '1.1.0' );
-define( 'CACHE_HIVE_FILE', __FILE__ );
-define( 'CACHE_HIVE_BASE', plugin_basename( CACHE_HIVE_FILE ) );
-define( 'CACHE_HIVE_DIR', plugin_dir_path( CACHE_HIVE_FILE ) );
-define( 'CACHE_HIVE_URL', plugin_dir_url( CACHE_HIVE_FILE ) );
-define( 'CACHE_HIVE_CACHE_DIR', WP_CONTENT_DIR . '/cache/cache-hive' );
-define( 'CACHE_HIVE_CONFIG_DIR', WP_CONTENT_DIR . '/cache-hive-config' );
+if ( ! defined( 'CACHE_HIVE_VERSION' ) ) {
+	define( 'CACHE_HIVE_VERSION', '1.3.0' ); // Updated version number.
+}
+if ( ! defined( 'CACHE_HIVE_FILE' ) ) {
+	define( 'CACHE_HIVE_FILE', __FILE__ );
+}
+if ( ! defined( 'CACHE_HIVE_BASE' ) ) {
+	define( 'CACHE_HIVE_BASE', plugin_basename( CACHE_HIVE_FILE ) );
+}
+if ( ! defined( 'CACHE_HIVE_DIR' ) ) {
+	define( 'CACHE_HIVE_DIR', plugin_dir_path( CACHE_HIVE_FILE ) );
+}
+if ( ! defined( 'CACHE_HIVE_URL' ) ) {
+	define( 'CACHE_HIVE_URL', plugin_dir_url( CACHE_HIVE_FILE ) );
+}
+
+// --- BEGIN NEW AND UPDATED CONSTANTS FOR ADVANCED CACHING ---
+// WRAP: Check if constants are already defined to prevent warnings from advanced-cache.php.
+
+/**
+ * The base directory for all Cache Hive cache files.
+ *
+ * @since 1.2.0
+ */
+if ( ! defined( 'CACHE_HIVE_BASE_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_BASE_CACHE_DIR', WP_CONTENT_DIR . '/cache/cache-hive' );
+}
+
+/**
+ * DEPRECATED: This constant is replaced by more specific path constants.
+ *
+ * @since 1.0.0
+ * @deprecated 1.2.0
+ */
+if ( ! defined( 'CACHE_HIVE_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR );
+}
+
+/**
+ * The directory for storing public (anonymous user) cache files.
+ *
+ * @since 1.2.0
+ */
+if ( ! defined( 'CACHE_HIVE_PUBLIC_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_PUBLIC_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/public' );
+}
+
+/**
+ * The base directory for all private (logged-in user) cache data.
+ *
+ * @since 1.2.0
+ */
+if ( ! defined( 'CACHE_HIVE_PRIVATE_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_PRIVATE_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/private' );
+}
+
+/**
+ * The primary storage directory for private cache, organized by user hash.
+ * This is where the actual cache files are stored.
+ *
+ * @since 1.3.0
+ */
+if ( ! defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', CACHE_HIVE_PRIVATE_CACHE_DIR . '/user_cache' );
+}
+
+/**
+ * The symlink index directory for private cache, organized by URL hash.
+ * This directory only contains pointers to the real files for fast URL-based purges.
+ *
+ * @since 1.3.0
+ */
+if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) ) {
+	define( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR', CACHE_HIVE_PRIVATE_CACHE_DIR . '/url_index' );
+}
+
+/**
+ * The configuration directory for Cache Hive.
+ *
+ * @since 1.0.0
+ */
+if ( ! defined( 'CACHE_HIVE_CONFIG_DIR' ) ) {
+	define( 'CACHE_HIVE_CONFIG_DIR', WP_CONTENT_DIR . '/cache-hive-config' );
+}
+
+// --- END NEW AND UPDATED CONSTANTS ---
+
 
 // =========================================================================
 // BOOTSTRAP COMPOSER AUTOLOADER & PLUGIN FILES
 // =========================================================================
-// In your main cache-hive.php file
 if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
 	require_once __DIR__ . '/vendor/autoload.php';
 }
@@ -71,12 +149,22 @@ require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-object-cac
 register_activation_hook( __FILE__, array( Cache_Hive_Lifecycle::class, 'on_activation' ) );
 register_deactivation_hook( __FILE__, array( Cache_Hive_Lifecycle::class, 'on_deactivation' ) );
 
-if ( class_exists( Cache_Hive_Purge::class ) ) {
-	Cache_Hive_Purge::register_hooks();
+/**
+ * Initializes the plugin's core components and hooks.
+ * This function ensures all necessary classes are loaded and hooks are registered.
+ *
+ * @since 1.2.0
+ */
+function cache_hive_init() {
+	if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Purge' ) ) {
+		Cache_Hive_Purge::init();
+	}
 }
+add_action( 'init', 'cache_hive_init' );
+
 
 /**
- * Begins execution of the plugin.
+ * Begins execution of the main plugin class on plugins_loaded.
  *
  * @since 1.0.0
  * @return Cache_Hive_Main

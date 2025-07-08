@@ -152,6 +152,8 @@ final class Cache_Hive_Settings {
 			'mobile_user_agents'                 => array( 'Mobile', 'Android', 'Silk/', 'Kindle', 'BlackBerry', 'Opera Mini', 'Opera Mobi', 'iPhone', 'iPad' ),
 			'serve_stale'                        => false,
 			'purge_on_upgrade'                   => true,
+			// OS-aware setting for symlink capability. Defaults to true.
+			'use_symlinks'                       => true,
 
 			// TTL Settings.
 			'public_cache_ttl'                   => 604800,
@@ -365,17 +367,17 @@ final class Cache_Hive_Settings {
 	public static function get_current_page_ttl() {
 		$settings = self::get_settings();
 		if ( function_exists( 'is_front_page' ) && ( is_front_page() || is_home() ) ) {
-			return $settings['front_page_ttl'] ?? 0;
+			return (int) ( $settings['front_page_ttl'] ?? 0 );
 		}
 		if ( function_exists( 'is_feed' ) && is_feed() ) {
-			return $settings['feed_ttl'] ?? 0;
+			return (int) ( $settings['feed_ttl'] ?? 0 );
 		}
 		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-			return $settings['rest_ttl'] ?? 0;
+			return (int) ( $settings['rest_ttl'] ?? 0 );
 		}
 		if ( function_exists( 'is_user_logged_in' ) && is_user_logged_in() ) {
-			return $settings['private_cache_ttl'] ?? 0;
+			return (int) ( $settings['private_cache_ttl'] ?? 0 );
 		}
-		return $settings['public_cache_ttl'] ?? 0;
+		return (int) ( $settings['public_cache_ttl'] ?? 0 );
 	}
 }
