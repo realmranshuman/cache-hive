@@ -95,6 +95,9 @@ final class Cache_Hive_Engine {
 	 * @return string The original buffer content.
 	 */
 	private static function write_cache_file( $buffer ) {
+		// Flag to track if cache generation was attempted on this request.
+		$cache_was_generated = false;
+
 		if ( self::is_content_cacheable( $buffer ) ) {
 			$is_private_cache = \is_user_logged_in() && ( self::$settings['cache_logged_users'] ?? false );
 
@@ -103,16 +106,16 @@ final class Cache_Hive_Engine {
 				if ( self::$settings['use_symlinks'] ) {
 					list( $cache_file, $symlink_file ) = self::get_private_cache_paths();
 					if ( $cache_file && $symlink_file ) {
-						// 1. Write the real cache file to the user-centric directory.
 						Cache_Hive_Disk::cache_page( $buffer, $cache_file );
-						// 2. Create a symlink in the URL-centric directory for fast URL purging.
 						self::create_symlink( $cache_file, $symlink_file );
+						$cache_was_generated = true;
 					}
 				} else {
 					// Fallback for Windows: Only write the primary cache file.
 					$cache_file = self::get_private_cache_primary_path();
 					if ( $cache_file ) {
 						Cache_Hive_Disk::cache_page( $buffer, $cache_file );
+						$cache_was_generated = true;
 					}
 				}
 			} else {
@@ -120,9 +123,22 @@ final class Cache_Hive_Engine {
 				$cache_file = self::get_public_cache_path();
 				if ( $cache_file ) {
 					Cache_Hive_Disk::cache_page( $buffer, $cache_file );
+					$cache_was_generated = true;
 				}
 			}
 		}
+
+		// If we just generated a cache file, this request served an unoptimized version.
+		// Send headers to instruct upstream caches (like Cloudflare) NOT to cache this specific response.
+		// This is the key to your architecture.
+		if ( $cache_was_generated && ! headers_sent() ) {
+			// Custom header for debugging and specific Cloudflare rules.
+			header( 'X-Cache-Hive-Status: Generating' );
+			// Standard header to prevent caching by any compliant proxy or browser.
+			header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+		}
+
+		// Return the original, unoptimized buffer to the browser for the fastest possible response.
 		return $buffer;
 	}
 

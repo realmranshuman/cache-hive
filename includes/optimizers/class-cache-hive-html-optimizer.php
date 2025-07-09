@@ -30,11 +30,37 @@ final class Cache_Hive_HTML_Optimizer extends Cache_Hive_Base_Optimizer {
 
 		$settings = Cache_Hive_Settings::get_settings();
 
+		// NEW: Remove WordPress Emoji scripts if the setting is enabled.
+		if ( ! empty( $settings['remove_emoji_scripts'] ) ) {
+			$html = self::strip_emoji_scripts( $html );
+		}
+
 		if ( ! empty( $settings['html_minify'] ) ) {
 			$html = self::minify_html( $html, $settings );
 		}
 
 		$html = self::add_header_links( $html, $settings );
+
+		return $html;
+	}
+
+	/**
+	 * NEW: Implements WordPress Emoji Script Removal.
+	 * Removes the script, inline styles, and DNS prefetch related to WP Emojis.
+	 *
+	 * @since 1.2.4
+	 * @param string $html The HTML content.
+	 * @return string The HTML with emoji scripts removed.
+	 */
+	private static function strip_emoji_scripts( $html ) {
+		// Remove the DNS prefetch for s.w.org.
+		$html = preg_replace( '/<link rel=[\'"]dns-prefetch[\'"] href=[\'"]\/\/s\.w\.org[\'"] \/>\n?/', '', $html );
+		// Remove the inline script that defines wp-emoji-settings.
+		$html = preg_replace( '/<script\b[^>]*>[\s\S]*?window\._wpemojiSettings[\s\S]*?<\/script>\n?/is', '', $html );
+		// Remove the external emoji script file.
+		$html = preg_replace( '/<script\b[^>]*src=[\'"]([^\'"]+)?wp-includes\/js\/wp-emoji-release\.min\.js(\?ver=[^\'"]*)?[\'"][^>]*><\/script>\n?/i', '', $html );
+		// Remove the inline emoji CSS.
+		$html = preg_replace( '/<style\b[^>]*>[\s\S]*?img\.wp-smiley[\s\S]*?<\/style>\n?/is', '', $html );
 
 		return $html;
 	}

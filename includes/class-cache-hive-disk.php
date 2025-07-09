@@ -37,6 +37,10 @@ final class Cache_Hive_Disk {
 			return; // Do not proceed without an explicit path.
 		}
 
+		// Per the design, this class is responsible for optimization before writing.
+		// We process the raw buffer received from the Engine to get the final, optimized content.
+		$optimized_buffer = Cache_Hive_HTML_Optimizer::process( $buffer );
+
 		$meta_file = $cache_file . '.meta';
 		$cache_dir = \dirname( $cache_file );
 
@@ -48,7 +52,8 @@ final class Cache_Hive_Disk {
 		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
-		$cache_created = \file_put_contents( $cache_file, $buffer . self::get_cache_signature(), LOCK_EX );
+		// Write the *optimized* buffer to the cache file.
+		$cache_created = \file_put_contents( $cache_file, $optimized_buffer . self::get_cache_signature(), LOCK_EX );
 
 		if ( $cache_created ) {
 			// The TTL logic can remain here, as it's part of writing the meta file.
@@ -80,6 +85,7 @@ final class Cache_Hive_Disk {
 	 * @return string
 	 */
 	public static function get_cache_signature() {
-		return '<!-- Cache served by Cache Hive on ' . \gmdate( 'Y-m-d H:i:s' ) . ' -->';
+		// The signature now clearly indicates when the optimized cache file was generated.
+		return '<!-- Optimized and cached by Cache Hive on ' . \gmdate( 'Y-m-d H:i:s' ) . ' UTC -->';
 	}
 }
