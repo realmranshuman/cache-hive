@@ -18,48 +18,49 @@ if ( ! \defined( 'ABSPATH' ) ) {
 final class Cache_Hive_Disk {
 
 	/**
-	 * DELETED: The get_cache_file_path() method has been removed from this class.
-	 * This class should only perform disk operations, not decide file paths.
-	 * The Cache_Hive_Engine is now the single source of truth for path generation.
-	 */
-
-	/**
 	 * Creates a static HTML file and its metadata file at a specific path.
+	 * This method now orchestrates all content optimizations.
 	 *
 	 * @since 1.2.3
-	 * @param string $buffer The page content to cache.
+	 * @param string $buffer The raw page content to cache from the output buffer.
 	 * @param string $cache_file The full, explicit path where the cache file should be saved.
 	 */
 	public static function cache_page( $buffer, $cache_file ) {
-		// THE FIX: This function no longer calculates its own path. It uses the
-		// explicit path passed to it by the Cache_Hive_Engine.
 		if ( empty( $cache_file ) ) {
 			return; // Do not proceed without an explicit path.
 		}
 
-		// Per the design, this class is responsible for optimization before writing.
-		// We process the raw buffer received from the Engine to get the final, optimized content.
-		$optimized_buffer = Cache_Hive_HTML_Optimizer::process( $buffer );
-
-		$meta_file = $cache_file . '.meta';
+		// THE FIX: Move the directory creation logic to the very beginning.
+		// This ensures the target directory exists before any optimizer tries to write a file.
 		$cache_dir = \dirname( $cache_file );
-
 		if ( ! \is_dir( $cache_dir ) ) {
 			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 			if ( ! @\mkdir( $cache_dir, 0755, true ) ) {
+				// If we cannot create the directory, we cannot proceed with caching.
 				return;
 			}
 		}
 
+		// Now that the directory is guaranteed to exist, we can safely run the optimizers.
+		// Step 1: Process CSS optimizations, passing the final HTML cache path as context.
+		$buffer = Cache_Hive_CSS_Optimizer::process( $buffer, $cache_file );
+
+		// Step 2: Feed the CSS-optimized buffer into the HTML optimizer.
+		$optimized_buffer = Cache_Hive_HTML_Optimizer::process( $buffer );
+
+		// The rest of the file and metadata writing logic follows.
+		$meta_file = $cache_file . '.meta';
+
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
-		// Write the *optimized* buffer to the cache file.
+		// Write the *fully optimized* buffer to the cache file.
 		$cache_created = \file_put_contents( $cache_file, $optimized_buffer . self::get_cache_signature(), LOCK_EX );
 
 		if ( $cache_created ) {
-			// The TTL logic can remain here, as it's part of writing the meta file.
-			if ( false !== \strpos( $cache_file, '/user_' ) ) {
-				$settings = Cache_Hive_Settings::get_settings();
-				$ttl      = $settings['private_cache_ttl'] ?? 1800;
+			$settings = Cache_Hive_Settings::get_settings();
+
+			// Determine TTL based on whether the cache is private or public.
+			if ( false !== \strpos( $cache_file, CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
+				$ttl = $settings['private_cache_ttl'] ?? 1800;
 			} else {
 				$ttl = Cache_Hive_Settings::get_current_page_ttl();
 			}
