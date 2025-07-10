@@ -12,7 +12,7 @@ return array(
 	// This is the answer to "how do I find the new namespace?". It's what you define here.
 	'prefix'  => 'Cache_Hive\\Vendor',
 
-	// Tell Scoper which files to scope. We will target ONLY the Predis, Credis,
+	// Tell Scoper which files to scope. We will target ONLY the Predis, Credis, Minify
 	// and their required PSR dependency directories within the `vendor` folder.
 	'finders' => array(
 		// Find and scope all the production dependencies.
@@ -24,6 +24,8 @@ return array(
 				'colinmollenhour/credis',
 				'psr/log',
 				'psr/http-message',
+				'matthiasmullie/minify',
+				'matthiasmullie/path-converter',
 			]),
 
 		// Find and scope the Composer autoloader files.

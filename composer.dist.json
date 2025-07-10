@@ -7,10 +7,10 @@
     "psr-4": {
       "Cache_Hive\\Vendor\\Predis\\": "lib/predis/predis/src/",
       "Cache_Hive\\Vendor\\Psr\\Log\\": "lib/psr/log/src/",
-      "Cache_Hive\\Vendor\\Psr\\Http\\Message\\": "lib/psr/http-message/src/"
+      "Cache_Hive\\Vendor\\Psr\\Http\\Message\\": "lib/psr/http-message/src/",
+      "Cache_Hive\\Vendor\\MatthiasMullie\\Minify\\": "lib/matthiasmullie/minify/src/",
+      "Cache_Hive\\Vendor\\MatthiasMullie\\PathConverter\\": "lib/matthiasmullie/path-converter/src/"
     },
-    "classmap": [
-      "lib/colinmollenhour/credis/"
-    ]
+    "classmap": ["lib/colinmollenhour/credis/"]
   }
 }
