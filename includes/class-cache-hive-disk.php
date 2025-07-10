@@ -27,31 +27,30 @@ final class Cache_Hive_Disk {
 	 */
 	public static function cache_page( $buffer, $cache_file ) {
 		if ( empty( $cache_file ) ) {
-			return; // Do not proceed without an explicit path.
+			return;
 		}
 
-		// THE FIX: Move the directory creation logic to the very beginning.
-		// This ensures the target directory exists before any optimizer tries to write a file.
 		$cache_dir = \dirname( $cache_file );
 		if ( ! \is_dir( $cache_dir ) ) {
 			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 			if ( ! @\mkdir( $cache_dir, 0755, true ) ) {
-				// If we cannot create the directory, we cannot proceed with caching.
 				return;
 			}
 		}
 
-		// Now that the directory is guaranteed to exist, we can safely run the optimizers.
-		// Step 1: Process CSS optimizations, passing the final HTML cache path as context.
+		// --- Optimization Pipeline ---
+		// Step 1: Process CSS optimizations.
 		$buffer = Cache_Hive_CSS_Optimizer::process( $buffer, $cache_file );
 
-		// Step 2: Feed the CSS-optimized buffer into the HTML optimizer.
-		$optimized_buffer = Cache_Hive_HTML_Optimizer::process( $buffer );
+		// Step 2: NEW - Process JS optimizations.
+		$buffer = Cache_Hive_JS_Optimizer::process( $buffer, $cache_file );
 
-		// The rest of the file and metadata writing logic follows.
+		// Step 3: Feed the fully optimized buffer into the HTML optimizer.
+		$optimized_buffer = Cache_Hive_HTML_Optimizer::process( $buffer );
+		// --- End of Pipeline ---
+
 		$meta_file = $cache_file . '.meta';
 
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_file_put_contents
 		// Write the *fully optimized* buffer to the cache file.
 		$cache_created = \file_put_contents( $cache_file, $optimized_buffer . self::get_cache_signature(), LOCK_EX );
 
