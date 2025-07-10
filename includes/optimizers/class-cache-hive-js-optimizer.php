@@ -55,6 +55,32 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 
 
 	/**
+	 * Stage 1: Identify all script tags and categorize them.
+	 *
+	 * @return array An array of script data.
+	 */
+	private static function identify_and_categorize_scripts() {
+		$scripts = array();
+		$nodes   = self::$xpath->query( '//script' );
+
+		// THE FIX: Add 'speculationrules' to the list of special types to be ignored.
+		$special_types = array( 'module', 'importmap', 'application/ld+json', 'speculationrules' );
+
+		foreach ( $nodes as $node ) {
+			$type = $node->getAttribute( 'type' );
+			if ( ! empty( $type ) && in_array( strtolower( $type ), $special_types, true ) ) {
+				continue;
+			}
+			$scripts[] = array(
+				'node'    => $node,
+				'src'     => $node->getAttribute( 'src' ),
+				'content' => $node->{'nodeValue'},
+			);
+		}
+		return $scripts;
+	}
+
+	/**
 	 * Main processing function for JS optimization.
 	 *
 	 * @param string $html            The HTML content.
@@ -68,21 +94,15 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		}
 
 		self::init_dom( $html );
-		$scripts = self::identify_and_categorize_scripts();
-		if ( empty( $scripts ) ) {
+		$all_scripts = self::identify_and_categorize_scripts();
+		if ( empty( $all_scripts ) ) {
 			return $html;
 		}
 
-		// Stage 2: Combination / Minification.
-		$processed_scripts = self::process_scripts( $scripts, $base_cache_path );
-
-		// Stage 3: Timing Modification.
-		self::apply_timing_modifications( $processed_scripts );
-
-		// Stage 4: Cleanup.
+		$live_scripts = self::process_for_combine_minify( $all_scripts, $base_cache_path );
+		self::apply_timing_modifications( $live_scripts );
 		self::remove_original_nodes();
 
-		// Final Output.
 		$processed_html = self::$dom->saveHTML( self::$dom->{'documentElement'} );
 		return '<!DOCTYPE html>' . "\n" . $processed_html;
 	}
@@ -117,40 +137,37 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Stage 1: Identify all script tags and categorize them.
+	 * New orchestrator for combining/minifying.
 	 *
-	 * @return array An array of script data.
-	 */
-	private static function identify_and_categorize_scripts() {
-		$scripts       = array();
-		$nodes         = self::$xpath->query( '//script' );
-		$special_types = array( 'module', 'importmap', 'application/ld+json' );
-
-		foreach ( $nodes as $node ) {
-			$type = $node->getAttribute( 'type' );
-			if ( ! empty( $type ) && in_array( strtolower( $type ), $special_types, true ) ) {
-				continue;
-			}
-			$scripts[] = array(
-				'node'    => $node,
-				'src'     => $node->getAttribute( 'src' ),
-				'content' => $node->{'nodeValue'},
-			);
-		}
-		return $scripts;
-	}
-
-	/**
-	 * Stage 2 Orchestrator: Decides whether to combine or minify individually.
-	 *
-	 * @param array  $scripts         The array of categorized scripts.
+	 * @param array  $scripts         All scripts found on the page.
 	 * @param string $base_cache_path The base path for creating new files.
-	 * @return array The list of scripts to be timed (either original or the new combined one).
+	 * @return array The definitive list of "live" scripts after processing.
 	 */
-	private static function process_scripts( array $scripts, $base_cache_path ) {
+	private static function process_for_combine_minify( array $scripts, $base_cache_path ) {
 		if ( ! empty( self::$settings['js_combine'] ) ) {
-			$combined_script_node = self::combine_scripts( $scripts, $base_cache_path );
-			return $combined_script_node ? array( array( 'node' => $combined_script_node ) ) : array();
+			$pass_through_scripts = array();
+			$content_to_combine   = array();
+
+			foreach ( $scripts as $script ) {
+				$node           = $script['node'];
+				$combine_inline = ! empty( self::$settings['js_combine_external_inline'] );
+				$is_local_file  = ! empty( $script['src'] ) && ! self::is_remote_url( $script['src'] );
+				$is_inline      = empty( $script['src'] ) && ! empty( trim( $script['content'] ) );
+
+				if ( ! self::is_excluded( $node, 'js_excludes' ) && ( $is_local_file || ( $combine_inline && $is_inline ) ) ) {
+					$content_to_combine[]    = $script;
+					self::$nodes_to_remove[] = $node;
+				} else {
+					$pass_through_scripts[] = $script;
+				}
+			}
+
+			$new_combined_node = self::create_combined_script( $content_to_combine, $base_cache_path );
+			if ( $new_combined_node ) {
+				$pass_through_scripts[] = array( 'node' => $new_combined_node );
+			}
+
+			return $pass_through_scripts;
 		}
 
 		if ( ! empty( self::$settings['js_minify'] ) ) {
@@ -162,44 +179,35 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Handles combining scripts into a single file.
+	 * Creates a single combined script file.
 	 *
-	 * @param array  $scripts         The categorized scripts.
-	 * @param string $base_cache_path The base path for file creation.
-	 * @return \DOMNode|null The new combined <script> node, or null on failure.
+	 * @param array  $scripts_to_combine Scripts designated for combination.
+	 * @param string $base_cache_path    Path for file creation.
+	 * @return \DOMNode|null
 	 */
-	private static function combine_scripts( array $scripts, $base_cache_path ) {
-		$combine_inline    = ! empty( self::$settings['js_combine_external_inline'] );
-		$content_to_minify = array();
-
-		foreach ( $scripts as $script ) {
-			$node = $script['node'];
-			if ( self::is_excluded( $node, 'js_excludes' ) ) {
-				continue;
-			}
-
-			$script_content = '';
-			if ( ! empty( $script['src'] ) && ! self::is_remote_url( $script['src'] ) ) {
-				$path = self::get_file_path_from_url( $script['src'] );
-				if ( $path && is_readable( $path ) ) {
-					$script_content          = file_get_contents( $path );
-					self::$nodes_to_remove[] = $node;
-				}
-			} elseif ( $combine_inline && empty( $script['src'] ) && ! empty( trim( $script['content'] ) ) ) {
-				$script_content          = $script['content'];
-				self::$nodes_to_remove[] = $node;
-			}
-
-			if ( ! empty( $script_content ) ) {
-				$content_to_minify[] = $script_content;
-			}
-		}
-
-		if ( empty( $content_to_minify ) ) {
+	private static function create_combined_script( array $scripts_to_combine, $base_cache_path ) {
+		if ( empty( $scripts_to_combine ) ) {
 			return null;
 		}
 
-		$full_js_string = implode( ";\n", $content_to_minify );
+		$js_strings = array();
+		foreach ( $scripts_to_combine as $script ) {
+			if ( ! empty( $script['src'] ) ) {
+				$path = self::get_file_path_from_url( $script['src'] );
+				if ( $path && is_readable( $path ) ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+					$js_strings[] = file_get_contents( $path );
+				}
+			} else {
+				$js_strings[] = $script['content'];
+			}
+		}
+
+		if ( empty( $js_strings ) ) {
+			return null;
+		}
+
+		$full_js_string = implode( ";\n", $js_strings );
 		$optimized_js   = ( new Minify\JS( $full_js_string ) )->minify();
 
 		$html_path_info = pathinfo( $base_cache_path );
@@ -285,11 +293,14 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 
 			if ( 'deferred' === $mode ) {
 				$node->setAttribute( 'defer', '' );
+				$node->removeAttribute( 'async' );
 			} elseif ( 'delayed' === $mode ) {
 				$src = $node->getAttribute( 'src' );
 				$node->setAttribute( 'data-ch-src', $src );
 				$node->setAttribute( 'type', 'text/cache-hive-script' );
 				$node->removeAttribute( 'src' );
+				$node->removeAttribute( 'async' );
+				$node->removeAttribute( 'defer' );
 				self::inject_loader_script();
 			}
 		}
@@ -302,14 +313,10 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		if ( self::$loader_injected ) {
 			return;
 		}
-
-		// JS logic to correctly create a *new* script element to trigger execution.
-		$loader_js = 'const chEvents=new Set(["mouseover","keydown","touchmove","touchstart"]);function chTrigger(){chLoad(),chEvents.forEach(e=>window.removeEventListener(e,chTrigger,{passive:!0}))}function chLoad(){document.querySelectorAll("script[type=\'text/cache-hive-script\']").forEach(e=>{const t=document.createElement("script");e.getAttributeNames().forEach(n=>{const o=e.getAttribute(n);o&&t.setAttribute("data-ch-src"===n?"src":n,o)}),t.type="text/javascript",e.parentNode.replaceChild(t,e)})}chEvents.forEach(e=>window.addEventListener(e,chTrigger,{passive:!0}));';
-
+		$loader_js   = 'const chEvents=new Set(["mouseover","keydown","touchmove","touchstart"]);function chTrigger(){chLoad(),chEvents.forEach(e=>window.removeEventListener(e,chTrigger,{passive:!0}))}function chLoad(){document.querySelectorAll("script[type=\'text/cache-hive-script\']").forEach(e=>{const t=document.createElement("script");e.getAttributeNames().forEach(n=>{const o=e.getAttribute(n);o&&t.setAttribute("data-ch-src"===n?"src":n,o)}),t.type="text/javascript",e.parentNode.replaceChild(t,e)})}chEvents.forEach(e=>window.addEventListener(e,chTrigger,{passive:!0}));';
 		$loader_node = self::$dom->createElement( 'script' );
 		$loader_node->setAttribute( 'id', 'cache-hive-loader' );
 		$loader_node->appendChild( self::$dom->createTextNode( $loader_js ) );
-
 		$body = self::$xpath->query( '//body' )->item( 0 );
 		if ( $body ) {
 			$body->appendChild( $loader_node );
