@@ -129,6 +129,7 @@ require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-base-optimiz
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-html-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-css-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-js-optimizer.php';
+require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-js-minifier.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-media-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
