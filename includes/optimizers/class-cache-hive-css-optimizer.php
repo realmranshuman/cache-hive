@@ -267,7 +267,7 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 			// This allows excluding by id, a comment, or a specific CSS rule within the block.
 			// e.g., an exclusion for 'no-optimize' would match <style id="no-optimize-css">...</style>
 			// or a comment like /* no-optimize */.
-			$check_string = $node->ownerDocument->saveHTML( $node );
+			$check_string = $node->{ 'ownerDocument' }->saveHTML( $node );
 		}
 
 		if ( empty( $check_string ) ) {

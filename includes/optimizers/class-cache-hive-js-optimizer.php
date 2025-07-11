@@ -17,14 +17,48 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 
-	// ... (properties are unchanged)
+	/**
+	 * Holds the plugin settings.
+	 *
+	 * @var array
+	 */
 	private static $settings;
+
+	/**
+	 * The DOMDocument object for HTML manipulation.
+	 *
+	 * @var \DOMDocument
+	 */
 	private static $dom;
+
+	/**
+	 * The DOMXPath object for querying the DOM.
+	 *
+	 * @var \DOMXPath
+	 */
 	private static $xpath;
+
+	/**
+	 * Stores nodes that need to be removed from the DOM after processing.
+	 *
+	 * @var array
+	 */
 	private static $nodes_to_remove = array();
+
+	/**
+	 * Flag to ensure the loader script is injected only once.
+	 *
+	 * @var bool
+	 */
 	private static $loader_injected = false;
 
-
+	/**
+	 * Processes and optimizes JavaScript in the given HTML.
+	 *
+	 * @param string $html HTML content.
+	 * @param string $base_cache_path The full path to the HTML cache file being created.
+	 * @return string Optimized HTML content.
+	 */
 	public static function process( $html, $base_cache_path ) {
 		self::$settings = Cache_Hive_Settings::get_settings();
 		if ( ! self::is_enabled() ) {
@@ -82,8 +116,8 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 			// Priority 2: Check for critical inline data scripts.
 			if ( self::is_critical_data_script( $node ) ) {
 				if ( $minify_enabled ) {
-					$minifier        = new Cache_Hive_JS_Minifier();
-					$node->nodeValue = $minifier->minify_content( $node->nodeValue );
+					$minifier            = new Cache_Hive_JS_Minifier();
+					$node->{'nodeValue'} = $minifier->minify_content( $node->{'nodeValue'} );
 				}
 				$final_script_list[] = $script;
 				continue;
@@ -245,7 +279,7 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		}
 
 		// Fallback for scripts without IDs, common in some themes/plugins.
-		$content = trim( $node->nodeValue );
+		$content = trim( $node->{'nodeValue'} );
 		if ( str_starts_with( $content, 'var ' ) || str_starts_with( $content, 'const ' ) || str_starts_with( $content, 'let ' ) ) {
 			if ( str_contains( $content, '{' ) || str_contains( $content, '[' ) ) {
 				return true;
@@ -255,45 +289,89 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		return false;
 	}
 
-	// --- Other helper methods are unchanged ---
-
+	/**
+	 * Checks if a given JS node should be excluded from optimization.
+	 *
+	 * This function is designed to handle various user inputs for exclusions, including:
+	 * - Partial strings or filenames (e.g., 'jquery.js').
+	 * - Full URLs or paths, with or without query strings.
+	 * - Identifiers for inline <script> blocks (e.g., an ID or a specific comment).
+	 * It also includes hardcoded exclusions for WordPress core scripts.
+	 *
+	 * @param \DOMNode $node The JS node (<script>).
+	 * @param string   $exclusion_key The key in settings for the exclusion list (e.g., 'js_excludes', 'js_defer_excludes').
+	 * @return bool True if the node should be excluded.
+	 */
 	private static function is_excluded( \DOMNode $node, $exclusion_key ) {
 		$src = $node->getAttribute( 'src' );
 		$id  = $node->getAttribute( 'id' );
+
+		// Hardcoded exclusions for WordPress core scripts that should never be optimized.
 		if ( ( ! empty( $src ) && false !== strpos( $src, '/wp-includes/js/dist/' ) ) || ( ! empty( $id ) && 0 === strpos( $id, 'wp-' ) ) ) {
-			return true; }
+			return true;
+		}
+
 		$exclusions = self::$settings[ $exclusion_key ] ?? array();
 		if ( empty( $exclusions ) ) {
-			return false; }
+			return false;
+		}
+
 		$check_string = '';
 		if ( ! empty( $src ) ) {
+			// Normalize the URL by removing query strings and fragments for a more reliable match.
+			// This allows excluding 'path/to/script.js' to match 'path/to/script.js?ver=1.2.3'.
 			$check_string = strtok( $src, '?#' );
 		} else {
-			$check_string = $node->ownerDocument->saveHTML( $node );
+			// For inline scripts, check against the full tag definition and its content.
+			// This allows excluding by id, a comment, or a specific JS rule within the block.
+			// e.g., an exclusion for 'no-optimize' would match <script id="no-optimize-js">...</script>
+			// or a comment like /* no-optimize */.
+			$check_string = $node->ownerDocument->saveHTML( $node ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 		}
+
 		if ( empty( $check_string ) ) {
-			return false; }
+			return false;
+		}
+
 		foreach ( (array) $exclusions as $exclude_pattern ) {
+			// Sanitize the user-provided exclusion pattern by trimming whitespace.
 			$pattern = trim( $exclude_pattern );
 			if ( empty( $pattern ) ) {
-				continue; }
+				continue;
+			}
+			// Use a case-insensitive comparison for better user experience.
 			if ( false !== stripos( $check_string, $pattern ) ) {
-				return true; }
+				return true;
+			}
 		}
 		return false;
 	}
+
+	/**
+	 * Injects the JavaScript loader script into the HTML body.
+	 * This script listens for user interaction to trigger delayed script execution.
+	 */
 	private static function inject_loader_script() {
 		if ( self::$loader_injected ) {
-			return; }
+			return;
+		}
 		$loader_js   = 'const chEvents=new Set(["mouseover","keydown","touchmove","touchstart"]);function chTrigger(){document.dispatchEvent(new Event("ch:run_delayed_scripts")),chEvents.forEach(e=>window.removeEventListener(e,chTrigger,{passive:!0}))}chEvents.forEach(e=>window.addEventListener(e,chTrigger,{passive:!0}));';
 		$loader_node = self::$dom->createElement( 'script' );
 		$loader_node->setAttribute( 'id', 'cache-hive-loader' );
 		$loader_node->appendChild( self::$dom->createTextNode( $loader_js ) );
 		$body = self::$xpath->query( '//body' )->item( 0 );
 		if ( $body ) {
-			$body->appendChild( $loader_node ); }
+			$body->appendChild( $loader_node );
+		}
 		self::$loader_injected = true;
 	}
+
+	/**
+	 * Creates a new script DOM node and appends it to the body.
+	 *
+	 * @param string $path The file path of the script.
+	 * @return \DOMNode The newly created script node.
+	 */
 	private static function create_script_node( $path ) {
 		$cache_dir_path = dirname( $path );
 		$js_filename    = basename( $path );
@@ -306,12 +384,25 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 			$body->appendChild( $new_node ); }
 		return $new_node;
 	}
+
+	/**
+	 * Retrieves the content of a file from a given URL.
+	 *
+	 * @param string $url The URL of the file.
+	 * @return string|null The file content, or null if not found or readable.
+	 */
 	private static function get_file_contents( $url ) {
 		$path = self::get_file_path_from_url( $url );
 		if ( $path && is_readable( $path ) ) {
 			return file_get_contents( $path ); }
 		return null;
 	}
+
+	/**
+	 * Initializes the DOMDocument and DOMXPath objects.
+	 *
+	 * @param string $html The HTML content to load.
+	 */
 	private static function init_dom( $html ) {
 		self::$dom             = new \DOMDocument();
 		self::$nodes_to_remove = array();
@@ -322,11 +413,22 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		libxml_use_internal_errors( $previous_libxml_state );
 		self::$xpath = new \DOMXPath( self::$dom );
 	}
+
+	/**
+	 * Checks if any JS optimization is enabled in the settings.
+	 *
+	 * @return bool True if any JS optimization is enabled, false otherwise.
+	 */
 	private static function is_enabled() {
 		return ! empty( self::$settings['js_minify'] )
 			|| ! empty( self::$settings['js_combine'] )
 			|| ( isset( self::$settings['js_defer_mode'] ) && 'default' !== self::$settings['js_defer_mode'] );
 	}
+
+	/**
+	 * Removes the original script nodes from the DOM that have been processed (combined or minified).
+	 * This prevents duplicate scripts in the output HTML.
+	 */
 	private static function remove_original_nodes() {
 		foreach ( self::$nodes_to_remove as $node ) {
 			if ( $node->{'parentNode'} ) {
@@ -334,6 +436,13 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 			}
 		}
 	}
+
+	/**
+	 * Converts a URL into an absolute server file path.
+	 *
+	 * @param string $url The URL of the JS file.
+	 * @return string|false The absolute file path or false if not possible.
+	 */
 	private static function get_file_path_from_url( $url ) {
 		$url         = strtok( $url, '?#' );
 		$site_url    = site_url();
@@ -353,13 +462,31 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		}
 		return false;
 	}
+
+	/**
+	 * Checks if a URL points to an external resource.
+	 *
+	 * @param string $url The URL to check.
+	 * @return bool True if the URL is for a remote/external resource.
+	 */
 	private static function is_remote_url( $url ) {
 		$site_host = wp_parse_url( home_url(), PHP_URL_HOST );
 		$url_host  = wp_parse_url( $url, PHP_URL_HOST );
 		return ! empty( $url_host ) && strtolower( $url_host ) !== strtolower( $site_host );
 	}
+
+	/**
+	 * Identifies and categorizes script nodes from the DOM.
+	 *
+	 * @return array An array of script data, each containing the DOM node, src, and content.
+	 */
 	private static function identify_and_categorize_scripts() {
-		$scripts      = array();
+		$scripts = array();
+		/**
+		 * List of script types to ignore during optimization.
+		 * These are typically data scripts, templates, or module definitions
+		 * that should not be minified or combined as regular JavaScript.
+		 */
 		$ignore_types = array( 'module', 'importmap', 'application/ld+json', 'application/json', 'speculationrules', 'text/template', 'text/html', 'text/x-template', 'text/x-handlebars-template' );
 		foreach ( self::$xpath->query( '//script' ) as $node ) {
 			$type = $node->getAttribute( 'type' );
