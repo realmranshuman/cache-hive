@@ -48,15 +48,9 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $html;
 		}
 
-		$dom = new \DOMDocument();
-
-		// THE FIX: Use internal libxml errors instead of the silenced "@" operator.
+		$dom                   = new \DOMDocument();
 		$previous_libxml_state = libxml_use_internal_errors( true );
-
-		// Use the XML encoding trick for safe parsing. It will not be in the final output.
 		$dom->loadHTML( '<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
-
-		// Clear any errors produced by malformed HTML and restore the previous state.
 		libxml_clear_errors();
 		libxml_use_internal_errors( $previous_libxml_state );
 
@@ -70,16 +64,15 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 		if ( ! empty( self::$settings['css_combine'] ) ) {
 			self::combine_and_minify_css( $dom, $xpath, $nodes, $base_cache_path );
 		} else {
-			self::minify_css_individually( $dom, $xpath, $nodes, $base_cache_path );
+			self::minify_css_individually( $dom, $nodes, $base_cache_path );
 		}
 
-		// THE FIX: Use curly brace syntax for documentElement and save only the <html> element.
 		$processed_html = $dom->saveHTML( $dom->{'documentElement'} );
 		return '<!DOCTYPE html>' . "\n" . $processed_html;
 	}
 
 	/**
-	 * Handles the combine and minify process.
+	 * Handles the combine and minify process with correct ordering and path handling.
 	 *
 	 * @param \DOMDocument $dom             The DOM object.
 	 * @param \DOMXPath    $xpath           The DOMXPath object.
@@ -87,72 +80,87 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 	 * @param string       $base_cache_path The HTML cache file path.
 	 */
 	private static function combine_and_minify_css( \DOMDocument $dom, \DOMXPath $xpath, \DOMNodeList $nodes, $base_cache_path ) {
-		$styles          = array();
+		$groups          = array();
 		$nodes_to_remove = array();
 		$combine_inline  = ! empty( self::$settings['css_combine_external_inline'] );
+		$head_node       = $xpath->query( '//head' )->item( 0 );
 
+		if ( ! $head_node ) {
+			return;
+		}
+
+		// Step 1: Collect all stylesheets in their original order, grouped by media type.
 		foreach ( $nodes as $node ) {
 			if ( self::is_excluded( $node ) ) {
 				continue;
 			}
 
-			$media   = $node->hasAttribute( 'media' ) ? strtolower( $node->getAttribute( 'media' ) ) : 'all';
-			$media   = empty( $media ) || 'all' === $media ? 'all' : $media;
-			$content = '';
+			$media = $node->hasAttribute( 'media' ) ? strtolower( $node->getAttribute( 'media' ) ) : 'all';
+			$media = empty( $media ) ? 'all' : $media;
 
 			if ( 'link' === $node->{'nodeName'} ) {
 				$url = $node->getAttribute( 'href' );
 				if ( self::is_remote_url( $url ) ) {
-					continue; }
-				$source = self::get_file_path_from_url( $url );
-				if ( $source && is_readable( $source ) ) {
-					$content = $source; }
-			} elseif ( $combine_inline ) {
-				$content = $node->{'nodeValue'};
-			}
-
-			if ( ! empty( $content ) ) {
-				$styles[ $media ][] = $content;
-				$nodes_to_remove[]  = $node;
+					continue;
+				}
+				$path = self::get_file_path_from_url( $url );
+				if ( $path && is_readable( $path ) ) {
+					$groups[ $media ][] = $path;
+					$nodes_to_remove[]  = $node;
+				}
+			} elseif ( $combine_inline && 'style' === $node->{'nodeName'} ) {
+				$content = trim( $node->{'nodeValue'} );
+				if ( ! empty( $content ) ) {
+					$groups[ $media ][] = $content;
+					$nodes_to_remove[]  = $node;
+				}
 			}
 		}
 
-		if ( empty( $styles ) ) {
+		if ( empty( $groups ) ) {
 			return;
 		}
 
-		$head_node      = $xpath->query( '//head' )->item( 0 );
 		$html_path_info = pathinfo( $base_cache_path );
 		$css_base_name  = $html_path_info['filename'];
 		$cache_dir_path = $html_path_info['dirname'];
 		$cache_dir_url  = str_replace( WP_CONTENT_DIR, content_url(), $cache_dir_path );
 
-		foreach ( $styles as $media => $sources ) {
+		// Step 2: Process each group, preserving order and setting paths correctly.
+		foreach ( $groups as $media => $sources ) {
 			$minifier = new Minify\CSS();
-			foreach ( $sources as $content ) {
-				$minifier->add( $content );
+			foreach ( $sources as $source ) {
+				$minifier->add( $source );
 			}
-			$optimized_css = $minifier->minify();
-			if ( 'swap' === ( self::$settings['css_font_optimization'] ?? 'default' ) ) {
-				$optimized_css = self::add_font_display_swap( $optimized_css );
-			}
+
+			$minifier->setMaxImportSize( 10 );
+
+			$group_hash    = substr( md5( serialize( $sources ) ), 0, 8 );
+			$css_filename  = "{$css_base_name}-{$media}-{$group_hash}.css";
+			$minified_path = "{$cache_dir_path}/{$css_filename}";
+
+			// Pass the destination path to minify() to correctly rewrite relative URLs.
+			$optimized_css = $minifier->minify( $minified_path );
+
 			if ( empty( trim( $optimized_css ) ) ) {
 				continue;
 			}
 
-			$css_filename = "{$css_base_name}-{$media}.css";
-			$cache_file   = "{$cache_dir_path}/{$css_filename}";
-
-			if ( file_put_contents( $cache_file, $optimized_css ) ) {
-				$new_link_url = "{$cache_dir_url}/{$css_filename}";
-				$link_node    = $dom->createElement( 'link' );
-				$link_node->setAttribute( 'rel', 'stylesheet' );
-				$link_node->setAttribute( 'media', $media );
-				$link_node->setAttribute( 'href', $new_link_url );
-				$head_node->appendChild( $link_node );
+			if ( 'swap' === ( self::$settings['css_font_optimization'] ?? 'default' ) ) {
+				$optimized_css = self::add_font_display_swap( $optimized_css );
+				// Re-save the file after modification.
+				file_put_contents( $minified_path, $optimized_css );
 			}
+
+			$new_link_url = "{$cache_dir_url}/{$css_filename}";
+			$link_node    = $dom->createElement( 'link' );
+			$link_node->setAttribute( 'rel', 'stylesheet' );
+			$link_node->setAttribute( 'media', $media );
+			$link_node->setAttribute( 'href', $new_link_url );
+			$head_node->appendChild( $link_node );
 		}
 
+		// Step 3: Remove the original, processed nodes from the DOM.
 		foreach ( $nodes_to_remove as $node ) {
 			if ( $node->{'parentNode'} ) {
 				$node->{'parentNode'}->removeChild( $node );
@@ -161,14 +169,13 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Handles minifying each CSS file and inline block individually.
+	 * Handles minifying each CSS file and inline block individually with correct path handling.
 	 *
 	 * @param \DOMDocument $dom             The DOM object.
-	 * @param \DOMXPath    $xpath           The DOMXPath object.
 	 * @param \DOMNodeList $nodes           List of CSS nodes.
 	 * @param string       $base_cache_path The HTML cache file path.
 	 */
-	private static function minify_css_individually( \DOMDocument $dom, \DOMXPath $xpath, \DOMNodeList $nodes, $base_cache_path ) {
+	private static function minify_css_individually( \DOMDocument $dom, \DOMNodeList $nodes, $base_cache_path ) {
 		$html_path_info = pathinfo( $base_cache_path );
 		$css_base_name  = $html_path_info['filename'];
 		$cache_dir_path = $html_path_info['dirname'];
@@ -178,6 +185,7 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 			if ( self::is_excluded( $node ) ) {
 				continue;
 			}
+
 			if ( 'link' === $node->{'nodeName'} ) {
 				$url = $node->getAttribute( 'href' );
 				if ( self::is_remote_url( $url ) ) {
@@ -188,20 +196,21 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 					continue;
 				}
 
-				$minifier      = new Minify\CSS( $source_path );
-				$optimized_css = $minifier->minify();
+				$minifier = new Minify\CSS( $source_path );
+				$minifier->setMaxImportSize( 10 );
+
+				$url_hash      = substr( md5( $url ), 0, 8 );
+				$css_filename  = "{$css_base_name}-min-{$url_hash}.css";
+				$minified_path = "{$cache_dir_path}/{$css_filename}";
+
+				$optimized_css = $minifier->minify( $minified_path );
+
 				if ( 'swap' === ( self::$settings['css_font_optimization'] ?? 'default' ) ) {
 					$optimized_css = self::add_font_display_swap( $optimized_css );
 				}
-				if ( empty( trim( $optimized_css ) ) ) {
-					continue;
-				}
 
-				$url_hash     = substr( md5( $url ), 0, 8 );
-				$css_filename = "{$css_base_name}-min-{$url_hash}.css";
-				$cache_file   = "{$cache_dir_path}/{$css_filename}";
-
-				if ( file_put_contents( $cache_file, $optimized_css ) ) {
+				if ( ! empty( trim( $optimized_css ) ) ) {
+					file_put_contents( $minified_path, $optimized_css );
 					$new_link_url = "{$cache_dir_url}/{$css_filename}";
 					$node->setAttribute( 'href', $new_link_url );
 				}
@@ -225,7 +234,12 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Check if a given CSS node should be excluded from optimization.
+	 * Check if a given CSS node should be excluded from optimization in a robust manner.
+	 *
+	 * This function is designed to handle various user inputs for exclusions, including:
+	 * - Partial strings or filenames (e.g., 'font-awesome.css').
+	 * - Full URLs or paths, with or without query strings.
+	 * - Identifiers for inline <style> blocks (e.g., an ID or a specific comment).
 	 *
 	 * @param \DOMNode $node The CSS node (<link> or <style>).
 	 * @return bool True if the node should be excluded.
@@ -237,18 +251,44 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 		}
 		$check_string = '';
 		if ( 'link' === $node->{'nodeName'} ) {
-			$check_string = $node->getAttribute( 'href' );
-		} else {
-			$check_string = $node->{'nodeValue'};
+			$href = $node->getAttribute( 'href' );
+
+			// Don't process empty or data URI links.
+			if ( empty( $href ) || 0 === strpos( $href, 'data:' ) ) {
+				return false;
+			}
+
+			// Normalize the URL by removing query strings and fragments for a more reliable match.
+			// This allows excluding 'path/to/style.css' to match 'path/to/style.css?ver=1.2.3'.
+			$check_string = strtok( $href, '?#' );
+
+		} elseif ( 'style' === $node->{'nodeName'} ) {
+			// For inline styles, check against the full tag definition and its content.
+			// This allows excluding by id, a comment, or a specific CSS rule within the block.
+			// e.g., an exclusion for 'no-optimize' would match <style id="no-optimize-css">...</style>
+			// or a comment like /* no-optimize */.
+			$check_string = $node->ownerDocument->saveHTML( $node );
 		}
+
 		if ( empty( $check_string ) ) {
 			return false;
 		}
-		foreach ( $exclusions as $exclude_pattern ) {
-			if ( ! empty( $exclude_pattern ) && false !== strpos( $check_string, $exclude_pattern ) ) {
+
+		foreach ( (array) $exclusions as $exclude_pattern ) {
+			// Sanitize the user-provided exclusion pattern by trimming whitespace.
+			$pattern = trim( $exclude_pattern );
+
+			// Skip if the pattern is empty after trimming.
+			if ( empty( $pattern ) ) {
+				continue;
+			}
+
+			// Use a case-insensitive comparison for better user experience.
+			if ( false !== stripos( $check_string, $pattern ) ) {
 				return true;
 			}
 		}
+
 		return false;
 	}
 
