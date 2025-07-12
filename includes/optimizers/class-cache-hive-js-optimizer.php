@@ -86,11 +86,7 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		}
 
 		$processed_html = self::$dom->saveHTML( self::$dom->{'documentElement'} );
-		$processed_html = str_replace(
-			array( '<![CDATA[', ']]>' ),
-			'',
-			$processed_html
-		);
+		$processed_html = str_replace( array( '<![CDATA[', ']]>' ), '', $processed_html );
 
 		return '<!DOCTYPE html>' . "\n" . $processed_html;
 	}
@@ -107,30 +103,25 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 	) {
 		$combine_enabled = ! empty( self::$settings['js_combine'] );
 		$minify_enabled  = ! empty( self::$settings['js_minify'] );
-		$delay_enabled   =
-			'delayed' === ( self::$settings['js_defer_mode'] ?? 'default' );
-		$defer_enabled   =
-			'deferred' === ( self::$settings['js_defer_mode'] ?? 'default' );
+		$delay_enabled   = 'delayed' === ( self::$settings['js_defer_mode'] ?? 'default' );
+		$defer_enabled   = 'deferred' === ( self::$settings['js_defer_mode'] ?? 'default' );
 
 		$scripts_to_combine          = array();
 		$scripts_not_for_combination = array();
 
-		// Step 1: Categorize scripts.
+		// Categorize scripts into those for combination and those to be handled individually.
+		// Excluded scripts are left untouched and skipped in this loop.
 		foreach ( $scripts as $script ) {
 			$node = $script['node'];
 
-			if (
-				self::is_excluded( $node, 'js_excludes' ) ||
-				self::is_critical_data_script( $node )
-			) {
+			if ( self::is_excluded( $node, 'js_excludes' ) || self::is_critical_data_script( $node ) ) {
 				if ( $minify_enabled && self::is_critical_data_script( $node ) ) {
 					$minifier            = new Cache_Hive_JS_Minifier();
-					$node->{'nodeValue'} = $minifier->minify_content(
-						$node->{'nodeValue'}
-					);
+					$node->{'nodeValue'} = $minifier->minify_content( $node->{'nodeValue'} );
 				}
 				continue;
 			}
+
 			if ( $combine_enabled ) {
 				$scripts_to_combine[] = $script;
 			} else {
@@ -138,70 +129,43 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 			}
 		}
 
-		// Step 2: Process the combined group, if it exists.
+		// Process the combined group, ensuring the final file is non-render-blocking.
 		if ( ! empty( $scripts_to_combine ) ) {
-			$new_combined_node = self::create_combined_file(
-				$scripts_to_combine,
-				$base_cache_path
-			);
+			$new_combined_node = self::create_combined_file( $scripts_to_combine, $base_cache_path );
 			if ( $new_combined_node ) {
-				if (
-					$delay_enabled &&
-					! self::is_excluded( $new_combined_node, 'js_defer_excludes' )
-				) {
+				if ( $delay_enabled && ! self::is_excluded( $new_combined_node, 'js_defer_excludes' ) ) {
 					self::mark_script_for_delay( $new_combined_node );
 					self::$delay_active = true;
-				} elseif (
-					$defer_enabled &&
-					! self::is_excluded(
-						$new_combined_node,
-						'js_defer_excludes'
-					) &&
-					! $new_combined_node->hasAttribute( 'async' ) &&
-					! $new_combined_node->hasAttribute( 'defer' )
-				) {
+				} elseif ( $defer_enabled && ! self::is_excluded( $new_combined_node, 'js_defer_excludes' ) ) {
 					$new_combined_node->setAttribute( 'defer', '' );
+				} else {
+					// As a fallback for "combine only" mode, add 'async' to make it non-blocking.
+					$new_combined_node->setAttribute( 'async', '' );
 				}
 			} else {
-				$scripts_not_for_combination = array_merge(
-					$scripts_not_for_combination,
-					$scripts_to_combine
-				);
+				// If combination failed, process these scripts individually.
+				$scripts_not_for_combination = array_merge( $scripts_not_for_combination, $scripts_to_combine );
 			}
 		}
 
-		// Step 3: Process the individual scripts.
+		// Process individual scripts (only runs if 'combine' is disabled).
 		foreach ( $scripts_not_for_combination as $script ) {
 			$node      = $script['node'];
 			$is_inline = empty( $script['src'] );
 
-			if (
-				$delay_enabled &&
-				! self::is_excluded( $node, 'js_defer_excludes' )
-			) {
+			if ( $delay_enabled && ! self::is_excluded( $node, 'js_defer_excludes' ) ) {
 				self::mark_script_for_delay( $node );
 				self::$delay_active = true;
 				if ( $minify_enabled && $is_inline ) {
 					$minifier            = new Cache_Hive_JS_Minifier();
-					$node->{'nodeValue'} = $minifier->minify_content(
-						$node->{'nodeValue'}
-					);
+					$node->{'nodeValue'} = $minifier->minify_content( $node->{'nodeValue'} );
 				}
-			} elseif (
-				$defer_enabled &&
-				! self::is_excluded( $node, 'js_defer_excludes' )
-			) {
-				if (
-					$node->hasAttribute( 'async' ) ||
-					$node->hasAttribute( 'defer' )
-				) {
+			} elseif ( $defer_enabled && ! self::is_excluded( $node, 'js_defer_excludes' ) ) {
+				if ( $node->hasAttribute( 'async' ) || $node->hasAttribute( 'defer' ) ) {
 					continue;
 				}
 				if ( $is_inline ) {
-					$new_node = self::externalize_inline_script(
-						$script,
-						$base_cache_path
-					);
+					$new_node = self::externalize_inline_script( $script, $base_cache_path );
 					if ( $new_node ) {
 						$new_node->setAttribute( 'defer', '' );
 						self::$nodes_to_remove[] = $node;
@@ -211,9 +175,7 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 				}
 			} elseif ( $minify_enabled && $is_inline ) {
 				$minifier            = new Cache_Hive_JS_Minifier();
-				$node->{'nodeValue'} = $minifier->minify_content(
-					$node->{'nodeValue'}
-				);
+				$node->{'nodeValue'} = $minifier->minify_content( $node->{'nodeValue'} );
 			}
 		}
 	}
@@ -233,18 +195,13 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		$sources_for_hash = array();
 
 		foreach ( $scripts_to_combine as $script ) {
-			$content = ! empty( $script['src'] )
-				? self::get_file_contents( $script['src'] )
-				: $script['content'];
-			// Strip CDATA wrappers from inline content before adding to the combined file.
+			$content = ! empty( $script['src'] ) ? self::get_file_contents( $script['src'] ) : $script['content'];
 			$content = str_replace( array( '<![CDATA[', ']]>' ), '', (string) $content );
 			if ( null === $content ) {
 				continue;
 			}
 			$content_parts[]         = $content;
-			$sources_for_hash[]      = ! empty( $script['src'] )
-				? $script['src']
-				: md5( $content );
+			$sources_for_hash[]      = ! empty( $script['src'] ) ? $script['src'] : md5( $content );
 			self::$nodes_to_remove[] = $script['node'];
 		}
 
@@ -253,9 +210,7 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		}
 
 		$final_js     = implode( ";\n", $content_parts );
-		$optimized_js = ! empty( self::$settings['js_minify'] )
-			? ( new Cache_Hive_JS_Minifier() )->minify_content( $final_js )
-			: $final_js;
+		$optimized_js = ! empty( self::$settings['js_minify'] ) ? ( new Cache_Hive_JS_Minifier() )->minify_content( $final_js ) : $final_js;
 
 		$html_path_info = pathinfo( $base_cache_path );
 		$cache_dir_path = $html_path_info['dirname'];
@@ -266,7 +221,6 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		if ( file_put_contents( $cache_file, $optimized_js ) ) {
 			return self::create_script_node( $cache_file );
 		}
-
 		return null;
 	}
 
@@ -300,7 +254,6 @@ class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 		if ( file_put_contents( $cache_file, $content ) ) {
 			return self::create_script_node( $cache_file );
 		}
-
 		return null;
 	}
 
@@ -358,19 +311,11 @@ JS;
 			return false;
 		}
 		$id = $node->getAttribute( 'id' );
-		if (
-			! empty( $id ) &&
-			( str_ends_with( $id, '-js-extra' ) ||
-				str_ends_with( $id, '-js-before' ) )
-		) {
+		if ( ! empty( $id ) && ( str_ends_with( $id, '-js-extra' ) || str_ends_with( $id, '-js-before' ) ) ) {
 			return true;
 		}
 		$content = trim( $node->{'nodeValue'} );
-		if (
-			str_starts_with( $content, 'var ' ) ||
-			str_starts_with( $content, 'const ' ) ||
-			str_starts_with( $content, 'let ' )
-		) {
+		if ( str_starts_with( $content, 'var ' ) || str_starts_with( $content, 'const ' ) || str_starts_with( $content, 'let ' ) ) {
 			if ( str_contains( $content, '{' ) || str_contains( $content, '[' ) ) {
 				return true;
 			}
@@ -387,7 +332,6 @@ JS;
 	 */
 	private static function is_excluded( \DOMNode $node, $exclusion_key ) {
 		$src = $node->getAttribute( 'src' );
-		// Corrected: Removed the overly broad `wp-` id check.
 		if ( ! empty( $src ) && false !== strpos( $src, '/wp-includes/js/dist/' ) ) {
 			return true;
 		}
@@ -395,9 +339,7 @@ JS;
 		if ( empty( $exclusions ) ) {
 			return false;
 		}
-		$check_string = ! empty( $src )
-			? strtok( $src, '?#' )
-			: $node->{'ownerDocument'}->saveHTML( $node );
+		$check_string = ! empty( $src ) ? strtok( $src, '?#' ) : $node->{'ownerDocument'}->saveHTML( $node );
 		if ( empty( $check_string ) ) {
 			return false;
 		}
@@ -422,11 +364,7 @@ JS;
 	private static function create_script_node( $path ) {
 		$cache_dir_path = dirname( $path );
 		$js_filename    = basename( $path );
-		$cache_dir_url  = str_replace(
-			WP_CONTENT_DIR,
-			content_url(),
-			$cache_dir_path
-		);
+		$cache_dir_url  = str_replace( WP_CONTENT_DIR, content_url(), $cache_dir_path );
 		$new_script_url = "{$cache_dir_url}/{$js_filename}";
 		$new_node       = self::$dom->createElement( 'script' );
 		$new_node->setAttribute( 'src', $new_script_url );
@@ -465,11 +403,7 @@ JS;
 			'~<script(?P<attrs>[^>]*)>(?P<content>.*?)</script>~is',
 			function ( $matches ) {
 				if ( false === stripos( $matches['attrs'], 'src=' ) ) {
-					return sprintf(
-						'<script%s><![CDATA[%s]]></script>',
-						$matches['attrs'],
-						$matches['content']
-					);
+					return sprintf( '<script%s><![CDATA[%s]]></script>', $matches['attrs'], $matches['content'] );
 				}
 				return $matches[0];
 			},
@@ -493,8 +427,7 @@ JS;
 	private static function is_enabled() {
 		return ! empty( self::$settings['js_minify'] ) ||
 			! empty( self::$settings['js_combine'] ) ||
-			( isset( self::$settings['js_defer_mode'] ) &&
-				'default' !== self::$settings['js_defer_mode'] );
+			( isset( self::$settings['js_defer_mode'] ) && 'default' !== self::$settings['js_defer_mode'] );
 	}
 
 	/**
@@ -530,11 +463,7 @@ JS;
 		}
 		if ( 0 === strpos( $url, '/' ) ) {
 			$site_path = wp_parse_url( $site_url, PHP_URL_PATH ) ?? '';
-			if (
-				! empty( $site_path ) &&
-				'/' !== $site_path &&
-				0 === strpos( $url, $site_path )
-			) {
+			if ( ! empty( $site_path ) && '/' !== $site_path && 0 === strpos( $url, $site_path ) ) {
 				return $abs_path . substr( $url, strlen( $site_path ) );
 			}
 			return $abs_path . $url;
@@ -551,8 +480,7 @@ JS;
 	private static function is_remote_url( $url ) {
 		$site_host = wp_parse_url( home_url(), PHP_URL_HOST );
 		$url_host  = wp_parse_url( $url, PHP_URL_HOST );
-		return ! empty( $url_host ) &&
-			strtolower( $url_host ) !== strtolower( $site_host );
+		return ! empty( $url_host ) && strtolower( $url_host ) !== strtolower( $site_host );
 	}
 
 	/**
@@ -562,21 +490,10 @@ JS;
 	 */
 	private static function identify_and_categorize_scripts() {
 		$scripts      = array();
-		$ignore_types = array(
-			'module',
-			'importmap',
-			'application/ld+json',
-			'application/json',
-			'speculationrules',
-			'text/template',
-			'text/html',
-		);
+		$ignore_types = array( 'module', 'importmap', 'application/ld+json', 'application/json', 'speculationrules', 'text/template', 'text/html' );
 		foreach ( self::$xpath->query( '//script' ) as $node ) {
 			$type = $node->getAttribute( 'type' );
-			if (
-				! empty( $type ) &&
-				in_array( strtolower( $type ), $ignore_types, true )
-			) {
+			if ( ! empty( $type ) && in_array( strtolower( $type ), $ignore_types, true ) ) {
 				continue;
 			}
 			$scripts[] = array(
