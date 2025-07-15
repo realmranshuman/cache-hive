@@ -1,0 +1,16 @@
+{
+  "name": "realmranshuman/cache-hive",
+  "description": "A high-performance caching plugin for WordPress.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "autoload": {
+    "psr-4": {
+      "Cache_Hive\\Vendor\\Predis\\": "lib/predis/predis/src/",
+      "Cache_Hive\\Vendor\\Psr\\Log\\": "lib/psr/log/src/",
+      "Cache_Hive\\Vendor\\Psr\\Http\\Message\\": "lib/psr/http-message/src/",
+      "Cache_Hive\\Vendor\\MatthiasMullie\\Minify\\": "lib/matthiasmullie/minify/src/",
+      "Cache_Hive\\Vendor\\MatthiasMullie\\PathConverter\\": "lib/matthiasmullie/path-converter/src/"
+    },
+    "classmap": ["lib/colinmollenhour/credis/"]
+  }
+}

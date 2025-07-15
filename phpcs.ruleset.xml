@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<ruleset name="Cache Hive Custom Ruleset">
+	<description>A strict, custom ruleset for the Cache Hive plugin, built for the actual files on disk.</description>
+
+	<!--
+	This ruleset is built from the ground up based on the files confirmed
+	to exist in the vendor directory. It does not reference non-existent sniffs.
+	-->
+
+	<!-- Scan only PHP files. -->
+	<arg name="extensions" value="php"/>
+
+	<!-- Exclude third-party code and build artifacts. -->
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/lib/*</exclude-pattern>
+	<exclude-pattern>*/tests/*</exclude-pattern>
+	<!-- Exclude scoper.inc.php from all rules. -->
+	<exclude-pattern>*/scoper.inc.php</exclude-pattern>
+
+	<!-- Set the PHP version to check against. -->
+	<config name="testVersion">7.4-</config>
+
+	<!--
+	#############################################################################
+	# WORDPRESS STANDARDS AT HIGH SEVERITY
+	#############################################################################
+	-->
+	<!-- These top-level rules exist, as proven by `phpcs -i` and `ls`. -->
+	<rule ref="WordPress-Core"/>
+	<rule ref="WordPress-Docs"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<!--
+	#############################################################################
+	# SECURITY RULES AT HIGH SEVERITY
+	#############################################################################
+	-->
+	<rule ref="WordPress.Security.EscapeOutput"><severity>10</severity></rule>
+	<rule ref="WordPress.Security.NonceVerification">
+		<exclude-pattern>*/includes/class-cache-hive-engine.php</exclude-pattern>
+		<severity>10</severity>
+	</rule>
+	<rule ref="WordPress.Security.PluginMenuSlug"><severity>10</severity></rule>
+	<rule ref="WordPress.Security.SafeRedirect"><severity>10</severity></rule>
+
+	<rule ref="WordPress.Security.ValidatedSanitizedInput">
+		<exclude-pattern>*/class-cache-hive-advanced-cache.php</exclude-pattern>
+		<exclude-pattern>*/includes/class-cache-hive-engine.php</exclude-pattern>
+		<severity>10</severity>
+	</rule>
+
+	<!--
+	#############################################################################
+	# PLUGIN-SPECIFIC CONFIGURATION
+	#############################################################################
+	-->
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="cache-hive"/>
+			</property>
+		</properties>
+	</rule>
+
+</ruleset>

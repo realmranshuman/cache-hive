@@ -1,0 +1,35 @@
+# Dependencies
+# These are installed by package managers and should not be in version control.
+/vendor/
+/node_modules/
+
+# Vite/Build Artifacts
+# This is the compiled/minified output of your frontend source code.
+/dist/
+/build/
+
+# Log Files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log
+pnpm-debug.log*
+
+# Local Environment & Editor Files
+.env
+.env.local
+.env.*.local
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Note on WordPress Drop-ins:
+# This .gitignore is for your plugin's root directory.
+# The files advanced-cache.php and the logic for object-cache.php
+# are part of your plugin's source and ARE correctly version-controlled.
+# Any copies of these files OUTSIDE this directory (e.g., in /wp-content/)
+# should be ignored if you were running git from a parent directory.
+*.crt
+*.pem
+/lib/
