@@ -11,10 +11,8 @@ import "./index.css";
 import { ThemeProvider } from "./components/theme-provider";
 
 function getTabFromUrl() {
-  // URLSearchParams is the modern, correct way to read query strings.
   const searchParams = new URLSearchParams(window.location.search);
   const page = searchParams.get('page');
-
   switch (page) {
     case 'cache-hive-cloudflare':
       return 'cloudflare';
@@ -22,18 +20,14 @@ function getTabFromUrl() {
       return 'optimization';
     case 'cache-hive-caching':
       return 'caching';
-    case 'cache-hive': // This is the main dashboard page
+    case 'cache-hive':
     default:
       return 'dashboard';
   }
 }
 
-/**
- * Updates the URL's 'page' query parameter to match the active tab
- * without reloading the page.
- */
 function setUrlForTab(tab: string) {
-  let slug = 'cache-hive'; // Default to dashboard
+  let slug = 'cache-hive';
   if (tab === 'caching') {
     slug = 'cache-hive-caching';
   } else if (tab === 'optimization') {
@@ -41,51 +35,55 @@ function setUrlForTab(tab: string) {
   } else if (tab === 'cloudflare') {
     slug = 'cache-hive-cloudflare';
   }
-  
   const url = new URL(window.location.href);
-  // Only update if the URL is actually different, to prevent unnecessary history entries.
   if (url.searchParams.get('page') !== slug) {
     url.searchParams.set('page', slug);
-    // Use pushState so the browser's back/forward buttons work as expected.
     window.history.pushState({ path: url.toString() }, '', url.toString());
   }
 }
 
-// --- END: CORRECTED AND ROBUST URL HANDLING ---
-
-
 function CacheHiveApp() {
   const [activeTab, setActiveTab] = React.useState(getTabFromUrl());
+  const tabs = [
+    { value: "dashboard", label: "Dashboard" },
+    { value: "caching", label: "Caching" },
+    { value: "optimization", label: "Page Optimization" },
+    { value: "cloudflare", label: "Cloudflare Integration" },
+  ];
 
-  // This effect syncs the URL when the user clicks a tab.
   React.useEffect(() => {
     setUrlForTab(activeTab);
   }, [activeTab]);
 
-  // This effect listens for browser back/forward buttons to update the active tab.
   React.useEffect(() => {
     const handlePopState = () => {
       setActiveTab(getTabFromUrl());
     };
-
     window.addEventListener('popstate', handlePopState);
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, []); // Run only once on component mount.
-
+  }, []);
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Header />
         <div className="container mx-auto px-4 py-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-6">
-              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-              <TabsTrigger value="caching">Caching</TabsTrigger>
-              <TabsTrigger value="optimization">Page Optimization</TabsTrigger>
-              <TabsTrigger value="cloudflare">Cloudflare Integration</TabsTrigger>
+            {/* Responsive Scrollable Tabs */}
+            <div className="relative rounded-sm overflow-x-scroll h-10 bg-muted mb-6">
+              <TabsList className="absolute flex flex-row justify-stretch w-full pt-1 pl-1 pr-1 pb-0">
+                {tabs.map((tab, idx) => (
+                  <TabsTrigger
+                    className="w-full"
+                    key={`tab_trigger_${idx}`}
+                    value={tab.value}
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
             </TabsList>
+        </div>
             <TabsContent value="dashboard">
               <Dashboard />
             </TabsContent>

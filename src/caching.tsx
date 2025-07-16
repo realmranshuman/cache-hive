@@ -32,9 +32,6 @@ function SectionSuspense({
   return children(data);
 }
 
-// --- Start Refactor ---
-
-// Define stable fetcher and updater maps outside the component
 const fetcherMap: { [key: string]: () => Promise<any> } = {
   cache: API.getCacheSettings,
   ttl: API.getTtlSettings,
@@ -55,12 +52,12 @@ const updaterMap: { [key: string]: (data: any) => Promise<any> } = {
 
 export function Caching() {
   const tabList = [
-    "cache",
-    "ttl",
-    "autopurge",
-    "exclusions",
-    "object",
-    "browser",
+    { value: "cache", label: "Cache" },
+    { value: "ttl", label: "TTL" },
+    { value: "autopurge", label: "Autopurge" },
+    { value: "exclusions", label: "Exclusions" },
+    { value: "object", label: "Object" },
+    { value: "browser", label: "Browser" },
   ];
   const [activeTab, setActiveTab] = useState("cache");
   const [saving, setSaving] = useState({
@@ -76,12 +73,11 @@ export function Caching() {
     rules: string;
   } | null>(null);
 
-  // REFACTOR: Eagerly fetch data for ALL tabs on initial load.
   const [resources, setResources] = useState<{ [key: string]: any }>(() => {
     const initialResources: { [key: string]: any } = {};
     tabList.forEach((tab) => {
-      if (fetcherMap[tab]) {
-        initialResources[tab] = wrapPromise(fetcherMap[tab]());
+      if (fetcherMap[tab.value]) {
+        initialResources[tab.value] = wrapPromise(fetcherMap[tab.value]());
       }
     });
     return initialResources;
@@ -95,7 +91,6 @@ export function Caching() {
       const updater = updaterMap[section];
       const savePromise = updater(data)
         .then((newSettings) => {
-          // On success, update the resource state with the new data.
           setResources((prev) => ({
             ...prev,
             [section]: { read: () => newSettings },
@@ -128,7 +123,7 @@ export function Caching() {
         setSaving((prev) => ({ ...prev, [section]: false }));
       }
     },
-    [] // Dependencies are stable and defined outside the component.
+    []
   );
 
   const skeletonMap: { [key: string]: React.ReactNode } = {
@@ -195,21 +190,26 @@ export function Caching() {
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
-            {tabList.map((tab) => (
-              <TabsTrigger key={tab} value={tab}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="relative rounded-sm overflow-x-scroll h-10 bg-muted mb-6">
+            <TabsList className="absolute flex flex-row justify-stretch w-full pt-1 pl-1 pr-1 pb-0">
+              {tabList.map((tab, idx) => (
+                <TabsTrigger
+                  key={`tabcaching_trigger_${idx}`}
+                  className="w-full"
+                  value={tab.value}
+                >
+                  {tab.label.charAt(0).toUpperCase() + tab.label.slice(1)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
           {tabList.map((tab) => (
-            // REFACTOR: Add `forceMount` to prevent unmounting and `hidden` to control visibility.
             <TabsContent
-              key={tab}
-              value={tab}
+              key={tab.value}
+              value={tab.value}
               className="mt-6"
               forceMount
-              hidden={activeTab !== tab}
+              hidden={activeTab !== tab.value}
             >
               <ErrorBoundary
                 fallback={
@@ -218,9 +218,9 @@ export function Caching() {
                   </div>
                 }
               >
-                <Suspense fallback={skeletonMap[tab]}>
-                  <SectionSuspense resource={resources[tab]}>
-                    {(initial: any) => formMap[tab](initial)}
+                <Suspense fallback={skeletonMap[tab.value]}>
+                  <SectionSuspense resource={resources[tab.value]}>
+                    {(initial: any) => formMap[tab.value](initial)}
                   </SectionSuspense>
                 </Suspense>
               </ErrorBoundary>

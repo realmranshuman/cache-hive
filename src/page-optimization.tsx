@@ -52,7 +52,12 @@ const updaterMap: { [key: string]: (data: any) => Promise<any> } = {
 };
 
 export function PageOptimization() {
-  const tabList = ["css", "js", "html", "media"];
+  const tabList = [
+    { value: "css", label: "CSS" },
+    { value: "js", label: "JS" },
+    { value: "html", label: "HTML" },
+    { value: "media", label: "Media" },
+  ];
   const [activeTab, setActiveTab] = useState("css");
   const [saving, setSaving] = useState({
     css: false,
@@ -64,8 +69,8 @@ export function PageOptimization() {
   const [resources, setResources] = useState<{ [key: string]: any }>(() => {
     const initialResources: { [key: string]: any } = {};
     tabList.forEach((tab) => {
-      if (fetcherMap[tab]) {
-        initialResources[tab] = wrapPromise(fetcherMap[tab]());
+      if (fetcherMap[tab.value]) {
+        initialResources[tab.value] = wrapPromise(fetcherMap[tab.value]());
       }
     });
     return initialResources;
@@ -148,31 +153,37 @@ export function PageOptimization() {
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="css">CSS</TabsTrigger>
-            <TabsTrigger value="js">JS</TabsTrigger>
-            <TabsTrigger value="html">HTML</TabsTrigger>
-            <TabsTrigger value="media">Media</TabsTrigger>
-          </TabsList>
-
+          <div className="relative rounded-sm overflow-x-scroll h-10 bg-muted mb-6">
+            <TabsList className="absolute flex flex-row justify-stretch w-full pt-1 pl-1 pr-1 pb-0">
+              {tabList.map((tab, idx) => (
+                <TabsTrigger
+                  className="w-full"
+                  key={`tabopt_trigger_${idx}`}
+                  value={tab.value}
+                >
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
           {tabList.map((tab) => (
             <TabsContent
-              key={tab}
-              value={tab}
+              key={tab.value}
+              value={tab.value}
               className="mt-6"
               forceMount
-              hidden={activeTab !== tab}
+              hidden={activeTab !== tab.value}
             >
               <ErrorBoundary
                 fallback={
                   <div className="p-4 text-red-600">
-                    Error loading {tab} settings.
+                    Error loading {tab.label} settings.
                   </div>
                 }
               >
-                <Suspense fallback={skeletonMap[tab]}>
-                  <SectionSuspense resource={resources[tab]}>
-                    {(initial: any) => formMap[tab](initial)}
+                <Suspense fallback={skeletonMap[tab.value]}>
+                  <SectionSuspense resource={resources[tab.value]}>
+                    {(initial: any) => formMap[tab.value](initial)}
                   </SectionSuspense>
                 </Suspense>
               </ErrorBoundary>
