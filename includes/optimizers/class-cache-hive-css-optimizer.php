@@ -278,19 +278,31 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Adds font-display: swap to @font-face rules.
+	 * Adds or replaces font-display: swap in @font-face rules.
+	 *
+	 * This function finds all @font-face blocks, removes any pre-existing
+	 * font-display property, and then appends `font-display: swap;` to ensure
+	 * compliance with Lighthouse recommendations.
 	 *
 	 * @param string $css The CSS content.
 	 * @return string The modified CSS content.
 	 */
 	private static function add_font_display_swap( $css ) {
 		return preg_replace_callback(
-			'/@font-face\s*\{([^\}]*)\}/is',
+			'/@font-face\s*\{(?<rules>[^}]*)\}/is',
 			function ( $matches ) {
-				if ( false !== stripos( $matches[1], 'font-display' ) ) {
-					return $matches[0];
-				}
-				return '@font-face{' . trim( $matches[1] ) . ';font-display:swap;}';
+				$rules = $matches['rules'];
+
+				// 1. Remove any existing font-display property.
+				// This regex handles different spacing and quoting.
+				$rules = preg_replace( '/font-display\s*:\s*[^;}\s]+;?/i', '', $rules );
+
+				// 2. Add the desired font-display property.
+				// We trim and add a semicolon to ensure clean output.
+				$clean_rules = trim( $rules, " \t\n\r\0\x0B;" );
+				$new_rules   = $clean_rules . ( $clean_rules ? ';' : '' ) . 'font-display:swap;';
+
+				return '@font-face{' . $new_rules . '}';
 			},
 			(string) $css
 		);
