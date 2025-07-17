@@ -4,8 +4,8 @@
   "description": "Advanced caching and optimization for WordPress.",
   "main": "build/index.js",
   "scripts": {
-    "dev": "npx touch-cli dev.hot && vite --config vite.config.mjs",
-    "build": "npx rimraf dev.hot && vite build --config vite.config.mjs",
+    "dev": "npx touch-cli dev.hot && vite --config vite.config.app.mjs",
+    "build": "vite build --config vite.config.app.mjs && vite build --config vite.config.toolbar.mjs",
     "clean": "npx rimraf dev.hot"
   },
   "dependencies": {

@@ -19,6 +19,7 @@ use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_JS;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_Media;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Roles;
 use Cache_Hive\Includes\API\Cache_Hive_REST_TTL;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Toolbar;
 use WP_REST_Server;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -36,6 +37,7 @@ require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-css.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-js.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-html.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-media.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-toolbar.php';
 
 /**
  * Manages all REST API endpoints for Cache Hive.
@@ -104,16 +106,6 @@ final class Cache_Hive_REST_API {
 
 		register_rest_route(
 			self::$namespace,
-			'/actions/(?P<action>\S+)',
-			array(
-				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => array( __CLASS__, 'perform_action' ),
-				'permission_callback' => array( __CLASS__, 'permissions_check' ),
-			)
-		);
-
-		register_rest_route(
-			self::$namespace,
 			'/roles',
 			array(
 				array(
@@ -123,10 +115,79 @@ final class Cache_Hive_REST_API {
 				),
 			)
 		);
+
+		// Register Toolbar Action Routes.
+		self::register_toolbar_routes();
 	}
 
 	/**
-	 * Check if the user has permissions to access the endpoint.
+	 * Registers the routes for toolbar actions.
+	 *
+	 * @since 1.0.0
+	 */
+	public static function register_toolbar_routes() {
+		register_rest_route(
+			self::$namespace,
+			'/actions/purge-all',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( Cache_Hive_REST_Toolbar::class, 'purge_all' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::$namespace,
+			'/actions/purge-disk-cache',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( Cache_Hive_REST_Toolbar::class, 'purge_disk_cache' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::$namespace,
+			'/actions/purge-object-cache',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( Cache_Hive_REST_Toolbar::class, 'purge_object_cache' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::$namespace,
+			'/actions/purge-this-page',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( Cache_Hive_REST_Toolbar::class, 'purge_this_page' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+
+		register_rest_route(
+			self::$namespace,
+			'/actions/purge-my-private-cache',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( Cache_Hive_REST_Toolbar::class, 'purge_my_private_cache' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check_loggedin' ),
+			)
+		);
+		register_rest_route(
+			self::$namespace,
+			'/actions/purge-cloudflare',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( Cache_Hive_REST_Toolbar::class, 'purge_cloudflare' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
+	}
+
+	/**
+	 * Check if the user has admin permissions.
 	 *
 	 * @return bool
 	 */
@@ -135,33 +196,11 @@ final class Cache_Hive_REST_API {
 	}
 
 	/**
-	 * Perform a specified action.
+	 * Check if the user is logged in. The standard 'read' capability is a reliable check.
 	 *
-	 * @param \WP_REST_Request $request The request object.
-	 * @return \WP_REST_Response
+	 * @return bool
 	 */
-	public static function perform_action( \WP_REST_Request $request ) {
-		$action = $request->get_param( 'action' );
-
-		switch ( $action ) {
-			case 'purge_all':
-				Cache_Hive_Purge::purge_all();
-				return new \WP_REST_Response(
-					array(
-						'success' => true,
-						'message' => 'Entire cache purged.',
-					),
-					200
-				);
-			// Add other actions here.
-			default:
-				return new \WP_REST_Response(
-					array(
-						'success' => false,
-						'message' => 'Invalid action.',
-					),
-					400
-				);
-		}
+	public static function permissions_check_loggedin() {
+		return current_user_can( 'read' );
 	}
 }

@@ -6,39 +6,39 @@ import { Dashboard } from "./dashboard";
 import { Caching } from "./caching";
 import { PageOptimization } from "./page-optimization";
 import { CloudflareIntegration } from "./cloudflare-integration";
-import { Toaster } from "@/components/ui/sonner";
+// Toaster is removed from here, as the one in toolbar.tsx will handle all notifications.
 import "./index.css";
 import { ThemeProvider } from "./components/theme-provider";
 
 function getTabFromUrl() {
   const searchParams = new URLSearchParams(window.location.search);
-  const page = searchParams.get('page');
+  const page = searchParams.get("page");
   switch (page) {
-    case 'cache-hive-cloudflare':
-      return 'cloudflare';
-    case 'cache-hive-optimization':
-      return 'optimization';
-    case 'cache-hive-caching':
-      return 'caching';
-    case 'cache-hive':
+    case "cache-hive-cloudflare":
+      return "cloudflare";
+    case "cache-hive-optimization":
+      return "optimization";
+    case "cache-hive-caching":
+      return "caching";
+    case "cache-hive":
     default:
-      return 'dashboard';
+      return "dashboard";
   }
 }
 
 function setUrlForTab(tab: string) {
-  let slug = 'cache-hive';
-  if (tab === 'caching') {
-    slug = 'cache-hive-caching';
-  } else if (tab === 'optimization') {
-    slug = 'cache-hive-optimization';
-  } else if (tab === 'cloudflare') {
-    slug = 'cache-hive-cloudflare';
+  let slug = "cache-hive";
+  if (tab === "caching") {
+    slug = "cache-hive-caching";
+  } else if (tab === "optimization") {
+    slug = "cache-hive-optimization";
+  } else if (tab === "cloudflare") {
+    slug = "cache-hive-cloudflare";
   }
   const url = new URL(window.location.href);
-  if (url.searchParams.get('page') !== slug) {
-    url.searchParams.set('page', slug);
-    window.history.pushState({ path: url.toString() }, '', url.toString());
+  if (url.searchParams.get("page") !== slug) {
+    url.searchParams.set("page", slug);
+    window.history.pushState({ path: url.toString() }, "", url.toString());
   }
 }
 
@@ -59,9 +59,9 @@ function CacheHiveApp() {
     const handlePopState = () => {
       setActiveTab(getTabFromUrl());
     };
-    window.addEventListener('popstate', handlePopState);
+    window.addEventListener("popstate", handlePopState);
     return () => {
-      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, []);
   return (
@@ -69,7 +69,11 @@ function CacheHiveApp() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Header />
         <div className="container mx-auto px-4 py-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full"
+          >
             {/* Responsive Scrollable Tabs */}
             <div className="relative rounded-sm overflow-x-scroll h-10 bg-muted mb-6">
               <TabsList className="absolute flex flex-row justify-stretch w-full pt-1 pl-1 pr-1 pb-0">
@@ -82,8 +86,8 @@ function CacheHiveApp() {
                     {tab.label}
                   </TabsTrigger>
                 ))}
-            </TabsList>
-        </div>
+              </TabsList>
+            </div>
             <TabsContent value="dashboard">
               <Dashboard />
             </TabsContent>
@@ -98,9 +102,9 @@ function CacheHiveApp() {
             </TabsContent>
           </Tabs>
         </div>
-        <Toaster position="bottom-center" richColors closeButton/>
+        {/* The <Toaster /> component is removed from here to prevent duplicates. */}
       </div>
-  </ThemeProvider>
+    </ThemeProvider>
   );
 }
 

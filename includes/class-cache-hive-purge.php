@@ -59,20 +59,35 @@ final class Cache_Hive_Purge {
 	 * Purges the entire cache (both public and private).
 	 */
 	public static function purge_all() {
-		if ( is_dir( CACHE_HIVE_BASE_CACHE_DIR ) ) {
-			self::delete_directory( CACHE_HIVE_BASE_CACHE_DIR );
-		}
+		self::purge_disk_cache();
+		self::purge_object_cache();
 
-		if ( Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
+		if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Cloudflare' ) && Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
 			Cache_Hive_Cloudflare::purge_all();
 		}
 	}
 
 	/**
+	 * Purges the entire disk cache directory by deleting the base folder.
+	 */
+	public static function purge_disk_cache() {
+		if ( is_dir( CACHE_HIVE_BASE_CACHE_DIR ) ) {
+			self::delete_directory( CACHE_HIVE_BASE_CACHE_DIR );
+		}
+	}
+
+	/**
+	 * Flushes the WordPress Object Cache.
+	 */
+	public static function purge_object_cache() {
+		wp_cache_flush();
+	}
+
+	/**
 	 * Fired when a post is saved or updated.
-	 *
+
 	 * @param int     $post_id The post ID.
-	 * @param WP_Post $post    The post object.
+	 * @param WP_Post $post The post object.
 	 */
 	public static function on_save_post( $post_id, $post ) {
 		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) || 'publish' !== $post->post_status ) {
@@ -165,7 +180,7 @@ final class Cache_Hive_Purge {
 	}
 
 	/**
-	 * Purges all public and private cache files for a single URL using an OS-aware strategy.
+	 * Purges all public and private cache files and their empty parent directories for a single URL.
 	 *
 	 * @param string|false $url The URL to purge.
 	 */
@@ -185,60 +200,92 @@ final class Cache_Hive_Purge {
 		$cache_key = $scheme . '://' . $host . $uri;
 		$url_hash  = md5( $cache_key );
 
-		// --- 1. Purge Public Cache (Fast, Direct Deletion) ---
-		$level1_dir      = substr( $url_hash, 0, 2 );
-		$level2_dir      = substr( $url_hash, 2, 2 );
-		$filename_prefix = substr( $url_hash, 4 );
-		$target_dir      = CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
+		// --- 1. Purge Public Cache Files ---
+		$level1_dir             = substr( $url_hash, 0, 2 );
+		$level2_dir             = substr( $url_hash, 2, 2 );
+		$public_filename_prefix = substr( $url_hash, 4 );
+		$public_target_dir      = CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
+		$public_glob_pattern    = $public_target_dir . '/' . $public_filename_prefix . '*';
+		$public_files_to_delete = glob( $public_glob_pattern );
 
-		if ( is_dir( $target_dir ) ) {
-			try {
-				$iterator = new DirectoryIterator( $target_dir );
-				foreach ( $iterator as $fileinfo ) {
-					if ( ! $fileinfo->isDot() && $fileinfo->isFile() && str_starts_with( $fileinfo->getFilename(), $filename_prefix ) ) {
-						@unlink( $fileinfo->getRealPath() );
-						@unlink( $fileinfo->getRealPath() . '.meta' );
-					}
+		if ( is_array( $public_files_to_delete ) ) {
+			foreach ( $public_files_to_delete as $file_path ) {
+				if ( is_file( $file_path ) || is_link( $file_path ) ) {
+					@unlink( $file_path );
 				}
-			} catch ( \Exception $e ) {
-				// Ignore errors if directory is not readable.
 			}
 		}
 
-		// --- 2. Purge Private Cache (OS-Aware Strategy) ---
+		// --- 2. Purge Private Cache Files (Symlink-aware) ---
 		if ( Cache_Hive_Settings::get( 'use_symlinks' ) ) {
-			// Optimized Path (Linux): Purge symlinks precisely.
-			$url_level1_dir = substr( $url_hash, 0, 2 );
-			$url_level2_dir = substr( $url_hash, 2, 2 );
-			$symlink_dir    = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
-			$symlink_prefix = substr( $url_hash, 4 );
+			$url_level1_dir  = substr( $url_hash, 0, 2 );
+			$url_level2_dir  = substr( $url_hash, 2, 2 );
+			$symlink_dir     = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
+			$symlink_prefix  = substr( $url_hash, 4 );
+			$symlink_pattern = $symlink_dir . '/' . $symlink_prefix . '*.ln';
+			$symlinks_found  = glob( $symlink_pattern );
 
-			// Instead of deleting the entire directory, iterate and delete only matching symlinks.
-			if ( is_dir( $symlink_dir ) ) {
-				try {
-					$iterator = new DirectoryIterator( $symlink_dir );
-					foreach ( $iterator as $fileinfo ) {
-						if ( ! $fileinfo->isDot() && $fileinfo->isFile() && str_starts_with( $fileinfo->getFilename(), $symlink_prefix ) ) {
-							@unlink( $fileinfo->getRealPath() );
+			if ( is_array( $symlinks_found ) ) {
+				foreach ( $symlinks_found as $symlink_path ) {
+					$target_file = readlink( $symlink_path );
+					if ( $target_file && file_exists( $target_file ) ) {
+						$private_target_dir      = dirname( $target_file );
+						$private_glob_pattern    = $private_target_dir . '/' . $url_hash . '*';
+						$private_files_to_delete = glob( $private_glob_pattern );
+
+						if ( is_array( $private_files_to_delete ) ) {
+							foreach ( $private_files_to_delete as $private_file ) {
+								@unlink( $private_file );
+							}
+						}
+
+						// After deleting files, attempt to remove the user's now-empty cache directory.
+						if ( is_dir( $private_target_dir ) && count( glob( $private_target_dir . '/*' ) ) === 0 ) {
+							@rmdir( $private_target_dir );
 						}
 					}
-				} catch ( \Exception $e ) {
-					// Ignore errors.
+					// Always delete the symlink itself.
+					@unlink( $symlink_path );
 				}
 			}
 		} else {
-			// Compatible Path (Windows): Recursively scan the primary user cache directory.
+			// Windows-compatible fallback (no symlinks).
 			if ( is_dir( CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
-				$iterator = new RecursiveIteratorIterator(
-					new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_USER_CACHE_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
-					RecursiveIteratorIterator::SELF_FIRST
+				$iterator = new \RecursiveIteratorIterator(
+					new \RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_USER_CACHE_DIR, \RecursiveDirectoryIterator::SKIP_DOTS ),
+					\RecursiveIteratorIterator::SELF_FIRST
 				);
 				foreach ( $iterator as $file ) {
 					if ( $file->isFile() && str_starts_with( $file->getFilename(), $url_hash ) ) {
 						@unlink( $file->getRealPath() );
-						@unlink( $file->getRealPath() . '.meta' );
 					}
 				}
+			}
+		}
+
+		// --- 3. Clean Up Empty Parent Directories ---
+		// This function will safely walk up the tree and remove empty folders.
+		self::cleanup_empty_directories( $public_target_dir );
+		if ( isset( $symlink_dir ) ) {
+			self::cleanup_empty_directories( $symlink_dir );
+		}
+	}
+
+	/**
+	 * Recursively removes empty directories up from a starting path.
+	 *
+	 * @param string $path The path to start cleaning up from.
+	 */
+	private static function cleanup_empty_directories( $path ) {
+		if ( ! is_dir( $path ) || str_contains( $path, 'cache-hive' ) === false ) {
+			return;
+		}
+
+		// Check if the directory is empty. glob returns false on error, or an empty array.
+		if ( is_readable( $path ) && count( glob( $path . '/*' ) ) === 0 ) {
+			if ( @rmdir( $path ) ) {
+				// If successful, try to clean the parent directory as well.
+				self::cleanup_empty_directories( dirname( $path ) );
 			}
 		}
 	}
@@ -322,19 +369,29 @@ final class Cache_Hive_Purge {
 	 */
 	public static function delete_directory( $dir ) {
 		if ( ! is_dir( $dir ) ) {
-			return;
+			return false;
 		}
-		$iterator = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
-			RecursiveIteratorIterator::CHILD_FIRST
-		);
-		foreach ( $iterator as $file ) {
-			if ( $file->isDir() ) {
-				@rmdir( $file->getRealPath() );
-			} else {
-				@unlink( $file->getRealPath() );
+
+		try {
+			$items = new \FilesystemIterator( $dir, \FilesystemIterator::KEY_AS_PATHNAME | \FilesystemIterator::CURRENT_AS_FILEINFO | \FilesystemIterator::SKIP_DOTS );
+
+			foreach ( $items as $pathname => $item ) {
+				if ( $item->isDir() && ! $item->isLink() ) {
+					if ( ! self::delete_directory( $pathname ) ) {
+						return false;
+					}
+				} else {
+					// This handles both files and symlinks.
+					if ( ! @unlink( $pathname ) ) {
+						return false;
+					}
+				}
 			}
+		} catch ( \Exception $e ) {
+			// Catch potential errors if the directory is not readable.
+			return false;
 		}
-		@rmdir( $dir );
+
+		return @rmdir( $dir );
 	}
 }

@@ -17,6 +17,7 @@
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Main;
 use Cache_Hive\Includes\Cache_Hive_Purge;
+use Cache_Hive\Includes\Cache_Hive_Vite_Manifest;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
@@ -105,6 +106,7 @@ if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
 	require_once __DIR__ . '/vendor/autoload.php';
 }
 
+require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-vite-manifest.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-settings.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-disk.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-engine.php';
@@ -238,49 +240,169 @@ function cache_hive_render_admin_page() {
 }
 
 /**
- * Enqueues scripts and styles for the admin area.
+ * Enqueues scripts and styles for the admin area using the Vite manifest.
  *
  * @since 1.0.0
  * @param string $hook The current admin page hook.
  */
 function cache_hive_enqueue_admin_assets( $hook ) {
-	if ( false === strpos( $hook, 'cache-hive' ) ) {
-		return;
-	}
-
-	$script_path = CACHE_HIVE_DIR . 'build/index.js';
-	$style_path  = CACHE_HIVE_DIR . 'build/index.css';
-
-	if ( file_exists( $script_path ) ) {
-		wp_enqueue_script(
-			'cache-hive-app',
-			CACHE_HIVE_URL . 'build/index.js',
-			array( 'wp-element', 'wp-i18n' ),
-			filemtime( $script_path ),
-			true
-		);
-
+	// Always load the self-contained toolbar script for any logged-in user in the admin area.
+	if ( is_user_logged_in() ) {
+		Cache_Hive_Vite_Manifest::enqueue_assets( 'src/toolbar.tsx', 'manifest-toolbar.json', array( 'wp-element', 'wp-i18n' ) );
 		wp_localize_script(
-			'cache-hive-app',
-			'wpApiSettings',
+			'cache-hive-toolbar',
+			'chToolbar',
 			array(
-				'root'  => esc_url_raw( rest_url() ),
-				'nonce' => wp_create_nonce( 'wp_rest' ),
+				'nonce'    => wp_create_nonce( 'wp_rest' ),
+				'root'     => esc_url_raw( rest_url() ),
+				'page_url' => admin_url(), // For "Purge this Page" on admin pages.
 			)
 		);
 	}
 
-	if ( file_exists( $style_path ) ) {
-		wp_enqueue_style(
-			'cache-hive-style',
-			CACHE_HIVE_URL . 'build/index.css',
-			array(),
-			filemtime( $style_path )
-		);
-
-		// Ensure the React app can use full width in admin.
-		$custom_css = "\n\tbody[class*='_page_cache-hive'] #wpcontent {\n\t\tpadding-left: 0;\n\t}\n\t";
-		wp_add_inline_style( 'cache-hive-style', $custom_css );
+	// Only load the main application assets on the plugin's own pages.
+	if ( false === strpos( $hook, 'cache-hive' ) ) {
+		return;
 	}
+
+	Cache_Hive_Vite_Manifest::enqueue_assets( 'src/index.tsx', 'manifest-app.json', array( 'wp-element', 'wp-i18n' ) );
+
+	wp_localize_script(
+		'cache-hive-index',
+		'wpApiSettings',
+		array(
+			'root'  => esc_url_raw( rest_url() ),
+			'nonce' => wp_create_nonce( 'wp_rest' ),
+		)
+	);
+
+	$stylesheet_handle = 'cache-hive-index-css-0';
+	$custom_css        = "\n\tbody[class*='_page_cache-hive'] #wpcontent {\n\t\tpadding-left: 0;\n\t}\n\t";
+	wp_add_inline_style( $stylesheet_handle, $custom_css );
 }
 add_action( 'admin_enqueue_scripts', 'cache_hive_enqueue_admin_assets', 100 );
+
+/**
+ * Enqueues scripts for the frontend using the Vite manifest.
+ *
+ * @since 1.0.0
+ */
+function cache_hive_enqueue_frontend_assets() {
+	if ( ! is_user_logged_in() || is_admin() ) {
+		return;
+	}
+
+	Cache_Hive_Vite_Manifest::enqueue_assets( 'src/toolbar.tsx', 'manifest-toolbar.json', array( 'wp-element', 'wp-i18n' ) );
+
+	wp_localize_script(
+		'cache-hive-toolbar',
+		'chToolbar',
+		array(
+			'nonce'    => wp_create_nonce( 'wp_rest' ),
+			'root'     => esc_url_raw( rest_url() ),
+			'page_url' => is_singular() ? get_permalink() : home_url( add_query_arg( null, null ) ),
+		)
+	);
+}
+add_action( 'wp_enqueue_scripts', 'cache_hive_enqueue_frontend_assets' );
+
+
+/**
+ * Adds `type="module"` to all plugin script tags.
+ *
+ * @param string $tag    The original <script> tag.
+ * @param string $handle The script's handle.
+ * @return string The modified <script> tag.
+ */
+function cache_hive_add_module_type_attribute( $tag, $handle ) {
+	if ( str_starts_with( $handle, 'cache-hive-' ) ) {
+		$tag = str_replace( '<script ', '<script type="module" ', $tag );
+	}
+	return $tag;
+}
+add_filter( 'script_loader_tag', 'cache_hive_add_module_type_attribute', 10, 2 );
+
+/**
+ * Adds Cache Hive menu items to the WordPress admin bar.
+ *
+ * @since 1.0.0
+ * @param \WP_Admin_Bar $wp_admin_bar The WP_Admin_Bar instance.
+ */
+function cache_hive_add_toolbar_items( $wp_admin_bar ) {
+	if ( ! is_user_logged_in() ) {
+		return;
+	}
+
+	// Top-level menu with icon.
+	$wp_admin_bar->add_node(
+		array(
+			'id'    => 'cache-hive',
+			'title' => '<span class="ab-icon dashicons dashicons-performance"></span><span class="ab-label">Cache Hive</span>',
+			'href'  => '#',
+			'meta'  => array( 'title' => 'Cache Hive' ),
+		)
+	);
+
+	// Available to all users.
+	$wp_admin_bar->add_node(
+		array(
+			'id'     => 'cache-hive-private-cache',
+			'parent' => 'cache-hive',
+			'title'  => 'Purge My Private Cache',
+			'href'   => '#',
+		)
+	);
+
+	// Admin-only actions.
+	if ( current_user_can( 'manage_options' ) ) {
+
+		// This action should only be available on the frontend, not in the admin dashboard.
+		if ( ! is_admin() ) {
+			$wp_admin_bar->add_node(
+				array(
+					'id'     => 'cache-hive-purge-page',
+					'parent' => 'cache-hive',
+					'title'  => "Purge This Page's Cache",
+					'href'   => '#',
+				)
+			);
+		}
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'     => 'cache-hive-purge-disk',
+				'parent' => 'cache-hive',
+				'title'  => 'Purge Disk Cache',
+				'href'   => '#',
+			)
+		);
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'     => 'cache-hive-purge-object-cache',
+				'parent' => 'cache-hive',
+				'title'  => 'Purge Object Cache',
+				'href'   => '#',
+			)
+		);
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'     => 'cache-hive-purge-cloudflare',
+				'parent' => 'cache-hive',
+				'title'  => 'Purge Cloudflare Cache',
+				'href'   => '#',
+			)
+		);
+
+		$wp_admin_bar->add_node(
+			array(
+				'id'     => 'cache-hive-purge-all',
+				'parent' => 'cache-hive',
+				'title'  => 'Purge All Caches',
+				'href'   => '#',
+			)
+		);
+	}
+}
+add_action( 'admin_bar_menu', 'cache_hive_add_toolbar_items', 100 );
