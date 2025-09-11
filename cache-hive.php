@@ -17,6 +17,7 @@
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Main;
 use Cache_Hive\Includes\Cache_Hive_Purge;
+use Cache_Hive\Includes\Cache_Hive_Admin_Bar;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
@@ -116,6 +117,7 @@ require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-css-optimize
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-js-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-media-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
+require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-admin-bar.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-object-cache.php';
@@ -143,6 +145,10 @@ register_deactivation_hook( __FILE__, array( Cache_Hive_Lifecycle::class, 'on_de
 function cache_hive_init() {
 	if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Purge' ) ) {
 		Cache_Hive_Purge::init();
+	}
+	// Initialize the admin bar functionality.
+	if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Admin_Bar' ) ) {
+		Cache_Hive_Admin_Bar::init();
 	}
 }
 add_action( 'init', 'cache_hive_init' );

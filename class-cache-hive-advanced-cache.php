@@ -283,8 +283,10 @@ final class Cache_Hive_Advanced_Cache {
 
 		// Properly flush and close all output buffers before exit to avoid zlib/ob_gzhandler warning.
 		while ( ob_get_level() > 0 ) {
-			// @ to avoid warnings if some buffers can no longer be closed.
-			@ob_end_flush();
+			// Only flush if ob_end_flush() returns true, avoid silencing errors.
+			if ( ob_end_flush() === false ) {
+				break;
+			}
 		}
 		exit;
 	}
@@ -312,4 +314,3 @@ final class Cache_Hive_Advanced_Cache {
 }
 
 new Cache_Hive_Advanced_Cache();
-

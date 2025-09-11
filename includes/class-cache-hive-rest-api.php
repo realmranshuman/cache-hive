@@ -135,10 +135,12 @@ final class Cache_Hive_REST_API {
 	}
 
 	/**
-	 * Perform a specified action.
+	 * Perform a specified action from the admin bar or other UI elements.
+	 *
+	 * This method acts as a router for various cache management actions.
 	 *
 	 * @param \WP_REST_Request $request The request object.
-	 * @return \WP_REST_Response
+	 * @return \WP_REST_Response The JSON response for the API call.
 	 */
 	public static function perform_action( \WP_REST_Request $request ) {
 		$action = $request->get_param( 'action' );
@@ -149,16 +151,63 @@ final class Cache_Hive_REST_API {
 				return new \WP_REST_Response(
 					array(
 						'success' => true,
-						'message' => 'Entire cache purged.',
+						'message' => __( 'All caches purged successfully.', 'cache-hive' ),
 					),
 					200
 				);
-			// Add other actions here.
+
+			case 'purge_disk_cache':
+				Cache_Hive_Purge::purge_disk_cache();
+				return new \WP_REST_Response(
+					array(
+						'success' => true,
+						'message' => __( 'Disk cache purged successfully.', 'cache-hive' ),
+					),
+					200
+				);
+
+			case 'purge_object_cache':
+				Cache_Hive_Purge::purge_object_cache();
+				return new \WP_REST_Response(
+					array(
+						'success' => true,
+						'message' => __( 'Object cache purged successfully.', 'cache-hive' ),
+					),
+					200
+				);
+
+			case 'purge_current_page':
+				$params = $request->get_json_params();
+				$url    = isset( $params['url'] ) ? esc_url_raw( $params['url'] ) : null;
+
+				if ( ! $url ) {
+					return new \WP_REST_Response(
+						array(
+							'success' => false,
+							'message' => __( 'URL not provided for purging.', 'cache-hive' ),
+						),
+						400
+					);
+				}
+
+				Cache_Hive_Purge::purge_url( $url );
+				return new \WP_REST_Response(
+					array(
+						'success' => true,
+						'message' => sprintf(
+							/* translators: %s: The URL that was purged. */
+							__( 'Cache for %s purged successfully.', 'cache-hive' ),
+							esc_html( $url )
+						),
+					),
+					200
+				);
+
 			default:
 				return new \WP_REST_Response(
 					array(
 						'success' => false,
-						'message' => 'Invalid action.',
+						'message' => __( 'Invalid action.', 'cache-hive' ),
 					),
 					400
 				);

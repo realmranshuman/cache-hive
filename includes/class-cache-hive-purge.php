@@ -24,6 +24,8 @@ final class Cache_Hive_Purge {
 
 	/**
 	 * Initializes the purge hooks.
+	 *
+	 * @since 1.0.0
 	 */
 	public static function init() {
 		// Purge on post/page/cpt updates.
@@ -56,15 +58,44 @@ final class Cache_Hive_Purge {
 	}
 
 	/**
-	 * Purges the entire cache (both public and private).
+	 * Purges the entire cache, including disk, object, and third-party caches like Cloudflare.
+	 * This is the master purge function that orchestrates all other purge types.
+	 *
+	 * @since 1.0.0
 	 */
 	public static function purge_all() {
+		self::purge_disk_cache();
+		self::purge_object_cache();
+
+		// Also purge Cloudflare if it's enabled.
+		if ( Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
+			Cache_Hive_Cloudflare::purge_all();
+		}
+	}
+
+	/**
+	 * Purges the entire disk cache (both public and private page cache).
+	 *
+	 * @since 1.0.0
+	 */
+	public static function purge_disk_cache() {
 		if ( is_dir( CACHE_HIVE_BASE_CACHE_DIR ) ) {
 			self::delete_directory( CACHE_HIVE_BASE_CACHE_DIR );
 		}
+	}
 
-		if ( Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
-			Cache_Hive_Cloudflare::purge_all();
+	/**
+	 * Purges the object cache.
+	 *
+	 * This function leverages the standard WordPress function `wp_cache_flush()`,
+	 * which correctly triggers the flush method of any active persistent object
+	 * cache drop-in (e.g., Redis, Memcached).
+	 *
+	 * @since 1.0.0
+	 */
+	public static function purge_object_cache() {
+		if ( function_exists( 'wp_cache_flush' ) ) {
+			wp_cache_flush();
 		}
 	}
 
