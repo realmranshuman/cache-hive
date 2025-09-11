@@ -268,7 +268,24 @@ final class Cache_Hive_Advanced_Cache {
 				header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + $ttl ) . ' GMT' );
 			}
 		}
-		@readfile( $file_path );
+		$html = @file_get_contents( $file_path );
+
+		// ------ Dynamic placeholder replacement for logged-in users -----
+		if ( $this->is_logged_in && class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) && false !== $html ) {
+			$html = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::inject_dynamic_elements_from_placeholders( $html );
+		}
+		// ---------------------------------------------------------------
+
+		// Output as HTML with correct content type.
+		header( 'Content-Type: text/html; charset=UTF-8' );
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo $html;
+
+		// Properly flush and close all output buffers before exit to avoid zlib/ob_gzhandler warning.
+		while ( ob_get_level() > 0 ) {
+			// @ to avoid warnings if some buffers can no longer be closed.
+			@ob_end_flush();
+		}
 		exit;
 	}
 
@@ -295,3 +312,4 @@ final class Cache_Hive_Advanced_Cache {
 }
 
 new Cache_Hive_Advanced_Cache();
+

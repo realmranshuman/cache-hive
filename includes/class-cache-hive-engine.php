@@ -102,6 +102,12 @@ final class Cache_Hive_Engine {
 			$is_private_cache = \is_user_logged_in() && ( self::$settings['cache_logged_users'] ?? false );
 
 			if ( $is_private_cache ) {
+				// --- NEW: Replace dynamic HTML elements with placeholders before caching. ---
+				if ( class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) ) {
+					$buffer = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::replace_dynamic_elements_with_placeholders( $buffer );
+				}
+				// ---------------------------------------------------------------------------
+
 				// OS-aware logic: Use symlinks only on compatible systems (non-Windows).
 				if ( self::$settings['use_symlinks'] ) {
 					list( $cache_file, $symlink_file ) = self::get_private_cache_paths();
@@ -288,7 +294,7 @@ final class Cache_Hive_Engine {
 		$user_agent = \sanitize_text_field( \wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) );
 		foreach ( $user_agents as $pattern ) {
 			if ( ! empty( $pattern ) && \preg_match( '#' . \preg_quote( $pattern, '#' ) . '#i', $user_agent ) ) {
-				return true;
+						return true;
 			}
 		}
 		return false;
