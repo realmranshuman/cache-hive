@@ -10,31 +10,54 @@ Cache Hive is a high-performance caching and optimization plugin for WordPress, 
 - [Composer](https://getcomposer.org/)
 - [Node.js](https://nodejs.org/) (LTS version recommended)
 
+
 ### Installation & Build Process
+
 1.  **Clone the Repository:**
     ```sh
     git clone https://github.com/realmranshuman/cache-hive.git
     cd cache-hive
     ```
 
-2.  **Install PHP & JS Dependencies:**
-    This command installs both Composer and NPM dependencies.
+2.  **Development Environment Setup:**
+    Use the Composer script to prepare all PHP dependencies, scope vendor libraries, and build JavaScript assets. This will also create all required directories and optimize the autoloader.
     ```sh
-    composer install && npm install
+    composer dev
     ```
+    This script will:
+    - Prepare all required directories
+    - Install Composer dependencies
+    - Scope PHP dependencies with php-scoper
+    - Optimize the Composer autoloader
+    - Install NPM dependencies and build JS assets
 
-3.  **Development:**
-    Start the Vite development server. This provides hot-reloading for the React admin interface and proxies requests to your local WordPress installation.
+    > **Note:** On Windows, use:
+    > ```sh
+    > composer windows-dev
+    > ```
+
+3.  **Development (Hot Reload):**
+    Start the Vite development server for the React admin interface:
     ```sh
     npm run dev
     ```
-    > **Note:** You may need to edit `vite.config.js` to set the `proxy` to your local WordPress development URL.
+    > **Note:** You will need to edit `vite.config.js` to set the `proxy` to your local WordPress development URL.
 
 4.  **Production Build:**
-    Compile the React/TypeScript application for production. This creates optimized and minified assets in the `/build` directory.
+    Use the Composer script to assemble a production-ready plugin package in `dist/cache-hive`:
     ```sh
-    npm run build
+    composer build
     ```
+    This script will:
+    - Run the full dev script
+    - Assemble the production package in `dist/cache-hive`
+    - Copy only the necessary files (excluding dev files)
+    - Generate a production autoloader
+
+    > **Note:** On Windows, use:
+    > ```sh
+    > composer windows-build
+    > ```
 
 5.  **Activate:**
     Activate the "Cache Hive" plugin in your WordPress admin dashboard.
