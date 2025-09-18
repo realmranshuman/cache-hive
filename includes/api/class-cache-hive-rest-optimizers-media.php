@@ -35,11 +35,7 @@ class Cache_Hive_REST_Optimizers_Media {
 			'media_iframe_excludes'        => $settings['media_iframe_excludes'] ?? array(),
 			'media_add_missing_sizes'      => (bool) ( $settings['media_add_missing_sizes'] ?? false ),
 			'media_responsive_placeholder' => (bool) ( $settings['media_responsive_placeholder'] ?? false ),
-			'media_optimize_uploads'       => (bool) ( $settings['media_optimize_uploads'] ?? false ),
-			'media_optimization_quality'   => (int) ( $settings['media_optimization_quality'] ?? 82 ),
-			'media_auto_resize_uploads'    => (bool) ( $settings['media_auto_resize_uploads'] ?? false ),
-			'media_resize_width'           => (int) ( $settings['media_resize_width'] ?? 0 ),
-			'media_resize_height'          => (int) ( $settings['media_resize_height'] ?? 0 ),
+			// Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}

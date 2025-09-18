@@ -29,11 +29,7 @@ const mediaSchema = z.object({
     .transform((val) => val?.filter(Boolean)),
   media_add_missing_sizes: z.boolean(),
   media_responsive_placeholder: z.boolean(),
-  media_optimize_uploads: z.boolean(),
-  media_optimization_quality: z.coerce.number().min(1).max(100),
-  media_auto_resize_uploads: z.boolean(),
-  media_resize_width: z.coerce.number().optional(),
-  media_resize_height: z.coerce.number().optional(),
+  // Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
 });
 
 export type MediaFormData = z.infer<typeof mediaSchema>;
@@ -60,11 +56,7 @@ export function MediaSettingsForm({
       media_add_missing_sizes: initial.media_add_missing_sizes ?? false,
       media_responsive_placeholder:
         initial.media_responsive_placeholder ?? false,
-      media_optimize_uploads: initial.media_optimize_uploads ?? false,
-      media_optimization_quality: initial.media_optimization_quality ?? 82,
-      media_auto_resize_uploads: initial.media_auto_resize_uploads ?? false,
-      media_resize_width: initial.media_resize_width ?? 0,
-      media_resize_height: initial.media_resize_height ?? 0,
+  // Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
     },
   });
 
@@ -78,11 +70,7 @@ export function MediaSettingsForm({
       media_add_missing_sizes: initial.media_add_missing_sizes ?? false,
       media_responsive_placeholder:
         initial.media_responsive_placeholder ?? false,
-      media_optimize_uploads: initial.media_optimize_uploads ?? false,
-      media_optimization_quality: initial.media_optimization_quality ?? 82,
-      media_auto_resize_uploads: initial.media_auto_resize_uploads ?? false,
-      media_resize_width: initial.media_resize_width ?? 0,
-      media_resize_height: initial.media_resize_height ?? 0,
+      // Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
     });
   }, [initial, form.reset]);
 
@@ -218,85 +206,7 @@ export function MediaSettingsForm({
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="media_optimize_uploads"
-          render={({ field }) => (
-            <FormItem className="flex items-center justify-between rounded-lg border p-4">
-              <FormLabel>Optimize Newly Uploaded Images</FormLabel>
-              <FormControl>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  disabled={isSaving}
-                />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="media_optimization_quality"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Image Optimization Quality</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min="1"
-                  max="100"
-                  disabled={isSaving}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="media_auto_resize_uploads"
-          render={({ field }) => (
-            <FormItem className="flex items-center justify-between rounded-lg border p-4">
-              <FormLabel>Auto-resize Newly Uploaded Images</FormLabel>
-              <FormControl>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  disabled={isSaving}
-                />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="media_resize_width"
-            render={({ field }) => (
-              <FormItem className="space-y-2">
-                <FormLabel>Resize Max Width (pixels)</FormLabel>
-                <FormControl>
-                  <Input {...field} type="number" min="0" disabled={isSaving} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="media_resize_height"
-            render={({ field }) => (
-              <FormItem className="space-y-2">
-                <FormLabel>Resize Max Height (pixels)</FormLabel>
-                <FormControl>
-                  <Input {...field} type="number" min="0" disabled={isSaving} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        {/* Removed: Optimize Newly Uploaded Images, Image Optimization Quality, Auto-resize Newly Uploaded Images, Resize Max Width, Resize Max Height */}
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : "Save Changes"}

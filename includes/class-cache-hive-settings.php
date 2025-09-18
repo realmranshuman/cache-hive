@@ -344,11 +344,7 @@ final class Cache_Hive_Settings {
 			'media_iframe_excludes'              => array(),
 			'media_add_missing_sizes'            => false,
 			'media_responsive_placeholder'       => false,
-			'media_optimize_uploads'             => false,
-			'media_optimization_quality'         => 82,
-			'media_auto_resize_uploads'          => false,
-			'media_resize_width'                 => 0,
-			'media_resize_height'                => 0,
+			// Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
 		);
 	}
 
