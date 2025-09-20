@@ -163,6 +163,9 @@ final class Cache_Hive_WooCommerce {
 }
 
 // Initialize integration if WooCommerce is active.
-add_action( 'woocommerce_init', function() {
-	Cache_Hive_WooCommerce::init();
-} );
+add_action(
+	'woocommerce_init',
+	function () {
+		Cache_Hive_WooCommerce::init();
+	}
+);
