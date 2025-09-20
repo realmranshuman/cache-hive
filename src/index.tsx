@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dashboard } from "./dashboard";
 import { Caching } from "./caching";
 import { PageOptimization } from "./page-optimization";
+import { ImageOptimizationSettings } from "./image-optimization";
 import { CloudflareIntegration } from "./cloudflare-integration";
 import { Toaster } from "@/components/ui/sonner";
 import "./index.css";
@@ -18,6 +19,8 @@ function getTabFromUrl() {
       return 'cloudflare';
     case 'cache-hive-optimization':
       return 'optimization';
+    case 'cache-hive-image-optimization':
+      return 'image-optimization';
     case 'cache-hive-caching':
       return 'caching';
     case 'cache-hive':
@@ -32,6 +35,8 @@ function setUrlForTab(tab: string) {
     slug = 'cache-hive-caching';
   } else if (tab === 'optimization') {
     slug = 'cache-hive-optimization';
+  } else if (tab === 'image-optimization') {
+    slug = 'cache-hive-image-optimization';
   } else if (tab === 'cloudflare') {
     slug = 'cache-hive-cloudflare';
   }
@@ -48,6 +53,7 @@ function CacheHiveApp() {
     { value: "dashboard", label: "Dashboard" },
     { value: "caching", label: "Caching" },
     { value: "optimization", label: "Page Optimization" },
+    { value: "image-optimization", label: "Image Optimization" },
     { value: "cloudflare", label: "Cloudflare Integration" },
   ];
 
@@ -92,6 +98,9 @@ function CacheHiveApp() {
             </TabsContent>
             <TabsContent value="optimization">
               <PageOptimization />
+            </TabsContent>
+            <TabsContent value="image-optimization">
+              <ImageOptimizationSettings />
             </TabsContent>
             <TabsContent value="cloudflare">
               <CloudflareIntegration />

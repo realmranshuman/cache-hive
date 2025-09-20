@@ -225,6 +225,14 @@ function cache_hive_register_admin_menu() {
 	);
 	add_submenu_page(
 		'cache-hive',
+		'Image Optimization',
+		'Image Optimization',
+		'manage_options',
+		'cache-hive-image-optimization',
+		'cache_hive_render_admin_page'
+	);
+	add_submenu_page(
+		'cache-hive',
 		'Cloudflare',
 		'Cloudflare',
 		'manage_options',
