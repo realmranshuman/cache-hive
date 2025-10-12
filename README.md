@@ -31,11 +31,6 @@ Cache Hive is a high-performance caching and optimization plugin for WordPress, 
     - Optimize the Composer autoloader
     - Install NPM dependencies and build JS assets
 
-    > **Note:** On Windows, use:
-    > ```sh
-    > composer windows-dev
-    > ```
-
 3.  **Development (Hot Reload):**
     Start the Vite development server for the React admin interface:
     ```sh
@@ -53,11 +48,6 @@ Cache Hive is a high-performance caching and optimization plugin for WordPress, 
     - Assemble the production package in `dist/cache-hive`
     - Copy only the necessary files (excluding dev files)
     - Generate a production autoloader
-
-    > **Note:** On Windows, use:
-    > ```sh
-    > composer windows-build
-    > ```
 
 5.  **Activate:**
     Activate the "Cache Hive" plugin in your WordPress admin dashboard.
