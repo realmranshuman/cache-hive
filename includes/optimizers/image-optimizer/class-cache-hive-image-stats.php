@@ -117,22 +117,60 @@ final class Cache_Hive_Image_Stats {
 	public static function recalculate_stats(): array {
 		global $wpdb;
 
-		// ** START: CORRECTED TOTAL IMAGES QUERY **
-		// This now matches the Media Library's logic by checking post_status.
+		// Supported MIME types (explicit variables so we pass them individually to prepare()).
+		$mime1 = 'image/jpeg';
+		$mime2 = 'image/jpg';
+		$mime3 = 'image/png';
+		$mime4 = 'image/webp';
+		$mime5 = 'image/avif';
+
+		// === Total images (only attachments with post_status = 'inherit' and specific MIME types) ===
 		$total_images = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type LIKE %s AND post_status = 'inherit'",
-				'image/%'
+				"
+			SELECT COUNT(*) 
+			FROM {$wpdb->posts} p
+			WHERE p.post_type = 'attachment'
+			  AND p.post_status = 'inherit'
+			  AND p.post_mime_type IN (%s, %s, %s, %s, %s)
+			",
+				$mime1,
+				$mime2,
+				$mime3,
+				$mime4,
+				$mime5
 			)
 		);
-		// ** END: CORRECTED TOTAL IMAGES QUERY **
 
-		// The meta value is a serialized PHP string, not JSON. The query must match the serialized format.
+		// === Optimized images ===
+		// Build the serialized-match pattern (escaped).
+		$optimized_meta_like = '%' . $wpdb->esc_like( 's:6:"status";s:9:"optimized";' ) . '%';
+
+		// Use EXISTS to avoid joining a potentially massive postmeta resultset.
 		$optimized_images = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->postmeta} pm JOIN {$wpdb->posts} p ON pm.post_id = p.ID WHERE p.post_type = 'attachment' AND p.post_status = 'inherit' AND pm.meta_key = %s AND pm.meta_value LIKE %s",
+				"
+			SELECT COUNT(DISTINCT p.ID)
+			FROM {$wpdb->posts} p
+			WHERE p.post_type = 'attachment'
+			  AND p.post_status = 'inherit'
+			  AND p.post_mime_type IN (%s, %s, %s, %s, %s)
+			  AND EXISTS (
+			    SELECT 1
+			    FROM {$wpdb->postmeta} pm
+			    WHERE pm.post_id = p.ID
+			      AND pm.meta_key = %s
+			      AND pm.meta_value LIKE %s
+			  )
+			",
+				// mime types then meta key then like pattern (in that order).
+				$mime1,
+				$mime2,
+				$mime3,
+				$mime4,
+				$mime5,
 				Cache_Hive_Image_Meta::META_KEY,
-				'%' . $wpdb->esc_like( 's:6:"status";s:9:"optimized";' ) . '%'
+				$optimized_meta_like
 			)
 		);
 
@@ -219,7 +257,11 @@ final class Cache_Hive_Image_Stats {
 	public static function process_next_manual_batch(): array {
 		$state = self::get_sync_state();
 		if ( ! $state || ! empty( $state['is_finished'] ) ) {
-			return $state ?: array( 'is_finished' => true );
+			if ( $state ) {
+				return $state;
+			}
+
+			return array( 'is_finished' => true );
 		}
 
 		$settings   = Cache_Hive_Settings::get_settings();
