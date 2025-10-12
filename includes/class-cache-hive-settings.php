@@ -344,7 +344,23 @@ final class Cache_Hive_Settings {
 			'media_iframe_excludes'              => array(),
 			'media_add_missing_sizes'            => false,
 			'media_responsive_placeholder'       => false,
-			// Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
+
+			// Image Optimization Settings.
+			'image_optimization_library'         => 'gd',
+			'image_optimize_losslessly'          => true,
+			'image_optimize_original'            => true,
+			'image_next_gen_format'              => 'webp',
+			'image_quality'                      => 80,
+			'image_delivery_method'              => 'rewrite',
+			'image_remove_exif'                  => true,
+			'image_auto_resize'                  => false,
+			'image_max_width'                    => 1920,
+			'image_max_height'                   => 1080,
+			'image_batch_processing'             => false,
+			'image_batch_size'                   => 10,
+			'image_exclude_images'               => '',
+			'image_selected_thumbnails'          => array( 'thumbnail', 'medium' ),
+			'image_disable_png_gif'              => true,
 		);
 	}
 

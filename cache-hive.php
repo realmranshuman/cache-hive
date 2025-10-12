@@ -90,6 +90,15 @@ if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) ) {
 }
 
 /**
+ * The directory for storing optimized image assets (WebP, AVIF).
+ *
+ * @since 1.0.0
+ */
+if ( ! defined( 'CACHE_HIVE_IMAGE_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_IMAGE_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/images' );
+}
+
+/**
  * The configuration directory for Cache Hive.
  *
  * @since 1.0.0
@@ -128,6 +137,15 @@ require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-cred
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-memcached-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-array-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-object-cache-factory.php';
+
+// START: Image Optimization Suite Includes.
+require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-stats.php';
+require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-meta.php';
+require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-rewrite.php';
+require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-optimizer.php';
+require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-batch-processor.php';
+require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-media-integration.php';
+// END: Image Optimization Suite Includes.
 
 
 // =========================================================================
@@ -225,6 +243,14 @@ function cache_hive_register_admin_menu() {
 	);
 	add_submenu_page(
 		'cache-hive',
+		'Image Optimization',
+		'Image Optimization',
+		'manage_options',
+		'cache-hive-image-optimization',
+		'cache_hive_render_admin_page'
+	);
+	add_submenu_page(
+		'cache-hive',
 		'Cloudflare',
 		'Cloudflare',
 		'manage_options',
@@ -250,43 +276,71 @@ function cache_hive_render_admin_page() {
  * @param string $hook The current admin page hook.
  */
 function cache_hive_enqueue_admin_assets( $hook ) {
-	if ( false === strpos( $hook, 'cache-hive' ) ) {
-		return;
+	// Enqueue main React app for all plugin pages.
+	if ( false !== strpos( $hook, 'cache-hive' ) ) {
+		$script_path = CACHE_HIVE_DIR . 'build/index.js';
+		$style_path  = CACHE_HIVE_DIR . 'build/index.css';
+
+		if ( file_exists( $script_path ) ) {
+			wp_enqueue_script(
+				'cache-hive-app',
+				CACHE_HIVE_URL . 'build/index.js',
+				array( 'wp-element', 'wp-i18n' ),
+				filemtime( $script_path ),
+				true
+			);
+
+			wp_localize_script(
+				'cache-hive-app',
+				'wpApiSettings',
+				array(
+					'root'  => esc_url_raw( rest_url() ),
+					'nonce' => wp_create_nonce( 'wp_rest' ),
+				)
+			);
+		}
+
+		if ( file_exists( $style_path ) ) {
+			wp_enqueue_style(
+				'cache-hive-style',
+				CACHE_HIVE_URL . 'build/index.css',
+				array(),
+				filemtime( $style_path )
+			);
+
+			// Ensure the React app can use full width in admin.
+			$custom_css = "\n\tbody[class*='_page_cache-hive'] #wpcontent {\n\t\tpadding-left: 0;\n\t}\n\t";
+			wp_add_inline_style( 'cache-hive-style', $custom_css );
+		}
 	}
 
-	$script_path = CACHE_HIVE_DIR . 'build/index.js';
-	$style_path  = CACHE_HIVE_DIR . 'build/index.css';
+	// Enqueue Media Library script only on relevant pages.
+	$media_library_hooks = array( 'upload.php', 'post.php' );
+	if ( in_array( $hook, $media_library_hooks, true ) ) {
+		// Assuming your build process creates a 'media-library.js' file.
+		$media_script_path = CACHE_HIVE_DIR . 'build/media-library.js';
+		if ( file_exists( $media_script_path ) ) {
+			wp_enqueue_script(
+				'cache-hive-media-library',
+				CACHE_HIVE_URL . 'build/media-library.js',
+				array(),
+				filemtime( $media_script_path ),
+				true
+			);
 
-	if ( file_exists( $script_path ) ) {
-		wp_enqueue_script(
-			'cache-hive-app',
-			CACHE_HIVE_URL . 'build/index.js',
-			array( 'wp-element', 'wp-i18n' ),
-			filemtime( $script_path ),
-			true
-		);
-
-		wp_localize_script(
-			'cache-hive-app',
-			'wpApiSettings',
-			array(
-				'root'  => esc_url_raw( rest_url() ),
-				'nonce' => wp_create_nonce( 'wp_rest' ),
-			)
-		);
-	}
-
-	if ( file_exists( $style_path ) ) {
-		wp_enqueue_style(
-			'cache-hive-style',
-			CACHE_HIVE_URL . 'build/index.css',
-			array(),
-			filemtime( $style_path )
-		);
-
-		// Ensure the React app can use full width in admin.
-		$custom_css = "\n\tbody[class*='_page_cache-hive'] #wpcontent {\n\t\tpadding-left: 0;\n\t}\n\t";
-		wp_add_inline_style( 'cache-hive-style', $custom_css );
+			wp_localize_script(
+				'cache-hive-media-library',
+				'cacheHiveMedia',
+				array(
+					'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+					'nonce'   => wp_create_nonce( 'cache-hive-admin-nonce' ),
+					'l10n'    => array(
+						'processing' => esc_html__( 'Processing...', 'cache-hive' ),
+						'error'      => esc_html__( 'An error occurred.', 'cache-hive' ),
+					),
+				)
+			);
+		}
 	}
 }
 add_action( 'admin_enqueue_scripts', 'cache_hive_enqueue_admin_assets', 100 );

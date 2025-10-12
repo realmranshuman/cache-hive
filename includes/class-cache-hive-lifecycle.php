@@ -8,6 +8,7 @@
 
 namespace Cache_Hive\Includes;
 
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite;
 use WP_Filesystem_Direct;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -88,6 +89,11 @@ final class Cache_Hive_Lifecycle {
 		self::setup_environment();
 		// Re-create the config file with the new OS-aware setting.
 		self::create_config_file( $settings );
+
+		// Add rewrite rules for image optimization if the method is 'rewrite'.
+		if ( 'rewrite' === ( $settings['image_delivery_method'] ?? 'rewrite' ) ) {
+			Cache_Hive_Image_Rewrite::insert_rules();
+		}
 	}
 
 
@@ -108,7 +114,7 @@ final class Cache_Hive_Lifecycle {
 			// To be safe, only delete the file if it's ours.
 			$content = file_get_contents( $advanced_cache_file );
 			if ( false !== strpos( $content, 'Cache Hive - Advanced Cache Drop-in' ) ) {
-				@unlink( $advanced_cache_file );
+				unlink( $advanced_cache_file );
 			}
 		}
 		self::set_wp_cache_constant( false );
@@ -213,10 +219,14 @@ final class Cache_Hive_Lifecycle {
 	private static function cleanup_site() {
 		// Unschedule the cron job to keep the site clean.
 		wp_clear_scheduled_hook( 'cache_hive_garbage_collection' );
+		wp_clear_scheduled_hook( 'cache_hive_image_optimization_batch' );
 
 		Cache_Hive_Purge::purge_all();
 		self::cleanup_environment();
 		Cache_Hive_Object_Cache::disable();
+
+		// Remove image optimization rewrite rules.
+		Cache_Hive_Image_Rewrite::remove_rules();
 	}
 
 	/**

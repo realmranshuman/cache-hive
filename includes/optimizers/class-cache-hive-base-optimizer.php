@@ -12,6 +12,8 @@
 
 namespace Cache_Hive\Includes;
 
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -42,7 +44,7 @@ class Cache_Hive_Base_Optimizer {
 		$css_enabled   = Cache_Hive_CSS_Optimizer::is_enabled( $settings );
 		$js_enabled    = Cache_Hive_JS_Optimizer::is_enabled( $settings );
 		$html_enabled  = ! empty( $settings['html_minify'] ) || ! empty( $settings['auto_dns_prefetch'] ) || ! empty( $settings['google_fonts_async'] ) || ! empty( $settings['html_dns_prefetch'] ) || ! empty( $settings['html_dns_preconnect'] );
-		$media_enabled = false; // Placeholder for future media optimizations.
+		$media_enabled = ! empty( $settings['media_lazyload_images'] ) || ! empty( $settings['media_lazyload_iframes'] );
 
 		// If no optimizations are enabled, return the original buffer immediately.
 		if ( ! $js_enabled && ! $css_enabled && ! $html_enabled && ! $media_enabled && empty( $settings['remove_emoji_scripts'] ) ) {
@@ -65,12 +67,15 @@ class Cache_Hive_Base_Optimizer {
 			$html = Cache_Hive_JS_Optimizer::run_string_optimizations( $html, $base_cache_path, $settings );
 		}
 
-		// 4. Process Media assets (e.g., lazy loading).
+		// 4. Process Media assets (e.g., lazy loading, responsive placeholders).
 		if ( $media_enabled ) {
-			$html = Cache_Hive_Media_Optimizer::process( $html, $settings );
+			$html = Cache_Hive_Media_Optimizer::process( $html );
 		}
 
-		// 5. Perform final HTML minification on the fully modified HTML string.
+		// 5. Process Image assets (e.g., <picture> tag rewriting for next-gen formats).
+		$html = Cache_Hive_Image_Optimizer::rewrite_html_with_picture_tags( $html, $settings );
+
+		// 6. Perform final HTML minification on the fully modified HTML string.
 		if ( ! empty( $settings['html_minify'] ) ) {
 			$html = Cache_Hive_HTML_Optimizer::minify_html( $html, $settings );
 		}

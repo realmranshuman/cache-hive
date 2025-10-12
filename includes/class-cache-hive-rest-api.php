@@ -19,6 +19,7 @@ use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_JS;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_Media;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Roles;
 use Cache_Hive\Includes\API\Cache_Hive_REST_TTL;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_Image;
 use WP_REST_Server;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -36,6 +37,7 @@ require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-css.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-js.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-html.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-media.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-image.php';
 
 /**
  * Manages all REST API endpoints for Cache Hive.
@@ -71,6 +73,7 @@ final class Cache_Hive_REST_API {
 			'/optimizers/js'    => Cache_Hive_REST_Optimizers_JS::class,
 			'/optimizers/html'  => Cache_Hive_REST_Optimizers_HTML::class,
 			'/optimizers/media' => Cache_Hive_REST_Optimizers_Media::class,
+			'/optimizers/image' => Cache_Hive_REST_Optimizers_Image::class,
 		);
 
 		foreach ( $routes as $endpoint => $class ) {
@@ -91,6 +94,40 @@ final class Cache_Hive_REST_API {
 				)
 			);
 		}
+
+		// Register the image optimization status sync endpoint for multiple methods.
+		register_rest_route(
+			self::$namespace,
+			'/optimizers/image/sync',
+			array(
+				array(
+					'methods'             => WP_REST_Server::CREATABLE, // POST.
+					'callback'            => array( Cache_Hive_REST_Optimizers_Image::class, 'handle_sync_actions' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::READABLE, // GET.
+					'callback'            => array( Cache_Hive_REST_Optimizers_Image::class, 'handle_sync_actions' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE, // DELETE.
+					'callback'            => array( Cache_Hive_REST_Optimizers_Image::class, 'handle_sync_actions' ),
+					'permission_callback' => array( __CLASS__, 'permissions_check' ),
+				),
+			)
+		);
+
+		// Special endpoint for deleting all image optimization data.
+		register_rest_route(
+			self::$namespace,
+			'/optimizers/image/all-data',
+			array(
+				'methods'             => WP_REST_Server::DELETABLE,
+				'callback'            => array( Cache_Hive_REST_Optimizers_Image::class, 'delete_all_optimization_data' ),
+				'permission_callback' => array( __CLASS__, 'permissions_check' ),
+			)
+		);
 
 		register_rest_route(
 			self::$namespace,

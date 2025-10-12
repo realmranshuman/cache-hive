@@ -8,6 +8,12 @@
 
 namespace Cache_Hive\Includes;
 
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Batch_Processor;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Media_Integration;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Stats;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Meta;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -54,7 +60,18 @@ final class Cache_Hive_Main {
 		Cache_Hive_REST_API::init();
 		Cache_Hive_Purge::init();
 		Cache_Hive_Object_Cache::init();
-		// Future components can be initialized here.
+
+		// Initialize Image Optimization components.
+		if ( is_admin() ) {
+			new Cache_Hive_Media_Integration();
+		}
+
+		// Schedule cron if batch processing is enabled.
+		if ( Cache_Hive_Settings::get( 'image_batch_processing', false ) ) {
+			Cache_Hive_Image_Batch_Processor::schedule_event();
+		} else {
+			Cache_Hive_Image_Batch_Processor::clear_scheduled_event();
+		}
 	}
 
 	/**
@@ -65,6 +82,30 @@ final class Cache_Hive_Main {
 		add_action( 'init', array( Cache_Hive_Engine::class, 'start' ), 0 );
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( Cache_Hive_Base_Optimizer::class, 'init_hooks' ) );
+
+		// Image Optimization hooks.
+		add_action( 'add_attachment', array( Cache_Hive_Image_Optimizer::class, 'auto_optimize_on_upload' ) );
+		add_action( 'delete_attachment', array( Cache_Hive_Image_Optimizer::class, 'cleanup_on_delete' ) );
+		add_action( Cache_Hive_Image_Batch_Processor::CRON_HOOK, array( Cache_Hive_Image_Batch_Processor::class, 'process_batch' ) );
+
+		// Image Stats atomic counter hooks.
+		add_action( 'add_attachment', array( Cache_Hive_Image_Stats::class, 'increment_total_count' ) );
+		add_action( 'delete_attachment', array( $this, 'handle_attachment_deletion_for_stats' ) );
+	}
+
+	/**
+	 * A wrapper for delete_attachment to handle both total and optimized counts.
+	 *
+	 * @param int $post_id The ID of the attachment being deleted.
+	 */
+	public function handle_attachment_deletion_for_stats( int $post_id ) {
+		// We get the meta BEFORE deleting it to check if it was optimized.
+		$was_optimized = Cache_Hive_Image_Meta::is_optimized( $post_id );
+
+		Cache_Hive_Image_Stats::decrement_total_count();
+		if ( $was_optimized ) {
+			Cache_Hive_Image_Stats::decrement_optimized_count();
+		}
 	}
 
 	/**

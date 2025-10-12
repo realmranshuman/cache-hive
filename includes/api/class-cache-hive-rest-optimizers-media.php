@@ -35,7 +35,7 @@ class Cache_Hive_REST_Optimizers_Media {
 			'media_iframe_excludes'        => $settings['media_iframe_excludes'] ?? array(),
 			'media_add_missing_sizes'      => (bool) ( $settings['media_add_missing_sizes'] ?? false ),
 			'media_responsive_placeholder' => (bool) ( $settings['media_responsive_placeholder'] ?? false ),
-			// Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height
+			// Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height.
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}
