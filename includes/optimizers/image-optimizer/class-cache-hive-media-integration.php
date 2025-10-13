@@ -118,7 +118,6 @@ final class Cache_Hive_Media_Integration {
 	 * @param \WP_Query $query The WP_Query instance (passed by reference).
 	 */
 	public function apply_media_filter( \WP_Query $query ) {
-		// Robust safety checks to ensure this only runs on the intended admin screen.
 		if ( ! \is_admin() || ! $query->is_main_query() || ! function_exists( 'get_current_screen' ) ) {
 			return;
 		}
@@ -134,18 +133,28 @@ final class Cache_Hive_Media_Integration {
 
 		$meta_query = (array) $query->get( 'meta_query' );
 
+		// ** START: CORRECTED FILTER LOGIC **
 		if ( 'unoptimized' === $filter ) {
-			$meta_query[] = array(
+			// Find images that either don't have the meta key, or have it but are not optimized.
+			$meta_query['relation'] = 'OR';
+			$meta_query[]           = array(
 				'key'     => Cache_Hive_Image_Meta::META_KEY,
 				'compare' => 'NOT EXISTS',
 			);
-		} else {
+			$meta_query[]           = array(
+				'key'     => Cache_Hive_Image_Meta::META_KEY,
+				'value'   => 's:6:"status";s:9:"optimized";',
+				'compare' => 'NOT LIKE',
+			);
+		} elseif ( 'optimized' === $filter || 'failed' === $filter ) {
+			// Find images with a specific status.
 			$meta_query[] = array(
 				'key'     => Cache_Hive_Image_Meta::META_KEY,
-				'value'   => '"status":"' . \esc_sql( $filter ) . '"',
+				'value'   => 's:6:"status";s:' . strlen( $filter ) . ':"' . esc_sql( $filter ) . '";',
 				'compare' => 'LIKE',
 			);
 		}
+		// ** END: CORRECTED FILTER LOGIC **
 
 		$query->set( 'meta_query', $meta_query );
 	}
@@ -180,8 +189,8 @@ final class Cache_Hive_Media_Integration {
 				<div class="optimization-stats">
 					<p>
 						<strong><?php \esc_html_e( 'Savings:', 'cache-hive' ); ?></strong>
-						<?php echo \esc_html( \size_format( $meta['savings'] ) ); ?>
-						(<?php echo ( $meta['original_size'] > 0 ) ? \esc_html( \round( ( $meta['savings'] / $meta['original_size'] ) * 100, 1 ) ) : 0; ?>%)
+						<?php echo \esc_html( \size_format( $meta['savings'] ?? 0 ) ); ?>
+						(<?php echo ( isset( $meta['original_size'] ) && $meta['original_size'] > 0 ) ? \esc_html( \round( ( ( $meta['savings'] ?? 0 ) / $meta['original_size'] ) * 100, 1 ) ) : 0; ?>%)
 					</p>
 					<button type="button" class="button button-secondary cache-hive-restore-image">
 						<?php \esc_html_e( 'Restore Original', 'cache-hive' ); ?>

@@ -188,27 +188,30 @@ function ImageOptimizationSettingsForm({
   }, [isSyncing, onSaved]);
 
   const handleStartSync = async () => {
-    // ** START: IMMEDIATE UX FEEDBACK **
+    // ** START: IMPROVED IMMEDIATE UX FEEDBACK **
     // Set syncing to true immediately to show the progress bar at 0%.
     setIsSyncing(true);
     setSyncState({
       processed: 0,
       total_to_optimize: initialData.stats.unoptimized_images,
+      is_finished: false,
     });
-    // ** END: IMMEDIATE UX FEEDBACK **
+    // ** END: IMPROVED IMMEDIATE UX FEEDBACK **
 
     try {
       const initialState = await startImageSync();
+      // If the API confirms everything is already done, stop polling.
       if (initialState.is_finished) {
-        setIsSyncing(false); // Stop polling
-        sonnerToast.success("All images are already optimized.");
+        setIsSyncing(false);
+        sonnerToast.info("All images are already optimized.");
         onSaved();
       } else {
-        setSyncState(initialState); // Update with real data, polling continues
+        // Otherwise, update the state with the real starting numbers and let the polling handle the rest.
+        setSyncState(initialState);
       }
     } catch (error) {
-      setIsSyncing(false);
-      sonnerToast.error("Failed to start optimization.");
+      setIsSyncing(false); // Stop on error
+      sonnerToast.error("Failed to start optimization process.");
     }
   };
 
@@ -333,15 +336,15 @@ function ImageOptimizationSettingsForm({
     [initialData.stats.optimization_percent]
   );
 
-  // ** START: CHART ANGLE CALCULATION **
+  // ** START: ACCURATE CHART ANGLE CALCULATION **
   // Calculate the end angle for the chart to accurately reflect the percentage.
   const chartEndAngle = useMemo(() => {
     const startAngle = 90;
     const percentage = chartData[0].value || 0;
-    // A full circle is 360 degrees. We subtract from the start angle.
+    // A full circle is 360 degrees. We subtract from the start angle to draw clockwise.
     return startAngle - (percentage / 100) * 360;
   }, [chartData]);
-  // ** END: CHART ANGLE CALCULATION **
+  // ** END: ACCURATE CHART ANGLE CALCULATION **
 
   const chartConfig = {
     value: {

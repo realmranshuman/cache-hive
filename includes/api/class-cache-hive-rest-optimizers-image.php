@@ -9,6 +9,7 @@ namespace Cache_Hive\Includes\API;
 
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Settings;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Batch_Processor;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Stats;
 use WP_REST_Request;
@@ -113,6 +114,15 @@ class Cache_Hive_REST_Optimizers_Image {
 		Cache_Hive_Lifecycle::create_config_file( $all_settings );
 		Cache_Hive_Settings::invalidate_settings_snapshot();
 
+		// ** START: EXPLICIT CRON SCHEDULING **
+		// Immediately schedule or clear the cron based on the new setting.
+		if ( ! empty( $all_settings['image_batch_processing'] ) ) {
+			Cache_Hive_Image_Batch_Processor::schedule_event();
+		} else {
+			Cache_Hive_Image_Batch_Processor::clear_scheduled_event();
+		}
+		// ** END: EXPLICIT CRON SCHEDULING **
+
 		return self::get_settings( $request );
 	}
 
@@ -145,11 +155,9 @@ class Cache_Hive_REST_Optimizers_Image {
 		$method = $request->get_method();
 
 		if ( 'POST' === $method ) {
-			// ** START: CORRECTED LOGIC **
 			// Only START the sync. Do NOT process the first batch here.
 			$state = Cache_Hive_Image_Stats::start_manual_sync();
 			return new WP_REST_Response( $state, 200 );
-			// ** END: CORRECTED LOGIC **
 		}
 
 		if ( 'GET' === $method ) {
@@ -158,7 +166,8 @@ class Cache_Hive_REST_Optimizers_Image {
 			if ( $state && ! $state['is_finished'] ) {
 				$state = Cache_Hive_Image_Stats::process_next_manual_batch();
 			} elseif ( ! $state ) {
-				return new WP_REST_Response( array( 'stats' => Cache_Hive_Image_Stats::get_stats() ), 200 );
+				// If no state exists, return the latest stats instead of an error.
+				return new WP_REST_Response( array( 'stats' => Cache_Hive_Image_Stats::get_stats( true ) ), 200 );
 			}
 			return new WP_REST_Response( $state, 200 );
 		}

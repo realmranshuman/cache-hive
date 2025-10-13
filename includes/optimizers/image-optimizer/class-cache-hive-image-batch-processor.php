@@ -39,10 +39,33 @@ final class Cache_Hive_Image_Batch_Processor {
 	 * @since 1.0.0
 	 */
 	public static function schedule_event() {
+		// First, add our custom schedule to WordPress.
+		add_filter( 'cron_schedules', array( __CLASS__, 'add_fifteen_minute_schedule' ) );
+
+		// Then, schedule the event using our custom interval.
 		if ( ! \wp_next_scheduled( self::CRON_HOOK ) ) {
-			// Schedule to run every five minutes, a standard WP interval.
-			\wp_schedule_event( time(), 'five_minutes', self::CRON_HOOK );
+			\wp_schedule_event( time(), 'fifteen_minutes', self::CRON_HOOK );
 		}
+	}
+
+	/**
+	 * Adds a custom 'fifteen_minutes' cron schedule.
+	 *
+	 * This method is hooked into the 'cron_schedules' filter to make the
+	 * custom interval available to WordPress.
+	 *
+	 * @since 1.0.0
+	 * @param array $schedules Existing cron schedules.
+	 * @return array Modified schedules.
+	 */
+	public static function add_fifteen_minute_schedule( $schedules ) {
+		if ( ! isset( $schedules['fifteen_minutes'] ) ) {
+			$schedules['fifteen_minutes'] = array(
+				'interval' => 900, // 15 minutes in seconds (15 * 60).
+				'display'  => esc_html__( 'Every Fifteen Minutes', 'cache-hive' ),
+			);
+		}
+		return $schedules;
 	}
 
 	/**
@@ -71,11 +94,11 @@ final class Cache_Hive_Image_Batch_Processor {
 		$settings   = Cache_Hive_Settings::get_settings();
 		$batch_size = (int) ( $settings['image_batch_size'] ?? 10 );
 
-		// ** START: CORRECTED & UNIFIED QUERY LOGIC **
 		$query_args = array(
 			'post_type'      => 'attachment',
 			'post_status'    => 'inherit',
 			'posts_per_page' => $batch_size,
+			'fields'         => 'ids', // More efficient to only get IDs.
 			'meta_query'     => array(
 				'relation' => 'OR',
 				array(
@@ -85,20 +108,18 @@ final class Cache_Hive_Image_Batch_Processor {
 				),
 				array(
 					// Condition 2: The meta key exists, but the status is NOT 'optimized'.
-					// This correctly handles 'unoptimized', 'failed', 'in-progress', etc.
 					'key'     => Cache_Hive_Image_Meta::META_KEY,
 					'value'   => 's:6:"status";s:9:"optimized";',
 					'compare' => 'NOT LIKE',
 				),
 			),
 		);
-		// ** END: CORRECTED & UNIFIED QUERY LOGIC **
 
 		$attachments = new \WP_Query( $query_args );
 
 		if ( $attachments->have_posts() ) {
-			foreach ( $attachments->posts as $attachment ) {
-				Cache_Hive_Image_Optimizer::optimize_attachment( $attachment->ID );
+			foreach ( $attachments->posts as $attachment_id ) {
+				Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
 			}
 		}
 

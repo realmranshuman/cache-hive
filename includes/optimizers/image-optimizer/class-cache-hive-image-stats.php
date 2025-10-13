@@ -34,6 +34,13 @@ final class Cache_Hive_Image_Stats {
 	const SYNC_STATE_OPTION_KEY = 'cache_hive_image_sync_state';
 
 	/**
+	 * The transient key used to flag when stats need a refresh on the frontend.
+	 *
+	 * @var string
+	 */
+	const STATS_DIRTY_TRANSTIENT = 'cache_hive_stats_dirty';
+
+	/**
 	 * Gets the current statistics from the options table.
 	 * If the option doesn't exist, it triggers a full recalculation.
 	 *
@@ -117,58 +124,48 @@ final class Cache_Hive_Image_Stats {
 	public static function recalculate_stats(): array {
 		global $wpdb;
 
-		// Supported MIME types (explicit variables so we pass them individually to prepare()).
+		// Define MIME types to pass as individual arguments.
 		$mime1 = 'image/jpeg';
-		$mime2 = 'image/jpg';
-		$mime3 = 'image/png';
-		$mime4 = 'image/webp';
-		$mime5 = 'image/avif';
+		$mime2 = 'image/png';
+		$mime3 = 'image/gif';
 
-		// === Total images (only attachments with post_status = 'inherit' and specific MIME types) ===
+		// === Total images (WPCS Compliant) ===
 		$total_images = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"
-			SELECT COUNT(*) 
-			FROM {$wpdb->posts} p
-			WHERE p.post_type = 'attachment'
-			  AND p.post_status = 'inherit'
-			  AND p.post_mime_type IN (%s, %s, %s, %s, %s)
-			",
+				SELECT COUNT(*) 
+				FROM {$wpdb->posts}
+				WHERE post_type = 'attachment'
+				  AND post_status = 'inherit'
+				  AND post_mime_type IN (%s, %s, %s)
+				",
 				$mime1,
 				$mime2,
-				$mime3,
-				$mime4,
-				$mime5
+				$mime3
 			)
 		);
 
-		// === Optimized images ===
-		// Build the serialized-match pattern (escaped).
+		// === Optimized images (WPCS Compliant and using a performant EXISTS subquery) ===
 		$optimized_meta_like = '%' . $wpdb->esc_like( 's:6:"status";s:9:"optimized";' ) . '%';
-
-		// Use EXISTS to avoid joining a potentially massive postmeta resultset.
-		$optimized_images = (int) $wpdb->get_var(
+		$optimized_images    = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"
-			SELECT COUNT(DISTINCT p.ID)
-			FROM {$wpdb->posts} p
-			WHERE p.post_type = 'attachment'
-			  AND p.post_status = 'inherit'
-			  AND p.post_mime_type IN (%s, %s, %s, %s, %s)
-			  AND EXISTS (
-			    SELECT 1
-			    FROM {$wpdb->postmeta} pm
-			    WHERE pm.post_id = p.ID
-			      AND pm.meta_key = %s
-			      AND pm.meta_value LIKE %s
-			  )
-			",
-				// mime types then meta key then like pattern (in that order).
+				SELECT COUNT(DISTINCT p.ID)
+				FROM {$wpdb->posts} p
+				WHERE p.post_type = 'attachment'
+				  AND p.post_status = 'inherit'
+				  AND p.post_mime_type IN (%s, %s, %s)
+				  AND EXISTS (
+					SELECT 1
+					FROM {$wpdb->postmeta} pm
+					WHERE pm.post_id = p.ID
+					  AND pm.meta_key = %s
+					  AND pm.meta_value LIKE %s
+				  )
+				",
 				$mime1,
 				$mime2,
 				$mime3,
-				$mime4,
-				$mime5,
 				Cache_Hive_Image_Meta::META_KEY,
 				$optimized_meta_like
 			)
@@ -199,6 +196,7 @@ final class Cache_Hive_Image_Stats {
 
 		\update_option( self::STATS_OPTION_KEY, $stats, 'no' );
 		\wp_cache_delete( self::STATS_OPTION_KEY, 'options' );
+		\set_transient( self::STATS_DIRTY_TRANSTIENT, true, MINUTE_IN_SECONDS );
 
 		return $stats;
 	}
@@ -223,6 +221,8 @@ final class Cache_Hive_Image_Stats {
 		// Only save the state if a sync is actually starting.
 		if ( ! $state['is_finished'] ) {
 			\update_option( self::SYNC_STATE_OPTION_KEY, $state, 'no' );
+		} else {
+			self::clear_sync_state(); // Clean up if nothing to do.
 		}
 
 		return $state;
@@ -260,7 +260,6 @@ final class Cache_Hive_Image_Stats {
 			if ( $state ) {
 				return $state;
 			}
-
 			return array( 'is_finished' => true );
 		}
 
@@ -300,7 +299,7 @@ final class Cache_Hive_Image_Stats {
 			}
 		}
 
-		if ( $found_count < $batch_size ) {
+		if ( $found_count < $batch_size || 0 === $found_count ) {
 			$state['is_finished'] = true;
 			self::clear_sync_state();
 		} else {
