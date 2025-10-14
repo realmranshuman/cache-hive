@@ -147,17 +147,13 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 		if ( $optimized_path && $mime_type ) {
 			$saved = $editor->save( $optimized_path, $mime_type );
 
-			// ** START: ROBUST VERIFICATION **
-			// Check if save returned an error, or if the file was not created or is empty.
-			if ( \is_wp_error( $saved ) || ! file_exists( $saved['path'] ) || filesize( $saved['path'] ) === 0 ) {
-				// Clean up empty file if it exists.
+			if ( \is_wp_error( $saved ) || ! file_exists( $saved['path'] ) || 0 === filesize( $saved['path'] ) ) {
 				if ( isset( $saved['path'] ) && file_exists( $saved['path'] ) ) {
 					unlink( $saved['path'] );
 				}
 				$error_message = \is_wp_error( $saved ) ? $saved->get_error_message() : 'Generated file is empty or missing.';
 				return new \WP_Error( 'image_save_error', $error_message );
 			}
-			// ** END: ROBUST VERIFICATION **
 
 			$optimized_size  = filesize( $saved['path'] );
 			$current_savings = $original_size - $optimized_size;
@@ -226,12 +222,71 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Rewrites HTML image references (<img>, data-*, video poster, inline backgrounds)
-	 * to deliver next-gen formats (e.g., WebP, AVIF) via <picture> elements and URL rewrites.
+	 * Converts a local WordPress URL to an absolute server file path.
+	 *
+	 * @since 1.0.0
+	 * @param string $url The URL to convert.
+	 * @return string|null The absolute file path or null if conversion fails.
+	 */
+	private static function url_to_path( string $url ): ?string {
+		static $uploads_url, $uploads_dir, $content_url, $content_dir, $site_url, $site_dir;
+
+		if ( is_null( $uploads_url ) ) {
+			$uploads     = wp_upload_dir();
+			$uploads_url = set_url_scheme( $uploads['baseurl'] );
+			$uploads_dir = $uploads['basedir'];
+			$content_url = set_url_scheme( content_url() );
+			$content_dir = WP_CONTENT_DIR;
+			$site_url    = set_url_scheme( site_url() );
+			$site_dir    = ABSPATH;
+		}
+
+		$url_no_query = strtok( $url, '?' );
+		$url_scheme   = set_url_scheme( $url_no_query );
+
+		if ( 0 === stripos( $url_scheme, $uploads_url ) ) {
+			return str_ireplace( $uploads_url, $uploads_dir, $url_no_query );
+		}
+		if ( 0 === stripos( $url_scheme, $content_url ) ) {
+			return str_ireplace( $content_url, $content_dir, $url_no_query );
+		}
+		if ( 0 === stripos( $url_scheme, $site_url ) ) {
+			return str_ireplace( $site_url, $site_dir, $url_no_query );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Checks if a next-gen version of an image exists and returns its URL.
+	 *
+	 * @since 1.0.0
+	 * @param string $original_url    The URL of the original image.
+	 * @param string $next_gen_format The desired next-gen format.
+	 * @return string|null The URL of the next-gen image if it exists, otherwise null.
+	 */
+	private static function get_next_gen_url_if_exists( string $original_url, string $next_gen_format ): ?string {
+		$file_path = self::url_to_path( $original_url );
+
+		if ( ! $file_path || false !== strpos( $file_path, '..' ) ) {
+			return null;
+		}
+
+		$next_gen_file_path = $file_path . '.' . $next_gen_format;
+
+		if ( file_exists( $next_gen_file_path ) ) {
+			return $original_url . '.' . $next_gen_format;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Rewrites HTML image references to use <picture> tags.
 	 *
 	 * @param string $html     The HTML buffer.
 	 * @param array  $settings Plugin image optimization settings.
-	 * @return string Modified HTML with next-gen format handling.
+	 * @return string Modified HTML.
 	 */
 	public static function rewrite_html_with_picture_tags( string $html, array $settings ): string {
 		$delivery_method = $settings['image_delivery_method'] ?? 'rewrite';
@@ -241,111 +296,174 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $html;
 		}
 
-		$site_url = \site_url();
+		$html_no_pictures = self::_remove_existing_picture_tags( $html );
 
-		// ---------------------------------------------------------------------
-		// 1️⃣ <img> → <picture> conversion
-		// ---------------------------------------------------------------------
-		$html = \preg_replace_callback(
-			'/<img\s+([^>]*?)src=([\'"])([^\'"]+?)\.(jpe?g|png)\2([^>]*)>/i',
-			function ( $m ) use ( $next_gen_format, $site_url ) {
-				$original_tag = $m[0];
-				$src          = $m[3] . '.' . $m[4];
-
-				// Skip external or already next-gen URLs.
-				if (
-					( preg_match( '/\.(webp|avif)$/i', $src ) ) ||
-					( strpos( $src, $site_url ) === false && strpos( $src, '/' ) !== 0 )
-				) {
-					return $original_tag;
-				}
-
-				// Rewrite srcset if present.
-				$updated_tag = \preg_replace_callback(
-					'/srcset=([\'"])([^\'"]+)\1/i',
-					function ( $sm ) use ( $next_gen_format ) {
-						$srcset = \preg_replace(
-							'/\.(jpe?g|png)(\s+\d+[wx])?/',
-							'.$1.' . $next_gen_format . '$2',
-							$sm[2]
-						);
-						return 'srcset="' . esc_attr( $srcset ) . '"';
-					},
-					$original_tag
-				);
-
-				// Build <picture> with next-gen source.
-				$next_gen_src = $src . '.' . $next_gen_format;
-				$picture_tag  = '<picture>';
-				$picture_tag .= '<source srcset="' . esc_attr( $next_gen_src ) . '" type="image/' . esc_attr( $next_gen_format ) . '">';
-				$picture_tag .= $updated_tag;
-				$picture_tag .= '</picture>';
-
-				return $picture_tag;
-			},
-			$html
-		);
-
-		// ---------------------------------------------------------------------
-		// 2️⃣ Rewrite data-* image attributes & <video poster>
-		// ---------------------------------------------------------------------
-		$data_attributes = array(
-			'data-thumb',
-			'data-src',
-			'data-lazyload',
-			'data-large_image',
-			'data-retina_logo_url',
-			'data-parallax-image',
-			'data-vc-parallax-image',
-			'poster',
-		);
-
-		foreach ( $data_attributes as $attr ) {
-			$pattern = '/(' . preg_quote( $attr, '/' ) . ')=([\'"])([^\'"]+?)\.(jpe?g|png)\2/i';
-			$html    = \preg_replace_callback(
-				$pattern,
-				function ( $m ) use ( $next_gen_format, $site_url ) {
-					$url = $m[3] . '.' . $m[4];
-
-					if (
-						preg_match( '/\.(webp|avif)$/i', $url ) ||
-						( strpos( $url, $site_url ) === false && strpos( $url, '/' ) !== 0 )
-					) {
-						return $m[0];
-					}
-
-					return sprintf(
-						'%s="%s.%s"',
-						$m[1],
-						esc_attr( $m[3] . '.' . $m[4] ),
-						esc_attr( $next_gen_format )
-					);
-				},
-				$html
-			);
+		if ( ! preg_match_all( '/<img\s[^>]+>/isU', $html_no_pictures, $matches ) ) {
+			return $html;
 		}
 
-		// ---------------------------------------------------------------------
-		// 3️⃣ Rewrite inline background-image URLs (style="background-image: url(...)")
-		// ---------------------------------------------------------------------
-		$html = \preg_replace_callback(
-			'/background-image\s*:\s*url\((["\']?)([^)\'"]+?)\.(jpe?g|png)\1\)/i',
-			function ( $m ) use ( $next_gen_format, $site_url ) {
-				$url = $m[2] . '.' . $m[3];
+		$images_to_replace = array();
 
-				if (
-					preg_match( '/\.(webp|avif)$/i', $url ) ||
-					( strpos( $url, $site_url ) === false && strpos( $url, '/' ) !== 0 )
-				) {
-					return $m[0];
-				}
+		foreach ( $matches[0] as $image_tag ) {
+			$processed_image = self::_process_image_tag( $image_tag, $next_gen_format );
 
-				return 'background-image: url("' . esc_attr( $m[2] . '.' . $m[3] . '.' . $next_gen_format ) . '")';
-			},
-			$html
+			if ( ! $processed_image ) {
+				continue;
+			}
+
+			$images_to_replace[ $image_tag ] = self::_build_picture_html( $processed_image, $next_gen_format );
+		}
+
+		if ( empty( $images_to_replace ) ) {
+			return $html;
+		}
+
+		return str_replace( array_keys( $images_to_replace ), array_values( $images_to_replace ), $html );
+	}
+
+	/**
+	 * Removes pre-existing <picture> tags from the HTML.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @param string $html The HTML content.
+	 * @return string The HTML content with <picture> tags removed.
+	 */
+	private static function _remove_existing_picture_tags( string $html ): string {
+		if ( false === strpos( $html, '<picture' ) ) {
+			return $html;
+		}
+		return preg_replace( '#<picture[^>]*>.*?<source[^>]*>.*?(<img[^>]*>).*?</picture\s*>#mis', '$1', $html );
+	}
+
+	/**
+	 * Process a single <img> tag string and convert it into a structured array.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @param string $image_tag       The full HTML <img> tag.
+	 * @param string $next_gen_format The target format.
+	 * @return array|false A structured array of image data or false.
+	 */
+	private static function _process_image_tag( string $image_tag, string $next_gen_format ) {
+		if ( ! preg_match_all( '/(?<name>[a-zA-Z0-9_-]+)=([\'"])(?<value>.*?)\2/is', $image_tag, $attr_matches, PREG_SET_ORDER ) ) {
+			return false;
+		}
+
+		$attributes = array();
+		foreach ( $attr_matches as $match ) {
+			$attributes[ strtolower( $match['name'] ) ] = $match['value'];
+		}
+
+		$src_attribute_name = ! empty( $attributes['data-src'] ) ? 'data-src' : ( ! empty( $attributes['src'] ) ? 'src' : '' );
+		if ( ! $src_attribute_name || ! preg_match( '/\.(jpe?g|png|gif)$/i', $attributes[ $src_attribute_name ] ) ) {
+			return false;
+		}
+
+		$next_gen_src = self::get_next_gen_url_if_exists( $attributes[ $src_attribute_name ], $next_gen_format );
+		if ( ! $next_gen_src ) {
+			return false;
+		}
+
+		$image_data = array(
+			'original_tag'     => $image_tag,
+			'attributes'       => $attributes,
+			'src'              => $attributes[ $src_attribute_name ],
+			'next_gen_src'     => $next_gen_src,
+			'srcset_attribute' => '',
+			'srcset_sources'   => array(),
 		);
 
-		return $html;
+		$srcset_attribute_name = ! empty( $attributes['data-srcset'] ) ? 'data-srcset' : ( ! empty( $attributes['srcset'] ) ? 'srcset' : '' );
+		if ( $srcset_attribute_name ) {
+			$image_data['srcset_attribute'] = $srcset_attribute_name;
+			$sources                        = explode( ',', $attributes[ $srcset_attribute_name ] );
+			foreach ( $sources as $source ) {
+				$parts = preg_split( '/\s+/', trim( $source ) );
+				if ( ! empty( $parts[0] ) ) {
+					$url          = $parts[0];
+					$descriptor   = $parts[1] ?? '';
+					$next_gen_url = self::get_next_gen_url_if_exists( $url, $next_gen_format );
+					if ( $next_gen_url ) {
+						$image_data['srcset_sources'][] = array(
+							'descriptor'   => $descriptor,
+							'next_gen_url' => $next_gen_url,
+						);
+					}
+				}
+			}
+		}
+		return $image_data;
+	}
+
+	/**
+	 * Build the complete <picture>...</picture> HTML.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @param array  $image_data      The structured array from _process_image_tag().
+	 * @param string $next_gen_format The target format.
+	 * @return string The final HTML for the <picture> element.
+	 */
+	private static function _build_picture_html( array $image_data, string $next_gen_format ): string {
+		$picture_attributes = array();
+		$img_tag_modified   = $image_data['original_tag'];
+		$attributes_to_move = array( 'class', 'style', 'id' );
+
+		foreach ( $image_data['attributes'] as $name => $value ) {
+			if ( in_array( $name, $attributes_to_move, true ) || 0 === strpos( $name, 'data-' ) ) {
+				$picture_attributes[ $name ] = $value;
+				$attribute_pattern           = '/\s+' . preg_quote( $name, '/' ) . '=([\'"])' . preg_quote( $value, '/' ) . '\1/';
+				$img_tag_modified            = preg_replace( $attribute_pattern, '', $img_tag_modified );
+			}
+		}
+
+		$next_gen_srcset = array();
+		if ( ! empty( $image_data['srcset_sources'] ) ) {
+			foreach ( $image_data['srcset_sources'] as $source ) {
+				$next_gen_srcset[] = $source['next_gen_url'] . ( $source['descriptor'] ? ' ' . $source['descriptor'] : '' );
+			}
+		} else {
+			$next_gen_srcset[] = $image_data['next_gen_src'];
+		}
+
+		$srcset_key                       = ! empty( $image_data['srcset_attribute'] ) ? $image_data['srcset_attribute'] : 'srcset';
+		$source_attributes                = array( 'type' => 'image/' . $next_gen_format );
+		$source_attributes[ $srcset_key ] = implode( ', ', $next_gen_srcset );
+
+		if ( ! empty( $image_data['attributes']['sizes'] ) ) {
+			$source_attributes['sizes'] = $image_data['attributes']['sizes'];
+		}
+
+		$picture_html  = '<picture' . self::_build_attributes_string( $picture_attributes ) . '>';
+		$picture_html .= '<source' . self::_build_attributes_string( $source_attributes ) . '>';
+		$picture_html .= $img_tag_modified;
+		$picture_html .= '</picture>';
+
+		return $picture_html;
+	}
+
+	/**
+	 * Helper to convert an associative array of attributes to an HTML string.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @param array $attributes An array of HTML attributes.
+	 * @return string The formatted string of HTML attributes.
+	 */
+	private static function _build_attributes_string( array $attributes ): string {
+		$string = '';
+		if ( empty( $attributes ) ) {
+			return $string;
+		}
+		foreach ( $attributes as $name => $value ) {
+			$string .= ' ' . $name . '="' . \esc_attr( $value ) . '"';
+		}
+		return $string;
 	}
 
 	/**
@@ -458,10 +576,7 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	/**
 	 * Rewrites CSS background-image URLs to next-gen formats (WebP/AVIF).
 	 *
-	 * This is used by the CSS optimizer to ensure that CSS-delivered background
-	 * images also use the optimized next-gen formats.
-	 *
-	 * @param string $css The CSS content.
+	 * @param string $css      The CSS content.
 	 * @param array  $settings Plugin image optimization settings.
 	 * @return string The modified CSS with rewritten background-image URLs.
 	 */
@@ -485,16 +600,16 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			function ( $m ) use ( $next_gen_format, $site_url ) {
 				$url = $m[2] . '.' . $m[3];
 
-				// Skip external URLs and already next-gen.
-				if (
-					\preg_match( '/\.(webp|avif)$/i', $url ) ||
-					( \strpos( $url, $site_url ) === false && \strpos( $url, '/' ) !== 0 )
-				) {
+				if ( \preg_match( '/\.(webp|avif)$/i', $url ) || ( false === \strpos( $url, $site_url ) && 0 !== \strpos( $url, '/' ) ) ) {
 					return $m[0];
 				}
 
-				$new_url = $m[2] . '.' . $m[3] . '.' . $next_gen_format;
-				return 'url("' . \esc_attr( $new_url ) . '")';
+				$next_gen_url = self::get_next_gen_url_if_exists( $url, $next_gen_format );
+				if ( ! $next_gen_url ) {
+					return $m[0];
+				}
+
+				return 'url("' . \esc_attr( $next_gen_url ) . '")';
 			},
 			$css
 		);
