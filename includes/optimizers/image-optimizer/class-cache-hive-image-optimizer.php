@@ -226,11 +226,12 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Rewrites HTML <img> tags to <picture> tags for next-gen format delivery.
+	 * Rewrites HTML image references (<img>, data-*, video poster, inline backgrounds)
+	 * to deliver next-gen formats (e.g., WebP, AVIF) via <picture> elements and URL rewrites.
 	 *
 	 * @param string $html     The HTML buffer.
-	 * @param array  $settings Image optimization settings.
-	 * @return string Modified HTML with <picture> tags.
+	 * @param array  $settings Plugin image optimization settings.
+	 * @return string Modified HTML with next-gen format handling.
 	 */
 	public static function rewrite_html_with_picture_tags( string $html, array $settings ): string {
 		$delivery_method = $settings['image_delivery_method'] ?? 'rewrite';
@@ -240,31 +241,111 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $html;
 		}
 
-		$pattern = '/<img\s+(.*?)\s*src=([\'"])(.*?)\.(jpe?g|png)\2(.*?)>/i';
+		$site_url = \site_url();
 
-		return \preg_replace_callback(
-			$pattern,
-			function ( $matches ) use ( $next_gen_format ) {
-				$original_tag = $matches[0];
-				$src          = $matches[3] . '.' . $matches[4];
-				$site_url     = \site_url();
+		// ---------------------------------------------------------------------
+		// 1️⃣ <img> → <picture> conversion
+		// ---------------------------------------------------------------------
+		$html = \preg_replace_callback(
+			'/<img\s+([^>]*?)src=([\'"])([^\'"]+?)\.(jpe?g|png)\2([^>]*)>/i',
+			function ( $m ) use ( $next_gen_format, $site_url ) {
+				$original_tag = $m[0];
+				$src          = $m[3] . '.' . $m[4];
 
-				// Skip external images.
-				if ( strpos( $src, $site_url ) === false && 0 !== strpos( $src, '/' ) ) {
+				// Skip external or already next-gen URLs.
+				if (
+					( preg_match( '/\.(webp|avif)$/i', $src ) ) ||
+					( strpos( $src, $site_url ) === false && strpos( $src, '/' ) !== 0 )
+				) {
 					return $original_tag;
 				}
 
-				$next_gen_src = $src . '.' . $next_gen_format;
+				// Rewrite srcset if present.
+				$updated_tag = \preg_replace_callback(
+					'/srcset=([\'"])([^\'"]+)\1/i',
+					function ( $sm ) use ( $next_gen_format ) {
+						$srcset = \preg_replace(
+							'/\.(jpe?g|png)(\s+\d+[wx])?/',
+							'.$1.' . $next_gen_format . '$2',
+							$sm[2]
+						);
+						return 'srcset="' . esc_attr( $srcset ) . '"';
+					},
+					$original_tag
+				);
 
+				// Build <picture> with next-gen source.
+				$next_gen_src = $src . '.' . $next_gen_format;
 				$picture_tag  = '<picture>';
-				$picture_tag .= '<source srcset="' . \esc_attr( $next_gen_src ) . '" type="image/' . \esc_attr( $next_gen_format ) . '">';
-				$picture_tag .= $original_tag;
+				$picture_tag .= '<source srcset="' . esc_attr( $next_gen_src ) . '" type="image/' . esc_attr( $next_gen_format ) . '">';
+				$picture_tag .= $updated_tag;
 				$picture_tag .= '</picture>';
 
 				return $picture_tag;
 			},
 			$html
 		);
+
+		// ---------------------------------------------------------------------
+		// 2️⃣ Rewrite data-* image attributes & <video poster>
+		// ---------------------------------------------------------------------
+		$data_attributes = array(
+			'data-thumb',
+			'data-src',
+			'data-lazyload',
+			'data-large_image',
+			'data-retina_logo_url',
+			'data-parallax-image',
+			'data-vc-parallax-image',
+			'poster',
+		);
+
+		foreach ( $data_attributes as $attr ) {
+			$pattern = '/(' . preg_quote( $attr, '/' ) . ')=([\'"])([^\'"]+?)\.(jpe?g|png)\2/i';
+			$html    = \preg_replace_callback(
+				$pattern,
+				function ( $m ) use ( $next_gen_format, $site_url ) {
+					$url = $m[3] . '.' . $m[4];
+
+					if (
+						preg_match( '/\.(webp|avif)$/i', $url ) ||
+						( strpos( $url, $site_url ) === false && strpos( $url, '/' ) !== 0 )
+					) {
+						return $m[0];
+					}
+
+					return sprintf(
+						'%s="%s.%s"',
+						$m[1],
+						esc_attr( $m[3] . '.' . $m[4] ),
+						esc_attr( $next_gen_format )
+					);
+				},
+				$html
+			);
+		}
+
+		// ---------------------------------------------------------------------
+		// 3️⃣ Rewrite inline background-image URLs (style="background-image: url(...)")
+		// ---------------------------------------------------------------------
+		$html = \preg_replace_callback(
+			'/background-image\s*:\s*url\((["\']?)([^)\'"]+?)\.(jpe?g|png)\1\)/i',
+			function ( $m ) use ( $next_gen_format, $site_url ) {
+				$url = $m[2] . '.' . $m[3];
+
+				if (
+					preg_match( '/\.(webp|avif)$/i', $url ) ||
+					( strpos( $url, $site_url ) === false && strpos( $url, '/' ) !== 0 )
+				) {
+					return $m[0];
+				}
+
+				return 'background-image: url("' . esc_attr( $m[2] . '.' . $m[3] . '.' . $next_gen_format ) . '")';
+			},
+			$html
+		);
+
+		return $html;
 	}
 
 	/**
