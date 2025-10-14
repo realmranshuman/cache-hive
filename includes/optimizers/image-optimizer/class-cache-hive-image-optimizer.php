@@ -454,4 +454,51 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 
 		return ! \is_wp_error( $saved );
 	}
+
+	/**
+	 * Rewrites CSS background-image URLs to next-gen formats (WebP/AVIF).
+	 *
+	 * This is used by the CSS optimizer to ensure that CSS-delivered background
+	 * images also use the optimized next-gen formats.
+	 *
+	 * @param string $css The CSS content.
+	 * @param array  $settings Plugin image optimization settings.
+	 * @return string The modified CSS with rewritten background-image URLs.
+	 */
+	public static function rewrite_css_background_images( string $css, array $settings ): string {
+		$delivery_method = $settings['image_delivery_method'] ?? 'rewrite';
+		$next_gen_format = $settings['image_next_gen_format'] ?? 'webp';
+
+		// Only apply when using picture/rewrite and next-gen formats.
+		if ( 'picture' !== $delivery_method || 'default' === $next_gen_format ) {
+			return $css;
+		}
+
+		$site_url = \site_url();
+
+		// Match background URLs like:
+		// url(image.jpg)
+		// url('image.png')
+		// url("https://example.com/image.jpg").
+		$css = \preg_replace_callback(
+			'/url\((["\']?)([^)\'"]+?)\.(jpe?g|png)\1\)/i',
+			function ( $m ) use ( $next_gen_format, $site_url ) {
+				$url = $m[2] . '.' . $m[3];
+
+				// Skip external URLs and already next-gen.
+				if (
+					\preg_match( '/\.(webp|avif)$/i', $url ) ||
+					( \strpos( $url, $site_url ) === false && \strpos( $url, '/' ) !== 0 )
+				) {
+					return $m[0];
+				}
+
+				$new_url = $m[2] . '.' . $m[3] . '.' . $next_gen_format;
+				return 'url("' . \esc_attr( $new_url ) . '")';
+			},
+			$css
+		);
+
+		return $css;
+	}
 }
