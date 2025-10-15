@@ -64,7 +64,7 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			$result    = self::optimize_single_file( $file_path, $settings );
 
 			if ( \is_wp_error( $result ) ) {
-				$optimization_error = $result; // Store first error and continue.
+				$optimization_error = $result;
 				continue;
 			}
 
@@ -310,6 +310,9 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			if ( ! $processed_image ) {
 				continue;
 			}
+			if ( self::_is_image_excluded( $image_tag, $processed_image['attributes'], $settings, $html ) ) {
+				continue;
+			}
 
 			$images_to_replace[ $image_tag ] = self::_build_picture_html( $processed_image, $next_gen_format );
 		}
@@ -335,6 +338,109 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $html;
 		}
 		return preg_replace( '#<picture[^>]*>.*?<source[^>]*>.*?(<img[^>]*>).*?</picture\s*>#mis', '$1', $html );
+	}
+
+	/**
+	 * Checks if an image should be excluded based on a set of rules.
+	 * This works backwards from the image's position
+	 * to accurately find its ancestors instead of scanning the entire document.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @param string $image_tag  The full HTML <img> tag.
+	 * @param array  $attributes An array of the image's parsed attributes.
+	 * @param array  $settings   The plugin settings array.
+	 * @param string $html       The full HTML content for context searching.
+	 * @return bool True if the image should be excluded.
+	 */
+	private static function _is_image_excluded( string $image_tag, array $attributes, array $settings, string $html ): bool {
+		$exclusions = $settings['image_exclude_images'] ?? '';
+		if ( empty( $exclusions ) ) {
+			return false;
+		}
+
+		$rules = array_filter( array_map( 'trim', explode( "\n", $exclusions ) ) );
+		if ( empty( $rules ) ) {
+			return false;
+		}
+
+		$image_src = $attributes['src'] ?? '';
+
+		foreach ( $rules as $rule ) {
+			// Rule: Parent Selector (e.g., 'div.profile-card', '.profile-card', 'header#main-nav', '#main-nav').
+			if ( preg_match( '/^([a-zA-Z0-9_-]*)?([\.#])([a-zA-Z0-9_-]+)$/', $rule, $selector_parts ) ) {
+				list( , $tag, $type, $name ) = $selector_parts;
+				$attr                        = ( '.' === $type ) ? 'class' : 'id';
+				$pos                         = strpos( $html, $image_tag );
+
+				if ( false === $pos ) {
+					continue;
+				}
+
+				$html_before = substr( $html, 0, $pos );
+				$search_tag  = '<' . ( $tag ?? '' ); // If tag is empty, searches for any tag '<'.
+
+				$last_open_pos = strrpos( $html_before, $search_tag );
+
+				if ( false !== $last_open_pos ) {
+					// We found a potential parent. Now, validate it.
+					$context = substr( $html_before, $last_open_pos );
+
+					// 1. Get the actual tag name from what we found.
+					preg_match( '/<([a-zA-Z0-9_-]+)/', $context, $tag_name_match );
+					$actual_tag_name = $tag_name_match[1] ?? null;
+
+					// 2. If a specific tag was required by the rule, ensure it matches.
+					if ( $actual_tag_name && ! empty( $tag ) && $tag !== $actual_tag_name ) {
+						continue; // The found tag doesn't match the rule's required tag.
+					}
+
+					// 3. CRITICAL: Check if this tag was closed before our image. If so, it's not a parent.
+					if ( $actual_tag_name && false !== strpos( $context, '</' . $actual_tag_name . '>' ) ) {
+						continue; // This tag was closed, so it's a sibling/uncle, not a parent.
+					}
+
+					// 4. Extract the full opening tag to check its attributes.
+					preg_match( '/^<[^>]+>/', $context, $opening_tag_match );
+					if ( ! empty( $opening_tag_match[0] ) ) {
+						$pattern = ( 'class' === $attr )
+							? '/class\s*=\s*(["\']).*\b' . preg_quote( $name, '/' ) . '\b.*?\1/'
+							: '/id\s*=\s*(["\'])\s*' . preg_quote( $name, '/' ) . '\s*\1/';
+
+						if ( preg_match( $pattern, $opening_tag_match[0] ) ) {
+							return true; // Confirmed parent match, exclude.
+						}
+					}
+				}
+				continue; // This was a parent selector rule, done with it.
+			}
+
+			// Rule: Image's own Class.
+			if ( '.' === $rule[0] ) {
+				$class_to_find = substr( $rule, 1 );
+				if ( ! empty( $attributes['class'] ) && preg_match( '/\b' . preg_quote( $class_to_find, '/' ) . '\b/', $attributes['class'] ) ) {
+					return true;
+				}
+				continue;
+			}
+
+			// Rule: Image's own ID.
+			if ( '#' === $rule[0] ) {
+				$id_to_find = substr( $rule, 1 );
+				if ( ! empty( $attributes['id'] ) && $id_to_find === $attributes['id'] ) {
+					return true;
+				}
+				continue;
+			}
+
+			// Rule: Partial or Full URL.
+			if ( false !== strpos( $image_src, $rule ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
