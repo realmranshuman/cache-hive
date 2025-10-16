@@ -12,7 +12,7 @@
 
 namespace Cache_Hive\Includes;
 
-use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -41,8 +41,8 @@ class Cache_Hive_Base_Optimizer {
 		$settings = Cache_Hive_Settings::get_settings();
 
 		// Check which major optimization types are enabled.
-		$css_enabled   = Cache_Hive_CSS_Optimizer::is_enabled( $settings );
-		$js_enabled    = Cache_Hive_JS_Optimizer::is_enabled( $settings );
+		$css_enabled   = ! empty( $settings['css_minify'] ) || ! empty( $settings['css_combine'] );
+		$js_enabled    = ! empty( $settings['js_minify'] ) || ! empty( $settings['js_combine'] ) || 'off' !== $settings['js_defer_mode'];
 		$html_enabled  = ! empty( $settings['html_minify'] ) || ! empty( $settings['auto_dns_prefetch'] ) || ! empty( $settings['google_fonts_async'] ) || ! empty( $settings['html_dns_prefetch'] ) || ! empty( $settings['html_dns_preconnect'] );
 		$media_enabled = ! empty( $settings['media_lazyload_images'] ) || ! empty( $settings['media_lazyload_iframes'] );
 
@@ -73,7 +73,7 @@ class Cache_Hive_Base_Optimizer {
 		}
 
 		// 5. Process Image assets (e.g., <picture> tag rewriting for next-gen formats).
-		$html = Cache_Hive_Image_Optimizer::rewrite_html_with_picture_tags( $html, $settings );
+		$html = Cache_Hive_Image_Rewrite::rewrite_html_with_picture_tags( $html, $settings );
 
 		// 6. Perform final HTML minification on the fully modified HTML string.
 		if ( ! empty( $settings['html_minify'] ) ) {

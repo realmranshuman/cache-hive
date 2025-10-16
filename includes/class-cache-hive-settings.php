@@ -358,7 +358,8 @@ final class Cache_Hive_Settings {
 			'image_max_height'                   => 1080,
 			'image_batch_processing'             => false,
 			'image_batch_size'                   => 10,
-			'image_exclude_images'               => '',
+			'image_exclude_images'               => array(), // FIX: Changed from '' to array().
+			'image_exclude_picture_rewrite'      => array(), // NEW: Added new setting.
 			'image_selected_thumbnails'          => array( 'thumbnail', 'medium' ),
 			'image_disable_png_gif'              => true,
 		);

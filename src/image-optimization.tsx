@@ -77,7 +77,6 @@ export function ImageOptimizationSettings() {
   const [resource, setResource] = useState(initialResource);
   const [saving, setSaving] = useState(false);
 
-  // Refresh resource after save or action
   const refresh = useCallback(() => {
     setResource(createResource());
   }, []);
@@ -156,6 +155,9 @@ function ImageOptimizationSettingsForm({
   const [imageExcludeImages, setImageExcludeImages] = useState(
     initial.image_exclude_images
   );
+  const [imageExcludePictureRewrite, setImageExcludePictureRewrite] = useState(
+    initial.image_exclude_picture_rewrite
+  );
   const [imageSelectedThumbnails, setImageSelectedThumbnails] = useState<
     string[]
   >(initial.image_selected_thumbnails);
@@ -176,41 +178,36 @@ function ImageOptimizationSettingsForm({
           if (status.is_finished) {
             setIsSyncing(false);
             sonnerToast.success("Bulk optimization complete!");
-            onSaved(); // Refresh stats
+            onSaved();
           }
         } catch (error) {
           setIsSyncing(false);
           sonnerToast.error("Failed to get sync status.");
         }
-      }, 5000); // Poll every 5 seconds
+      }, 5000);
     }
     return () => clearInterval(interval);
   }, [isSyncing, onSaved]);
 
   const handleStartSync = async () => {
-    // ** START: IMPROVED IMMEDIATE UX FEEDBACK **
-    // Set syncing to true immediately to show the progress bar at 0%.
     setIsSyncing(true);
     setSyncState({
       processed: 0,
       total_to_optimize: initialData.stats.unoptimized_images,
       is_finished: false,
     });
-    // ** END: IMPROVED IMMEDIATE UX FEEDBACK **
 
     try {
       const initialState = await startImageSync();
-      // If the API confirms everything is already done, stop polling.
       if (initialState.is_finished) {
         setIsSyncing(false);
         sonnerToast.info("All images are already optimized.");
         onSaved();
       } else {
-        // Otherwise, update the state with the real starting numbers and let the polling handle the rest.
         setSyncState(initialState);
       }
     } catch (error) {
-      setIsSyncing(false); // Stop on error
+      setIsSyncing(false);
       sonnerToast.error("Failed to start optimization process.");
     }
   };
@@ -220,7 +217,7 @@ function ImageOptimizationSettingsForm({
     try {
       await cancelImageSync();
       sonnerToast.success("Optimization cancelled.");
-      onSaved(); // Refresh stats
+      onSaved();
     } catch (error) {
       sonnerToast.error("Failed to cancel optimization.");
     }
@@ -266,6 +263,7 @@ function ImageOptimizationSettingsForm({
       image_batch_processing: imageBatchProcessing,
       image_batch_size: Number(imageBatchSize),
       image_exclude_images: imageExcludeImages,
+      image_exclude_picture_rewrite: imageExcludePictureRewrite,
       image_selected_thumbnails: imageSelectedThumbnails,
       image_disable_png_gif: imageDisablePngGif,
     };
@@ -304,7 +302,7 @@ function ImageOptimizationSettingsForm({
     setSaving(true);
     const destroyPromise = destroyAllImageOptimizationData()
       .then((res) => {
-        onSaved(); // Refresh data after deletion
+        onSaved();
         return res;
       })
       .catch((err) => {
@@ -336,15 +334,11 @@ function ImageOptimizationSettingsForm({
     [initialData.stats.optimization_percent]
   );
 
-  // ** START: ACCURATE CHART ANGLE CALCULATION **
-  // Calculate the end angle for the chart to accurately reflect the percentage.
   const chartEndAngle = useMemo(() => {
     const startAngle = 90;
     const percentage = chartData[0].value || 0;
-    // A full circle is 360 degrees. We subtract from the start angle to draw clockwise.
     return startAngle - (percentage / 100) * 360;
   }, [chartData]);
-  // ** END: ACCURATE CHART ANGLE CALCULATION **
 
   const chartConfig = {
     value: {
@@ -360,11 +354,13 @@ function ImageOptimizationSettingsForm({
     <TooltipProvider>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-3 space-y-8">
-          {/* Library Selection */}
+          {/* --- CORE SETTINGS --- */}
+
+          {/* Optimization Library */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                Library To Optimize Images
+                Optimization Library
                 <Tooltip>
                   <TooltipTrigger>
                     <InfoIcon className="h-4 w-4 text-muted-foreground" />
@@ -379,7 +375,8 @@ function ImageOptimizationSettingsForm({
               </CardTitle>
               <CardDescription>
                 Select the image processing library based on your server
-                configuration.
+                configuration. This choice may affect which next-gen formats are
+                available.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -453,13 +450,13 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* Image Types to Optimize */}
+          {/* Optimization Targets */}
           <Card>
             <CardHeader>
-              <CardTitle>Image Types to Optimize</CardTitle>
+              <CardTitle>Optimization Targets</CardTitle>
               <CardDescription>
                 Choose which original images and thumbnail sizes should be
-                optimized.
+                optimized by the selected library.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -507,86 +504,89 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* Serve images in next-gen formats */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Serve images in next-gen formats</CardTitle>
-              <CardDescription>
-                Choose which next-gen format to serve for supported browsers.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select
-                value={imageNextGenFormat}
-                onValueChange={(value) =>
-                  setImageNextGenFormat(
-                    value as TImageOptimizationSettings["image_next_gen_format"]
-                  )
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select format" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">
-                    Default (No Conversion)
-                  </SelectItem>
-                  {currentLibrarySupports.webp && (
-                    <SelectItem value="webp">WebP</SelectItem>
-                  )}
-                  {currentLibrarySupports.avif && (
-                    <SelectItem value="avif">AVIF</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              {!currentLibrarySupports.webp &&
-                imageNextGenFormat === "webp" && (
-                  <Alert variant="destructive" className="mt-4">
-                    <AlertTitle>WebP Not Supported</AlertTitle>
-                    <AlertDescription>
-                      The selected library ({imageOptimizationLibrary}) does not
-                      support WebP on your server. Please choose another format
-                      or library.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              {!currentLibrarySupports.avif &&
-                imageNextGenFormat === "avif" && (
-                  <Alert variant="destructive" className="mt-4">
-                    <AlertTitle>AVIF Not Supported</AlertTitle>
-                    <AlertDescription>
-                      The selected library ({imageOptimizationLibrary}) does not
-                      support AVIF on your server. Please choose another format
-                      or library.
-                    </AlertDescription>
-                  </Alert>
-                )}
-            </CardContent>
-          </Card>
+          {/* --- FORMAT & QUALITY --- */}
 
-          {/* Lossless Optimization */}
+          {/* Format & Quality Settings */}
           <Card>
             <CardHeader>
-              <CardTitle>Lossless Optimization</CardTitle>
+              <CardTitle>Format & Quality Settings</CardTitle>
               <CardDescription>
-                Optimize images without losing quality. Disable to adjust
-                quality manually.
+                Configure next-gen image formats and compression levels to
+                balance file size and visual quality.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="lossless">Optimize Losslessly</Label>
-                <Switch
-                  id="lossless"
-                  checked={imageOptimizeLosslessly}
-                  onCheckedChange={setImageOptimizeLosslessly}
-                />
+              {/* Next-gen formats */}
+              <div className="space-y-2">
+                <Label>Serve Next-Gen Formats</Label>
+                <Select
+                  value={imageNextGenFormat}
+                  onValueChange={(value) =>
+                    setImageNextGenFormat(
+                      value as TImageOptimizationSettings["image_next_gen_format"]
+                    )
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">
+                      Default (No Conversion)
+                    </SelectItem>
+                    {currentLibrarySupports.webp && (
+                      <SelectItem value="webp">WebP</SelectItem>
+                    )}
+                    {currentLibrarySupports.avif && (
+                      <SelectItem value="avif">AVIF</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {!currentLibrarySupports.webp &&
+                  imageNextGenFormat === "webp" && (
+                    <Alert variant="destructive" className="mt-4">
+                      <AlertTitle>WebP Not Supported</AlertTitle>
+                      <AlertDescription>
+                        The selected library ({imageOptimizationLibrary}) does
+                        not support WebP on your server. Please choose another
+                        format or library.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                {!currentLibrarySupports.avif &&
+                  imageNextGenFormat === "avif" && (
+                    <Alert variant="destructive" className="mt-4">
+                      <AlertTitle>AVIF Not Supported</AlertTitle>
+                      <AlertDescription>
+                        The selected library ({imageOptimizationLibrary}) does
+                        not support AVIF on your server. Please choose another
+                        format or library.
+                      </AlertDescription>
+                    </Alert>
+                  )}
               </div>
 
-              {!imageOptimizeLosslessly && (
-                <div className="space-y-4">
-                  <Separator />
-                  <div className="space-y-4">
+              <Separator />
+
+              {/* Compression */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="lossless">Optimize Losslessly</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Optimize images without losing quality. Disable to adjust
+                      quality manually.
+                    </p>
+                  </div>
+                  <Switch
+                    id="lossless"
+                    checked={imageOptimizeLosslessly}
+                    onCheckedChange={setImageOptimizeLosslessly}
+                  />
+                </div>
+
+                {!imageOptimizeLosslessly && (
+                  <div className="space-y-4 pt-4 border-t">
                     <div className="flex items-center justify-between">
                       <Label>Image Quality: {imageQuality[0]}%</Label>
                       <Badge variant="outline">{imageQuality[0]}%</Badge>
@@ -600,59 +600,57 @@ function ImageOptimizationSettingsForm({
                       className="w-full"
                     />
                     <p className="text-sm text-muted-foreground">
-                      Quality range is 40-98% to balance file size and visual
-                      quality. Lower values create smaller files but may reduce
-                      image quality.
+                      Lower values create smaller files but may reduce image
+                      quality. Recommended: 70-90%.
                     </p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </CardContent>
           </Card>
 
-          {/* Delivery Method */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Image Delivery Method</CardTitle>
-              <CardDescription>
-                Choose how optimized images are served to visitors.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <RadioGroup
-                value={imageDeliveryMethod}
-                onValueChange={(value) =>
-                  setImageDeliveryMethod(
-                    value as TImageOptimizationSettings["image_delivery_method"]
-                  )
-                }
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="rewrite" id="rewrite" />
-                  <Label htmlFor="rewrite">Use Rewrite Rule</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="picture" id="picture" />
-                  <Label htmlFor="picture">Use &lt;picture&gt; tag</Label>
-                </div>
-              </RadioGroup>
-            </CardContent>
-          </Card>
+          {/* --- ADVANCED SETTINGS --- */}
 
-          {/* Additional Options */}
+          {/* Advanced Settings */}
           <Card>
             <CardHeader>
-              <CardTitle>Additional Options</CardTitle>
+              <CardTitle>Advanced Settings</CardTitle>
               <CardDescription>
-                Configure additional optimization features and settings.
+                Configure image delivery, metadata, and resizing options.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Delivery Method */}
+              <div className="space-y-2">
+                <Label>Image Delivery Method</Label>
+                <RadioGroup
+                  value={imageDeliveryMethod}
+                  onValueChange={(value) =>
+                    setImageDeliveryMethod(
+                      value as TImageOptimizationSettings["image_delivery_method"]
+                    )
+                  }
+                  className="mt-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="rewrite" id="rewrite" />
+                    <Label htmlFor="rewrite">Server Rewrite</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="picture" id="picture" />
+                    <Label htmlFor="picture">Use &lt;picture&gt; tag</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <Separator />
+
+              {/* EXIF Data */}
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="remove-exif">Remove EXIF Data</Label>
                   <p className="text-sm text-muted-foreground">
-                    Strip metadata from images to reduce file size
+                    Strips metadata (e.g., camera settings) to reduce file size.
                   </p>
                 </div>
                 <Switch
@@ -664,14 +662,16 @@ function ImageOptimizationSettingsForm({
 
               <Separator />
 
+              {/* Resizing */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="auto-resize">
-                      Auto Resize Large Images
+                      Auto-Resize Large Images
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Automatically resize images that exceed maximum dimensions
+                      Automatically downscale images that exceed maximum
+                      dimensions upon upload.
                     </p>
                   </div>
                   <Switch
@@ -682,7 +682,7 @@ function ImageOptimizationSettingsForm({
                 </div>
 
                 {imageAutoResize && (
-                  <div className="grid grid-cols-2 gap-4 pl-4">
+                  <div className="grid grid-cols-2 gap-4 pl-4 pt-4 border-t">
                     <div className="space-y-2">
                       <Label htmlFor="max-width">Maximum Width (px)</Label>
                       <Input
@@ -709,32 +709,66 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* Exclude Images */}
+          {/* Exclusions */}
           <Card>
             <CardHeader>
-              <CardTitle>Exclude Images From Optimizations</CardTitle>
+              <CardTitle>Exclusions</CardTitle>
               <CardDescription>
-                Enter image filenames or patterns to exclude from optimization
-                (one per line).
+                Prevent specific images from being optimized or rewritten. Add
+                one rule per line.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Textarea
-                value={imageExcludeImages}
-                onChange={(e) => setImageExcludeImages(e.target.value)}
-                placeholder="logo.png&#10;header-*.jpg&#10;/uploads/2023/special-image.png"
-                rows={4}
-              />
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="exclude-images">
+                  Exclude Images From Optimization (by URL)
+                </Label>
+                <Textarea
+                  id="exclude-images"
+                  value={imageExcludeImages}
+                  onChange={(e) => setImageExcludeImages(e.target.value)}
+                  placeholder="logo.png&#10;/uploads/2024/do-not-touch.jpg"
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use partial or full URLs. Prevents WebP/AVIF file creation.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="exclude-rewrite">
+                  Exclude Images From &lt;picture&gt; Tag Rewrite (by CSS
+                  Selector)
+                </Label>
+                <Textarea
+                  id="exclude-rewrite"
+                  value={imageExcludePictureRewrite}
+                  onChange={(e) =>
+                    setImageExcludePictureRewrite(e.target.value)
+                  }
+                  placeholder="div.profile-card&#10;.slider-image&#10;#main-logo"
+                  rows={4}
+                  disabled={imageDeliveryMethod !== "picture"}
+                />
+                {imageDeliveryMethod !== "picture" && (
+                  <p className="text-xs text-muted-foreground">
+                    This option is only available when the "Use &lt;picture&gt;
+                    tag" delivery method is selected.
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
+
+          {/* --- SERVER & PERFORMANCE --- */}
 
           {/* Batch Processing */}
           <Card>
             <CardHeader>
-              <CardTitle>Process Images In Batches Cron</CardTitle>
+              <CardTitle>Batch Processing</CardTitle>
               <CardDescription>
-                Enable batch processing to optimize images in background using
-                cron jobs.
+                Enable background processing via cron jobs to avoid timeouts on
+                large libraries or slow servers.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -744,7 +778,7 @@ function ImageOptimizationSettingsForm({
                     Enable Batch Processing
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Process images in scheduled batches to reduce server load
+                    Process images in scheduled batches to reduce server load.
                   </p>
                 </div>
                 <Switch
@@ -755,7 +789,7 @@ function ImageOptimizationSettingsForm({
               </div>
 
               {imageBatchProcessing && (
-                <div className="space-y-2 pl-4">
+                <div className="space-y-2 pl-4 pt-4 border-t">
                   <Label htmlFor="batch-size">Images Per Batch</Label>
                   <Input
                     id="batch-size"
@@ -767,8 +801,7 @@ function ImageOptimizationSettingsForm({
                     placeholder="10"
                   />
                   <p className="text-sm text-muted-foreground">
-                    Recommended: 5-50 images per batch for shared hosting
-                    environments. Default: 10
+                    Recommended: 5-50. Default: 10.
                   </p>
                 </div>
               )}
@@ -782,8 +815,9 @@ function ImageOptimizationSettingsForm({
             </Button>
           </div>
         </div>
+
+        {/* --- SIDEBAR --- */}
         <div className="lg:col-span-1">
-          {/* Corrected: Sticky Wrapper for the Sidebar */}
           <div className="sticky top-6 space-y-8">
             {/* Manual Bulk Optimization Card */}
             <Card>
@@ -802,7 +836,7 @@ function ImageOptimizationSettingsForm({
                     <RadialBarChart
                       data={chartData}
                       startAngle={90}
-                      endAngle={chartEndAngle} // Use the dynamic end angle
+                      endAngle={chartEndAngle}
                       innerRadius={60}
                       outerRadius={80}
                       barSize={20}

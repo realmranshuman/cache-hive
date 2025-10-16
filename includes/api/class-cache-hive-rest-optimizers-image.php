@@ -11,6 +11,7 @@ use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Settings;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Batch_Processor;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer;
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Stats;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -36,24 +37,24 @@ class Cache_Hive_REST_Optimizers_Image {
 	public static function get_settings( WP_REST_Request $request ) {
 		$settings       = Cache_Hive_Settings::get_settings();
 		$image_settings = array(
-			'image_optimization_library' => $settings['image_optimization_library'] ?? 'gd',
-			'image_optimize_losslessly'  => $settings['image_optimize_losslessly'] ?? true,
-			'image_optimize_original'    => $settings['image_optimize_original'] ?? true,
-			'image_next_gen_format'      => $settings['image_next_gen_format'] ?? 'webp',
-			'image_quality'              => $settings['image_quality'] ?? 80,
-			'image_delivery_method'      => $settings['image_delivery_method'] ?? 'rewrite',
-			'image_remove_exif'          => $settings['image_remove_exif'] ?? true,
-			'image_auto_resize'          => $settings['image_auto_resize'] ?? false,
-			'image_max_width'            => $settings['image_max_width'] ?? 1920,
-			'image_max_height'           => $settings['image_max_height'] ?? 1080,
-			'image_batch_processing'     => $settings['image_batch_processing'] ?? false,
-			'image_batch_size'           => $settings['image_batch_size'] ?? 10,
-			'image_exclude_images'       => $settings['image_exclude_images'] ?? '',
-			'image_selected_thumbnails'  => $settings['image_selected_thumbnails'] ?? array( 'thumbnail', 'medium' ),
-			'image_disable_png_gif'      => $settings['image_disable_png_gif'] ?? true,
+			'image_optimization_library'    => $settings['image_optimization_library'] ?? 'gd',
+			'image_optimize_losslessly'     => $settings['image_optimize_losslessly'] ?? true,
+			'image_optimize_original'       => $settings['image_optimize_original'] ?? true,
+			'image_next_gen_format'         => $settings['image_next_gen_format'] ?? 'webp',
+			'image_quality'                 => $settings['image_quality'] ?? 80,
+			'image_delivery_method'         => $settings['image_delivery_method'] ?? 'rewrite',
+			'image_remove_exif'             => $settings['image_remove_exif'] ?? true,
+			'image_auto_resize'             => $settings['image_auto_resize'] ?? false,
+			'image_max_width'               => $settings['image_max_width'] ?? 1920,
+			'image_max_height'              => $settings['image_max_height'] ?? 1080,
+			'image_batch_processing'        => $settings['image_batch_processing'] ?? false,
+			'image_batch_size'              => $settings['image_batch_size'] ?? 10,
+			'image_exclude_images'          => implode( "\n", $settings['image_exclude_images'] ?? array() ),
+			'image_exclude_picture_rewrite' => implode( "\n", $settings['image_exclude_picture_rewrite'] ?? array() ),
+			'image_selected_thumbnails'     => $settings['image_selected_thumbnails'] ?? array( 'thumbnail', 'medium' ),
+			'image_disable_png_gif'         => $settings['image_disable_png_gif'] ?? true,
 		);
 
-		// Prepare server capabilities to send to the frontend.
 		$capabilities = array(
 			'gd_support'           => extension_loaded( 'gd' ),
 			'gd_webp_support'      => function_exists( 'imagewebp' ),
@@ -84,27 +85,32 @@ class Cache_Hive_REST_Optimizers_Image {
 	 * @return WP_REST_Response The REST response object.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
-		$params    = $request->get_json_params();
-		$input     = array(
-			'image_optimization_library' => sanitize_text_field( $params['image_optimization_library'] ?? 'gd' ),
-			'image_optimize_losslessly'  => (bool) ( $params['image_optimize_losslessly'] ?? true ),
-			'image_optimize_original'    => (bool) ( $params['image_optimize_original'] ?? true ),
-			'image_next_gen_format'      => sanitize_text_field( $params['image_next_gen_format'] ?? 'webp' ),
-			'image_quality'              => (int) ( $params['image_quality'] ?? 80 ),
-			'image_delivery_method'      => sanitize_text_field( $params['image_delivery_method'] ?? 'rewrite' ),
-			'image_remove_exif'          => (bool) ( $params['image_remove_exif'] ?? true ),
-			'image_auto_resize'          => (bool) ( $params['image_auto_resize'] ?? false ),
-			'image_max_width'            => (int) ( $params['image_max_width'] ?? 1920 ),
-			'image_max_height'           => (int) ( $params['image_max_height'] ?? 1080 ),
-			'image_batch_processing'     => (bool) ( $params['image_batch_processing'] ?? false ),
-			'image_batch_size'           => (int) ( $params['image_batch_size'] ?? 10 ),
-			'image_exclude_images'       => sanitize_textarea_field( $params['image_exclude_images'] ?? '' ),
-			'image_selected_thumbnails'  => is_array( $params['image_selected_thumbnails'] ?? null ) ? array_map( 'sanitize_text_field', $params['image_selected_thumbnails'] ) : array( 'thumbnail', 'medium' ),
-			'image_disable_png_gif'      => (bool) ( $params['image_disable_png_gif'] ?? true ),
+		$params = $request->get_json_params();
+		$input  = array(
+			'image_optimization_library'    => sanitize_text_field( $params['image_optimization_library'] ?? 'gd' ),
+			'image_optimize_losslessly'     => (bool) ( $params['image_optimize_losslessly'] ?? true ),
+			'image_optimize_original'       => (bool) ( $params['image_optimize_original'] ?? true ),
+			'image_next_gen_format'         => sanitize_text_field( $params['image_next_gen_format'] ?? 'webp' ),
+			'image_quality'                 => (int) ( $params['image_quality'] ?? 80 ),
+			'image_delivery_method'         => sanitize_text_field( $params['image_delivery_method'] ?? 'rewrite' ),
+			'image_remove_exif'             => (bool) ( $params['image_remove_exif'] ?? true ),
+			'image_auto_resize'             => (bool) ( $params['image_auto_resize'] ?? false ),
+			'image_max_width'               => (int) ( $params['image_max_width'] ?? 1920 ),
+			'image_max_height'              => (int) ( $params['image_max_height'] ?? 1080 ),
+			'image_batch_processing'        => (bool) ( $params['image_batch_processing'] ?? false ),
+			'image_batch_size'              => (int) ( $params['image_batch_size'] ?? 10 ),
+			'image_exclude_images'          => sanitize_textarea_field( $params['image_exclude_images'] ?? '' ),
+			'image_exclude_picture_rewrite' => sanitize_textarea_field( $params['image_exclude_picture_rewrite'] ?? '' ),
+			'image_selected_thumbnails'     => is_array( $params['image_selected_thumbnails'] ?? null ) ? array_map( 'sanitize_text_field', $params['image_selected_thumbnails'] ) : array( 'thumbnail', 'medium' ),
+			'image_disable_png_gif'         => (bool) ( $params['image_disable_png_gif'] ?? true ),
 		);
+
+		// Get old settings before they are updated to compare delivery methods.
+		$old_settings        = Cache_Hive_Settings::get_settings();
+		$old_delivery_method = $old_settings['image_delivery_method'] ?? 'picture';
+
 		$sanitized = Cache_Hive_Settings::sanitize_settings( $input );
 
-		// Merge with existing settings.
 		$all_settings = Cache_Hive_Settings::get_settings();
 		foreach ( $sanitized as $key => $value ) {
 			$all_settings[ $key ] = $value;
@@ -114,14 +120,24 @@ class Cache_Hive_REST_Optimizers_Image {
 		Cache_Hive_Lifecycle::create_config_file( $all_settings );
 		Cache_Hive_Settings::invalidate_settings_snapshot();
 
-		// ** START: EXPLICIT CRON SCHEDULING **
-		// Immediately schedule or clear the cron based on the new setting.
+		// Handle server rewrite rules based on delivery method change.
+		$new_delivery_method = $all_settings['image_delivery_method'];
+		if ( $new_delivery_method !== $old_delivery_method ) {
+			if ( 'rewrite' === $new_delivery_method ) {
+				Cache_Hive_Image_Rewrite::insert_rules();
+			} else {
+				// If the old method was rewrite and new is not, remove the rules.
+				if ( 'rewrite' === $old_delivery_method ) {
+					Cache_Hive_Image_Rewrite::remove_rules();
+				}
+			}
+		}
+
 		if ( ! empty( $all_settings['image_batch_processing'] ) ) {
 			Cache_Hive_Image_Batch_Processor::schedule_event();
 		} else {
 			Cache_Hive_Image_Batch_Processor::clear_scheduled_event();
 		}
-		// ** END: EXPLICIT CRON SCHEDULING **
 
 		return self::get_settings( $request );
 	}

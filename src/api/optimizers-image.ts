@@ -13,6 +13,7 @@ export interface ImageOptimizationSettings {
   image_batch_processing: boolean;
   image_batch_size: number;
   image_exclude_images: string;
+  image_exclude_picture_rewrite: string;
   image_selected_thumbnails: string[];
   image_disable_png_gif: boolean;
 }

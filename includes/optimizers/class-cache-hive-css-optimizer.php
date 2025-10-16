@@ -184,8 +184,8 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 			$minified_content = $minifier->minify( $minified_path );
 
 			// Rewriting background images to next-gen formats.
-			if ( class_exists( '\Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer' ) ) {
-				$minified_content = \Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer::rewrite_css_background_images(
+			if ( class_exists( '\Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite' ) ) {
+				$minified_content = \Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite::rewrite_css_background_images(
 					$minified_content,
 					self::$settings
 				);
