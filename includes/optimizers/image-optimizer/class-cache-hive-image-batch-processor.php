@@ -98,7 +98,7 @@ final class Cache_Hive_Image_Batch_Processor {
 			'post_type'      => 'attachment',
 			'post_status'    => 'inherit',
 			'posts_per_page' => $batch_size,
-			'fields'         => 'ids', // More efficient to only get IDs.
+			'fields'         => 'ids',
 			'meta_query'     => array(
 				'relation' => 'OR',
 				array(
@@ -107,10 +107,18 @@ final class Cache_Hive_Image_Batch_Processor {
 					'compare' => 'NOT EXISTS',
 				),
 				array(
-					// Condition 2: The meta key exists, but the status is NOT 'optimized'.
-					'key'     => Cache_Hive_Image_Meta::META_KEY,
-					'value'   => 's:6:"status";s:9:"optimized";',
-					'compare' => 'NOT LIKE',
+					// ** THE FIX **: Find images that are not optimized AND not already excluded.
+					'relation' => 'AND',
+					array(
+						'key'     => Cache_Hive_Image_Meta::META_KEY,
+						'value'   => 's:6:"status";s:9:"optimized";',
+						'compare' => 'NOT LIKE',
+					),
+					array(
+						'key'     => Cache_Hive_Image_Meta::META_KEY,
+						'value'   => 's:6:"status";s:8:"excluded";',
+						'compare' => 'NOT LIKE',
+					),
 				),
 			),
 		);

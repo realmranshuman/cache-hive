@@ -202,19 +202,20 @@ final class Cache_Hive_Image_Stats {
 	}
 
 	/**
-	 * Starts a new manual sync process.
+	 * Starts a new manual sync process with an accurate total count.
 	 *
 	 * @since 1.0.0
 	 * @return array The initial state of the sync.
 	 */
 	public static function start_manual_sync(): array {
-		$stats = self::recalculate_stats(); // Get the most accurate current count.
+		// ** THE FIX **: Get a precise count of images that need optimization, respecting exclusions.
+		$unoptimized_count = self::get_unoptimized_count( true );
 
 		$state = array(
 			'method'            => 'manual',
-			'total_to_optimize' => $stats['unoptimized_images'],
+			'total_to_optimize' => $unoptimized_count,
 			'processed'         => 0,
-			'is_finished'       => ( 0 === $stats['unoptimized_images'] ), // Immediately finish if there's nothing to do.
+			'is_finished'       => ( 0 === $unoptimized_count ),
 			'start_time'        => time(),
 		);
 
@@ -222,7 +223,7 @@ final class Cache_Hive_Image_Stats {
 		if ( ! $state['is_finished'] ) {
 			\update_option( self::SYNC_STATE_OPTION_KEY, $state, 'no' );
 		} else {
-			self::clear_sync_state(); // Clean up if nothing to do.
+			self::clear_sync_state();
 		}
 
 		return $state;
@@ -249,7 +250,7 @@ final class Cache_Hive_Image_Stats {
 	}
 
 	/**
-	 * Processes the next batch of images for a manual sync. This is the worker.
+	 * Processes the next batch of images for a manual sync.
 	 *
 	 * @since 1.0.0
 	 * @return array The updated sync state.
@@ -257,15 +258,13 @@ final class Cache_Hive_Image_Stats {
 	public static function process_next_manual_batch(): array {
 		$state = self::get_sync_state();
 		if ( ! $state || ! empty( $state['is_finished'] ) ) {
-			if ( $state ) {
-				return $state;
-			}
-			return array( 'is_finished' => true );
+			return $state ? $state : array( 'is_finished' => true );
 		}
 
 		$settings   = Cache_Hive_Settings::get_settings();
 		$batch_size = (int) ( $settings['image_batch_size'] ?? 10 );
 
+		// ** THE FIX **: Use a simpler query and check for exclusions inside the loop.
 		$unoptimized_images_query = new \WP_Query(
 			array(
 				'post_type'      => 'attachment',
@@ -289,16 +288,30 @@ final class Cache_Hive_Image_Stats {
 			)
 		);
 
-		$attachment_ids = $unoptimized_images_query->posts;
-		$found_count    = count( $attachment_ids );
+		$attachment_ids     = $unoptimized_images_query->posts;
+		$found_count        = count( $attachment_ids );
+		$processed_in_batch = 0;
 
 		if ( ! empty( $attachment_ids ) ) {
 			foreach ( $attachment_ids as $attachment_id ) {
-				Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
-				++$state['processed'];
+				// ** THE FIX **: Manually check the status before processing.
+				$meta = Cache_Hive_Image_Meta::get_meta( $attachment_id );
+				if ( isset( $meta['status'] ) && 'excluded' === $meta['status'] ) {
+					continue; // Skip this already-excluded image.
+				}
+
+				$result = Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
+
+				// Count both successful optimizations and newly identified exclusions as "processed".
+				if ( true === $result || 'skipped' === $result ) {
+					++$processed_in_batch;
+				}
 			}
 		}
 
+		$state['processed'] += $processed_in_batch;
+
+		// If the query returned fewer than the batch size, we are done.
 		if ( $found_count < $batch_size || 0 === $found_count ) {
 			$state['is_finished'] = true;
 			self::clear_sync_state();
@@ -307,5 +320,61 @@ final class Cache_Hive_Image_Stats {
 		}
 
 		return $state;
+	}
+
+	/**
+	 * Gets an accurate count of unoptimized images, respecting URL exclusions.
+	 * This version is fully compliant with WordPress Coding Standards.
+	 *
+	 * @since 1.0.0
+	 * @param bool $respect_exclusions Whether to filter the count based on URL exclusion rules.
+	 * @return int The number of unoptimized images.
+	 */
+	public static function get_unoptimized_count( bool $respect_exclusions = false ): int {
+		global $wpdb;
+
+		$stats = self::get_stats();
+		if ( ! $respect_exclusions ) {
+			return $stats['unoptimized_images'];
+		}
+
+		$settings       = Cache_Hive_Settings::get_settings();
+		$url_exclusions = $settings['image_exclude_images'] ?? array();
+
+		if ( empty( $url_exclusions ) ) {
+			return $stats['unoptimized_images'];
+		}
+
+		$excluded_ids = array();
+
+		// Iterate through the small list of rules and run a simple query for each.
+		// This is performant and WPCS compliant.
+		foreach ( $url_exclusions as $rule ) {
+			$trimmed_rule = trim( $rule );
+			if ( empty( $trimmed_rule ) ) {
+				continue;
+			}
+
+			$ids = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status = 'inherit' AND guid LIKE %s",
+					'%' . $wpdb->esc_like( $trimmed_rule ) . '%'
+				)
+			);
+
+			if ( ! empty( $ids ) ) {
+				$excluded_ids = array_merge( $excluded_ids, $ids );
+			}
+		}
+
+		if ( empty( $excluded_ids ) ) {
+			return $stats['unoptimized_images'];
+		}
+
+		// Count only the unique IDs of images that match exclusion rules.
+		$excluded_count = count( array_unique( $excluded_ids ) );
+
+		// Return the total unoptimized count minus the number of those that are excluded.
+		return max( 0, $stats['unoptimized_images'] - $excluded_count );
 	}
 }

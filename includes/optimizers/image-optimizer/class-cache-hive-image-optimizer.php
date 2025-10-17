@@ -25,7 +25,7 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	 *
 	 * @since 1.0.0
 	 * @param int $attachment_id The ID of the attachment to optimize.
-	 * @return true|\WP_Error True on success, WP_Error on failure.
+	 * @return true|'skipped'|\WP_Error True on success, 'skipped' if excluded, WP_Error on failure.
 	 */
 	public static function optimize_attachment( int $attachment_id ) {
 		$settings = Cache_Hive_Settings::get_settings();
@@ -39,7 +39,9 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 				foreach ( $url_exclusions as $rule ) {
 					$trimmed_rule = trim( $rule );
 					if ( ! empty( $trimmed_rule ) && str_contains( $attachment_url, $trimmed_rule ) ) {
-						return true; // Skip optimization for this image.
+						// Mark the image as excluded in the database so it's not picked up again.
+						Cache_Hive_Image_Meta::update_status( $attachment_id, 'excluded' );
+						return 'skipped';
 					}
 				}
 			}
