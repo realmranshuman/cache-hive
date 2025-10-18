@@ -65,10 +65,22 @@ final class Cache_Hive_Advanced_Cache {
 	private $blog_id = 1;
 
 	/**
+	 * Flag to indicate a critical failure, such as being unable to read the multisite map.
+	 *
+	 * @since 1.2.0
+	 * @var bool
+	 */
+	private $critical_failure = false;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
 		$this->determine_multisite_context_from_map();
+		if ( $this->critical_failure ) {
+			return;
+		}
+
 		$this->define_multisite_paths();
 
 		$this->settings = $this->get_settings();
@@ -90,19 +102,25 @@ final class Cache_Hive_Advanced_Cache {
 	 * This avoids any database queries for maximum performance.
 	 */
 	private function determine_multisite_context_from_map() {
-		// The multisite map is stored in the main site's config file.
 		$main_site_config_path = ( defined( 'WP_CONTENT_DIR' ) ? WP_CONTENT_DIR : dirname( __DIR__ ) ) . '/cache-hive-config/1/config.php';
 
 		if ( ! @is_readable( $main_site_config_path ) ) {
-			// Fallback for single site or if the main config is missing.
 			return;
 		}
 
-		$config  = include $main_site_config_path;
+		$config_json = include $main_site_config_path;
+		if ( ! is_string( $config_json ) ) {
+			if ( defined( 'MULTISITE' ) && MULTISITE ) {
+				$this->critical_failure = true;
+			}
+			return;
+		}
+		$config = json_decode( $config_json, true );
+
 		$sitemap = $config['multisite_map'] ?? array();
 
-		if ( empty( $sitemap ) ) {
-			return; // Not a multisite or map is empty.
+		if ( empty( $sitemap ) || ! is_array( $sitemap ) ) {
+			return;
 		}
 
 		$domain = rtrim( strtolower( $_SERVER['HTTP_HOST'] ?? '' ), '.' );
@@ -111,18 +129,18 @@ final class Cache_Hive_Advanced_Cache {
 		}
 		$request_path = '/';
 		if ( ! empty( $_SERVER['REQUEST_URI'] ) ) {
-			$request_path = strtok( stripslashes( $_SERVER['REQUEST_URI'] ), '?' );
+			$request_uri  = stripslashes( (string) $_SERVER['REQUEST_URI'] );
+			$request_path = strtok( $request_uri, '?' );
 		}
 
-		// The sitemap is pre-sorted by path length descending, so the first match is the correct one.
 		foreach ( $sitemap as $site ) {
-			if ( $site->domain === $domain && strpos( $request_path, $site->path ) === 0 ) {
+			$site = (object) $site;
+			if ( isset( $site->domain, $site->path ) && $site->domain === $domain && strpos( $request_path, $site->path ) === 0 ) {
 				$this->blog_id = (int) $site->blog_id;
 				return;
 			}
 		}
 	}
-
 
 	/**
 	 * Defines site-specific constants for this file's scope based on the determined blog_id.
@@ -153,7 +171,11 @@ final class Cache_Hive_Advanced_Cache {
 		$config_file       = $config_dir . '/config.php';
 
 		if ( @is_readable( $config_file ) ) {
-			return include $config_file;
+			// This include is now safe because the file returns a JSON string, not an executable array.
+			$config_json = include $config_file;
+			if ( is_string( $config_json ) ) {
+				return json_decode( $config_json, true );
+			}
 		}
 		return false;
 	}
@@ -173,7 +195,7 @@ final class Cache_Hive_Advanced_Cache {
 					$this->is_logged_in = true;
 					$parts              = explode( '|', $value );
 					if ( isset( $parts[0] ) ) {
-						$this->username = $parts[0];
+						$this->username = preg_replace( '/[^a-zA-Z0-9\._-]/', '', $parts[0] );
 					}
 					break;
 				}
@@ -195,13 +217,13 @@ final class Cache_Hive_Advanced_Cache {
 	 */
 	private function should_bypass_exclusions() {
 		$request_uri = $_SERVER['REQUEST_URI'] ?? '';
-		if ( ! empty( $this->settings['exclude_uris'] ) ) {
+		if ( ! empty( $this->settings['exclude_uris'] ) && is_array( $this->settings['exclude_uris'] ) ) {
 			foreach ( $this->settings['exclude_uris'] as $pattern ) {
 				if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $request_uri ) ) {
 					return true; }
 			}
 		}
-		if ( ! empty( $_SERVER['QUERY_STRING'] ) && ! empty( $this->settings['exclude_query_strings'] ) ) {
+		if ( ! empty( $_SERVER['QUERY_STRING'] ) && ! empty( $this->settings['exclude_query_strings'] ) && is_array( $this->settings['exclude_query_strings'] ) ) {
 			parse_str( $_SERVER['QUERY_STRING'], $query_params );
 			$query_keys = array_keys( $query_params );
 			foreach ( $query_keys as $key ) {
@@ -211,7 +233,7 @@ final class Cache_Hive_Advanced_Cache {
 				}
 			}
 		}
-		if ( ! empty( $this->settings['exclude_cookies'] ) ) {
+		if ( ! empty( $this->settings['exclude_cookies'] ) && is_array( $this->settings['exclude_cookies'] ) ) {
 			foreach ( array_keys( $_COOKIE ) as $key ) {
 				foreach ( $this->settings['exclude_cookies'] as $pattern ) {
 					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $key ) ) {
@@ -231,7 +253,7 @@ final class Cache_Hive_Advanced_Cache {
 		if ( ! ( $this->settings['cache_mobile'] ?? false ) || empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
 			return false; }
 		$user_agents = $this->settings['mobile_user_agents'] ?? array();
-		if ( empty( $user_agents ) ) {
+		if ( empty( $user_agents ) || ! is_array( $user_agents ) ) {
 			return false; }
 		$regex = '/' . implode( '|', array_map( '\preg_quote', $user_agents, array_fill( 0, count( $user_agents ), '/' ) ) ) . '/i';
 		return (bool) \preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
@@ -366,8 +388,12 @@ final class Cache_Hive_Advanced_Cache {
 		$meta_file = $cache_file . '.meta';
 		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
 			return false; }
-		$meta_data = json_decode( @file_get_contents( $meta_file ), true );
-		if ( empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
+		$meta_contents = @file_get_contents( $meta_file );
+		if ( false === $meta_contents ) {
+			return false;
+		}
+		$meta_data = json_decode( $meta_contents, true );
+		if ( ! is_array( $meta_data ) || empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
 			return false; }
 		if ( 0 === (int) $meta_data['ttl'] ) {
 			return true; }

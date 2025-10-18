@@ -31,6 +31,13 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	private $config;
 
 	/**
+	 * The secure data transcoder.
+	 *
+	 * @var Cache_Hive_Transcoder
+	 */
+	private $transcoder;
+
+	/**
 	 * Connection status.
 	 *
 	 * @var bool
@@ -61,10 +68,12 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 	/**
 	 * Sets up the Memcached connection.
 	 *
-	 * @param array $config The backend configuration.
+	 * @param array                 $config The backend configuration.
+	 * @param Cache_Hive_Transcoder $transcoder The secure transcoder instance.
 	 */
-	public function __construct( $config ) {
-		$this->config = $config;
+	public function __construct( $config, $transcoder ) {
+		$this->config     = $config;
+		$this->transcoder = $transcoder;
 		if ( ! class_exists( 'Memcached' ) ) {
 			return;
 		}
@@ -133,9 +142,11 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			$found = false;
 			return false;
 		}
-		$value = $this->mc->get( $this->get_namespaced_key( $key ) );
-		$found = \Memcached::RES_SUCCESS === $this->mc->getResultCode();
-		return $found ? $value : false;
+		$value   = $this->mc->get( $this->get_namespaced_key( $key ) );
+		$found   = \Memcached::RES_SUCCESS === $this->mc->getResultCode();
+		$decoded = $found ? $this->transcoder->decode( $value ) : false;
+		$found   = ( false !== $decoded ); // Update found status after integrity check.
+		return $decoded;
 	}
 
 	/**
@@ -156,7 +167,10 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			$ns_version_str = $this->get_ns_version() . ':';
 			$ns_version_len = strlen( $ns_version_str );
 			foreach ( $results as $ns_key => $value ) {
-				$final_results[ substr( $ns_key, $ns_version_len ) ] = $value;
+				$decoded = $this->transcoder->decode( $value );
+				if ( false !== $decoded ) {
+					$final_results[ substr( $ns_key, $ns_version_len ) ] = $decoded;
+				}
 			}
 		}
 		return $final_results;
@@ -173,7 +187,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		return $this->mc->set( $this->get_namespaced_key( $key ), $value, $ttl );
+		$encoded_value = $this->transcoder->encode( $value );
+		return $this->mc->set( $this->get_namespaced_key( $key ), $encoded_value, $ttl );
 	}
 
 	/**
@@ -187,7 +202,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		return $this->mc->add( $this->get_namespaced_key( $key ), $value, $ttl );
+		$encoded_value = $this->transcoder->encode( $value );
+		return $this->mc->add( $this->get_namespaced_key( $key ), $encoded_value, $ttl );
 	}
 
 	/**
@@ -201,7 +217,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		return $this->mc->replace( $this->get_namespaced_key( $key ), $value, $ttl );
+		$encoded_value = $this->transcoder->encode( $value );
+		return $this->mc->replace( $this->get_namespaced_key( $key ), $encoded_value, $ttl );
 	}
 
 	/**
@@ -223,6 +240,7 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
+		// Memcached flush is a namespace bump, not a server command.
 		$this->ns_version = $this->mc->increment( $this->ns_version_key );
 		if ( false === $this->ns_version ) {
 			$this->ns_version = null;
@@ -241,13 +259,16 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		$namespaced_key = $this->get_namespaced_key( $key );
-		$new_value      = $this->mc->increment( $namespaced_key, $offset );
-		if ( false === $new_value ) {
-			if ( $this->mc->add( $namespaced_key, $offset, 0 ) ) {
-				return $offset;
-			}
+		// Memcached incr/decr doesn't work on signed/serialized values.
+		// We must do a read-modify-write, which is not atomic.
+		$value = $this->get( $key, $found );
+		if ( ! $found ) {
+			$new_value = $offset;
+			$this->add( $key, $new_value, 0 );
+			return $new_value;
 		}
+		$new_value = (int) $value + $offset;
+		$this->set( $key, $new_value, 0 );
 		return $new_value;
 	}
 
@@ -261,13 +282,16 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		$namespaced_key = $this->get_namespaced_key( $key );
-		$new_value      = $this->mc->decrement( $namespaced_key, $offset );
-		if ( false === $new_value ) {
-			if ( $this->mc->add( $namespaced_key, 0, 0 ) ) {
-				return 0;
-			}
+		// Memcached incr/decr doesn't work on signed/serialized values.
+		// We must do a read-modify-write, which is not atomic.
+		$value = $this->get( $key, $found );
+		if ( ! $found ) {
+			$new_value = 0;
+			$this->add( $key, $new_value, 0 );
+			return $new_value;
 		}
+		$new_value = (int) $value - $offset;
+		$this->set( $key, $new_value, 0 );
 		return $new_value;
 	}
 

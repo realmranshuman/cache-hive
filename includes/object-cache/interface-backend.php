@@ -12,11 +12,11 @@ namespace Cache_Hive\Includes\Object_Cache;
  */
 interface Cache_Hive_Backend_Interface {
 	/**
-	 * Constructor for the cache backend.
-	 *
-	 * @param array $config Configuration array for the backend.
+	 * NOTE: The constructor is intentionally omitted from the interface.
+	 * This allows implementing classes to define their own constructor signatures
+	 * with specific dependencies (like the Transcoder) without breaking the contract.
+	 * The Factory is responsible for knowing how to instantiate each backend.
 	 */
-	public function __construct( $config );
 
 	/**
 	 * Retrieves a value from the cache.

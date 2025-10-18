@@ -47,6 +47,9 @@ class Cache_Hive_REST_Cache {
 	 * @return WP_REST_Response The response object with the updated settings.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
+		// Get old settings to see if the main cache toggle has changed.
+		$old_settings = Cache_Hive_Settings::get_settings( true );
+
 		$params           = $request->get_json_params();
 		$new_settings     = Cache_Hive_Settings::sanitize_settings( $params );
 		$is_network_admin = is_multisite() && is_network_admin();
@@ -61,6 +64,20 @@ class Cache_Hive_REST_Cache {
 
 		// Invalidate the static settings snapshot to ensure the next get_settings() call is fresh.
 		Cache_Hive_Settings::invalidate_settings_snapshot();
+
+		// FEATURE IMPLEMENTATION: Manage the advanced-cache.php drop-in dynamically.
+		$old_enabled = ! empty( $old_settings['enable_cache'] );
+		$new_enabled = ! empty( $new_settings['enable_cache'] );
+
+		if ( $new_enabled !== $old_enabled ) {
+			if ( $new_enabled ) {
+				// If caching is being enabled, set up the environment.
+				Cache_Hive_Lifecycle::setup_environment();
+			} else {
+				// If caching is being disabled, clean up the environment.
+				Cache_Hive_Lifecycle::cleanup_environment();
+			}
+		}
 
 		return self::get_settings();
 	}

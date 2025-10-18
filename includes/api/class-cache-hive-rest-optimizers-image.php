@@ -133,14 +133,12 @@ class Cache_Hive_REST_Optimizers_Image {
 		if ( $new_delivery_method !== $old_delivery_method ) {
 			if ( 'rewrite' === $new_delivery_method ) {
 				Cache_Hive_Image_Rewrite::insert_rules();
-			} else {
-				// If the old method was rewrite and new is not, remove the rules.
-				if ( 'rewrite' === $old_delivery_method ) {
-					Cache_Hive_Image_Rewrite::remove_rules();
-				}
+			} elseif ( 'rewrite' === $old_delivery_method ) {
+				Cache_Hive_Image_Rewrite::remove_rules();
 			}
 		}
 
+		// Correctly schedule or clear the cron job when the setting is changed.
 		if ( ! empty( $all_settings['image_batch_processing'] ) ) {
 			Cache_Hive_Image_Batch_Processor::schedule_event();
 		} else {

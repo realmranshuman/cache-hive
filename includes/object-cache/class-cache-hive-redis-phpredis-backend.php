@@ -30,6 +30,13 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 	private $config;
 
 	/**
+	 * The secure data transcoder.
+	 *
+	 * @var Cache_Hive_Transcoder
+	 */
+	private $transcoder;
+
+	/**
 	 * Connection status.
 	 *
 	 * @var bool
@@ -39,10 +46,12 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 	/**
 	 * Sets up the PhpRedis connection.
 	 *
-	 * @param array $config The backend configuration.
+	 * @param array                 $config The backend configuration.
+	 * @param Cache_Hive_Transcoder $transcoder The secure transcoder instance.
 	 */
-	public function __construct( $config ) {
-		$this->config = $config;
+	public function __construct( $config, $transcoder ) {
+		$this->config     = $config;
+		$this->transcoder = $transcoder;
 		if ( ! class_exists( 'Redis' ) ) {
 			return;
 		}
@@ -56,7 +65,7 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 			$this->configure_client();
 
 			$ping            = $this->redis->ping();
-			$this->connected = ( '+PONG' === $ping || true === $ping );
+			$this->connected = ( '+PONG' === $ping || true === $ping || ( is_array( $ping ) && isset( $ping[0] ) ) ); // Cluster support returns array.
 		} catch ( \RedisException $e ) {
 			error_log( 'Cache Hive PhpRedis Connection Error: ' . $e->getMessage() );
 			$this->connected = false;
@@ -125,10 +134,19 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 	 * Configures the Redis client options, such as serializer.
 	 */
 	private function configure_client() {
-		if ( 0 === strcasecmp( 'igbinary', $this->config['serializer'] ?? '' ) && defined( 'Redis::SERIALIZER_IGBINARY' ) ) {
-			$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_IGBINARY );
-		} else {
-			$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP );
+		// Set serializer to NONE so we can handle it securely via the transcoder.
+		$this->redis->setOption( \Redis::OPT_SERIALIZER, \Redis::SERIALIZER_NONE );
+
+		// Configure compression, which is independent of serialization.
+		if ( ! empty( $this->config['compression'] ) ) {
+			$compression_map = array(
+				'zstd' => defined( 'Redis::COMPRESSION_ZSTD' ) ? \Redis::COMPRESSION_ZSTD : null,
+				'lz4'  => defined( 'Redis::COMPRESSION_LZ4' ) ? \Redis::COMPRESSION_LZ4 : null,
+				'lzf'  => defined( 'Redis::COMPRESSION_LZF' ) ? \Redis::COMPRESSION_LZF : null,
+			);
+			if ( isset( $compression_map[ $this->config['compression'] ] ) ) {
+				$this->redis->setOption( \Redis::OPT_COMPRESSION, $compression_map[ $this->config['compression'] ] );
+			}
 		}
 	}
 
@@ -144,8 +162,12 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 		if ( ! $this->is_connected() ) {
 			return false; }
 		$value = $this->redis->get( $key );
-		$found = false !== $value;
-		return $value;
+		if ( false === $value ) {
+			return false;
+		}
+		$decoded = $this->transcoder->decode( $value );
+		$found   = ( false !== $decoded );
+		return $decoded;
 	}
 
 	/**
@@ -162,7 +184,10 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 		if ( is_array( $values ) ) {
 			foreach ( $keys as $index => $key ) {
 				if ( isset( $values[ $index ] ) && false !== $values[ $index ] ) {
-					$result[ $key ] = $values[ $index ];
+					$decoded = $this->transcoder->decode( $values[ $index ] );
+					if ( false !== $decoded ) {
+						$result[ $key ] = $decoded;
+					}
 				}
 			}
 		}
@@ -179,7 +204,8 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 	public function set( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false; }
-		return $ttl > 0 ? $this->redis->setex( $key, $ttl, $value ) : $this->redis->set( $key, $value );
+		$encoded_value = $this->transcoder->encode( $value );
+		return $ttl > 0 ? $this->redis->setex( $key, $ttl, $encoded_value ) : $this->redis->set( $key, $encoded_value );
 	}
 
 	/**
@@ -196,7 +222,7 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 		if ( $ttl > 0 ) {
 			$options['ex'] = $ttl;
 		}
-		return $this->redis->set( $key, $value, $options );
+		return $this->redis->set( $key, $this->transcoder->encode( $value ), $options );
 	}
 
 	/**
@@ -213,7 +239,7 @@ class Cache_Hive_Redis_PhpRedis_Backend implements Cache_Hive_Backend_Interface 
 		if ( $ttl > 0 ) {
 			$options['ex'] = $ttl;
 		}
-		return $this->redis->set( $key, $value, $options );
+		return $this->redis->set( $key, $this->transcoder->encode( $value ), $options );
 	}
 
 	/**

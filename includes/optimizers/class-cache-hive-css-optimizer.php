@@ -172,7 +172,10 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 		foreach ( $styles_by_media as $media => $sources ) {
 			$minifier = new Minify\CSS();
 			foreach ( $sources as $source ) {
-				$minifier->add( $source['is_inline'] ? $source['content'] : self::get_file_path_from_url( $source['content'] ) );
+				$file_to_add = $source['is_inline'] ? $source['content'] : self::get_file_path_from_url( $source['content'] );
+				if ( $file_to_add ) {
+					$minifier->add( $file_to_add );
+				}
 			}
 
 			// Define the final path for the combined file.
@@ -288,10 +291,6 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 	/**
 	 * Adds or replaces font-display: swap in @font-face rules.
 	 *
-	 * This function finds all @font-face blocks, removes any pre-existing
-	 * font-display property, and then appends `font-display: swap;` to ensure
-	 * compliance with Lighthouse recommendations.
-	 *
 	 * @param string $css The CSS content.
 	 * @return string The modified CSS content.
 	 */
@@ -299,17 +298,10 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 		return preg_replace_callback(
 			'/@font-face\s*\{(?<rules>[^}]*)\}/is',
 			function ( $matches ) {
-				$rules = $matches['rules'];
-
-				// 1. Remove any existing font-display property.
-				// This regex handles different spacing and quoting.
-				$rules = preg_replace( '/font-display\s*:\s*[^;}\s]+;?/i', '', $rules );
-
-				// 2. Add the desired font-display property.
-				// We trim and add a semicolon to ensure clean output.
+				$rules       = $matches['rules'];
+				$rules       = preg_replace( '/font-display\s*:\s*[^;}\s]+;?/i', '', $rules );
 				$clean_rules = trim( $rules, " \t\n\r\0\x0B;" );
 				$new_rules   = $clean_rules . ( $clean_rules ? ';' : '' ) . 'font-display:swap;';
-
 				return '@font-face{' . $new_rules . '}';
 			},
 			(string) $css
@@ -317,29 +309,49 @@ final class Cache_Hive_CSS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Converts a URL into an absolute server file path.
+	 * Converts a URL into an absolute server file path, hardened against LFI.
 	 *
 	 * @param string $url The URL of the CSS file.
 	 * @return string|false The absolute file path or false if not possible.
 	 */
 	private static function get_file_path_from_url( $url ) {
+		// SECURITY FIX: Centralized and hardened path resolution logic.
 		$url = strtok( $url, '?#' );
 		if ( 0 === strpos( $url, '//' ) ) {
 			$url = ( is_ssl() ? 'https:' : 'http:' ) . $url;
 		}
+
 		$site_url    = site_url();
 		$content_url = content_url();
-		$abs_path    = rtrim( ABSPATH, '/' );
+		$home_path   = rtrim( ABSPATH, '/' );
+		$path        = '';
+
 		if ( 0 === strpos( $url, $content_url ) ) {
-			return str_replace( $content_url, rtrim( WP_CONTENT_DIR, '/' ), $url );
+			$path = str_replace( $content_url, rtrim( WP_CONTENT_DIR, '/' ), $url );
+		} elseif ( 0 === strpos( $url, $site_url ) ) {
+			$path = str_replace( $site_url, $home_path, $url );
+		} elseif ( 0 === strpos( $url, '/' ) ) {
+			$path = $home_path . $url;
 		}
-		if ( 0 === strpos( $url, $site_url ) ) {
-			return str_replace( $site_url, $abs_path, $url );
+
+		if ( empty( $path ) ) {
+			return false;
 		}
-		if ( 0 === strpos( $url, '/' ) ) {
-			return $abs_path . $url;
+
+		// SECURITY HARDENING: Prevent path traversal attacks (LFI).
+		// 1. Normalize the path.
+		$normalized_path = wp_normalize_path( $path );
+		// 2. Check for directory traversal characters.
+		if ( strpos( $normalized_path, '../' ) !== false || strpos( $normalized_path, '..\\' ) !== false ) {
+			return false;
 		}
-		return false;
+		// 3. Resolve the real path and ensure it's within the WordPress installation.
+		$real_path = realpath( $normalized_path );
+		if ( false === $real_path || strpos( $real_path, wp_normalize_path( ABSPATH ) ) !== 0 ) {
+			return false;
+		}
+
+		return $real_path;
 	}
 
 	/**

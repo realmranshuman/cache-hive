@@ -27,19 +27,30 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	 * @var array
 	 */
 	private $config;
+
+	/**
+	 * The secure data transcoder.
+	 *
+	 * @var Cache_Hive_Transcoder
+	 */
+	private $transcoder;
+
 	/**
 	 * Connection status.
 	 *
 	 * @var bool
 	 */
 	private $connected = false;
+
 	/**
 	 * Sets up the Predis connection.
 	 *
-	 * @param array $config The backend configuration.
+	 * @param array                 $config The backend configuration.
+	 * @param Cache_Hive_Transcoder $transcoder The secure transcoder instance.
 	 */
-	public function __construct( $config ) {
-		$this->config = $config;
+	public function __construct( $config, $transcoder ) {
+		$this->config     = $config;
+		$this->transcoder = $transcoder;
 		if ( ! class_exists( 'Cache_Hive\\Vendor\\Predis\\Client' ) ) {
 			return;
 		}
@@ -78,20 +89,6 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	}
 
 	/**
-	 * Unserializes a value if it's a serialized string.
-	 *
-	 * @param mixed $value The value to unserialize.
-	 * @return mixed The unserialized value or the original value if not serialized.
-	 */
-	private function unserialize_value( $value ) {
-		if ( is_string( $value ) ) {
-			$unserialized = @unserialize( $value );
-			return ( false !== $unserialized || 'b:0;' === $value ) ? $unserialized : $value;
-		}
-		return $value;
-	}
-
-	/**
 	 * Retrieves a value from the cache.
 	 *
 	 * @param string $key The key to retrieve.
@@ -105,8 +102,10 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 		$value = $this->client->get( $key );
 		if ( null === $value ) {
 			return false; }
-		$found = true;
-		return $this->unserialize_value( $value );
+
+		$decoded = $this->transcoder->decode( $value );
+		$found   = ( false !== $decoded );
+		return $decoded;
 	}
 
 	/**
@@ -122,7 +121,10 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 		$result = array();
 		foreach ( $keys as $i => $key ) {
 			if ( isset( $values[ $i ] ) && null !== $values[ $i ] ) {
-				$result[ $key ] = $this->unserialize_value( $values[ $i ] );
+				$decoded = $this->transcoder->decode( $values[ $i ] );
+				if ( false !== $decoded ) {
+					$result[ $key ] = $decoded;
+				}
 			}
 		}
 		return $result;
@@ -138,8 +140,9 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	public function set( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false; }
-		$ttl = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
-		return 'OK' === $this->client->setex( $key, $ttl, serialize( $value ) )->getPayload();
+		$ttl           = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
+		$encoded_value = $this->transcoder->encode( $value );
+		return 'OK' === $this->client->setex( $key, $ttl, $encoded_value )->getPayload();
 	}
 
 	/**
@@ -152,8 +155,9 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	public function add( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false; }
-		$ttl = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
-		return (bool) $this->client->set( $key, serialize( $value ), 'EX', $ttl, 'NX' );
+		$ttl           = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
+		$encoded_value = $this->transcoder->encode( $value );
+		return (bool) $this->client->set( $key, $encoded_value, 'EX', $ttl, 'NX' );
 	}
 
 	/**
@@ -166,8 +170,9 @@ class Cache_Hive_Redis_Predis_Backend implements Cache_Hive_Backend_Interface {
 	public function replace( $key, $value, $ttl ) {
 		if ( ! $this->is_connected() ) {
 			return false; }
-		$ttl = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
-		return (bool) $this->client->set( $key, serialize( $value ), 'EX', $ttl, 'XX' );
+		$ttl           = $ttl > 0 ? $ttl : ( $this->config['lifetime'] ?? 3600 );
+		$encoded_value = $this->transcoder->encode( $value );
+		return (bool) $this->client->set( $key, $encoded_value, 'EX', $ttl, 'XX' );
 	}
 
 	/**

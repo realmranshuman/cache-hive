@@ -23,23 +23,15 @@ final class Cache_Hive_Media_Integration {
 	 * @since 1.0.0
 	 */
 	public function __construct() {
-		// Guard: Only load these hooks in the admin area.
 		if ( ! \is_admin() ) {
 			return;
 		}
 
-		// Grid and List view integration.
 		\add_filter( 'manage_media_columns', array( $this, 'add_media_column' ) );
 		\add_action( 'manage_media_custom_column', array( $this, 'render_media_column' ), 10, 2 );
-
-		// Attachment Edit screen integration.
 		\add_action( 'attachment_submitbox_misc_actions', array( $this, 'render_submitbox_metabox' ) );
-
-		// Filters for optimized/unoptimized images.
 		\add_action( 'restrict_manage_posts', array( $this, 'add_filter_dropdown' ) );
 		\add_action( 'pre_get_posts', array( $this, 'apply_media_filter' ) );
-
-		// AJAX handler for manual optimization.
 		\add_action( 'wp_ajax_cache_hive_optimize_image', array( $this, 'ajax_optimize_image' ) );
 		\add_action( 'wp_ajax_cache_hive_restore_image', array( $this, 'ajax_restore_image' ) );
 	}
@@ -52,7 +44,7 @@ final class Cache_Hive_Media_Integration {
 	 * @return array The modified array of columns.
 	 */
 	public function add_media_column( array $columns ): array {
-		$columns['cache_hive_optimization'] = 'Cache Hive';
+		$columns['cache_hive_optimization'] = esc_html__( 'Cache Hive', 'cache-hive' );
 		return $columns;
 	}
 
@@ -65,7 +57,7 @@ final class Cache_Hive_Media_Integration {
 	 */
 	public function render_media_column( string $column_name, int $attachment_id ) {
 		if ( 'cache_hive_optimization' === $column_name ) {
-			echo \wp_kses_post( $this->get_optimization_html( $attachment_id ) );
+			echo wp_kses_post( $this->get_optimization_html( $attachment_id ) );
 		}
 	}
 
@@ -88,7 +80,6 @@ final class Cache_Hive_Media_Integration {
 	 * @since 1.0.0
 	 */
 	public function add_filter_dropdown() {
-		// Safety check for the screen function.
 		if ( ! function_exists( 'get_current_screen' ) ) {
 			return;
 		}
@@ -99,9 +90,7 @@ final class Cache_Hive_Media_Integration {
 
 		$filter = \filter_input( INPUT_GET, 'cache_hive_filter', FILTER_SANITIZE_SPECIAL_CHARS );
 		?>
-		<label for="cache_hive_filter" class="screen-reader-text">
-			<?php \esc_html_e( 'Filter by Cache Hive status', 'cache-hive' ); ?>
-		</label>
+		<label for="cache_hive_filter" class="screen-reader-text"><?php \esc_html_e( 'Filter by Cache Hive status', 'cache-hive' ); ?></label>
 		<select name="cache_hive_filter" id="cache_hive_filter">
 			<option value=""><?php \esc_html_e( 'All Images (Cache Hive)', 'cache-hive' ); ?></option>
 			<option value="optimized" <?php \selected( $filter, 'optimized' ); ?>><?php \esc_html_e( 'Optimized', 'cache-hive' ); ?></option>
@@ -133,9 +122,7 @@ final class Cache_Hive_Media_Integration {
 
 		$meta_query = (array) $query->get( 'meta_query' );
 
-		// ** START: CORRECTED FILTER LOGIC **
 		if ( 'unoptimized' === $filter ) {
-			// Find images that either don't have the meta key, or have it but are not optimized.
 			$meta_query['relation'] = 'OR';
 			$meta_query[]           = array(
 				'key'     => Cache_Hive_Image_Meta::META_KEY,
@@ -147,18 +134,15 @@ final class Cache_Hive_Media_Integration {
 				'compare' => 'NOT LIKE',
 			);
 		} elseif ( 'optimized' === $filter || 'failed' === $filter ) {
-			// Find images with a specific status.
 			$meta_query[] = array(
 				'key'     => Cache_Hive_Image_Meta::META_KEY,
 				'value'   => 's:6:"status";s:' . strlen( $filter ) . ':"' . esc_sql( $filter ) . '";',
 				'compare' => 'LIKE',
 			);
 		}
-		// ** END: CORRECTED FILTER LOGIC **
 
 		$query->set( 'meta_query', $meta_query );
 	}
-
 
 	/**
 	 * Generates the HTML for the optimization status and actions.
@@ -177,9 +161,7 @@ final class Cache_Hive_Media_Integration {
 		?>
 		<div class="cache-hive-media-actions" data-id="<?php echo \esc_attr( $attachment_id ); ?>">
 			<?php if ( ! $meta || 'unoptimized' === $meta['status'] || 'failed' === $meta['status'] ) : ?>
-				<button type="button" class="button button-secondary cache-hive-optimize-now">
-					<?php \esc_html_e( 'Optimize Now', 'cache-hive' ); ?>
-				</button>
+				<button type="button" class="button button-secondary cache-hive-optimize-now"><?php \esc_html_e( 'Optimize Now', 'cache-hive' ); ?></button>
 				<?php if ( 'failed' === ( $meta['status'] ?? '' ) && ! empty( $meta['error'] ) ) : ?>
 					<p class="error-notice" title="<?php echo \esc_attr( $meta['error'] ); ?>"><?php \esc_html_e( 'Last attempt failed.', 'cache-hive' ); ?></p>
 				<?php endif; ?>
@@ -192,9 +174,7 @@ final class Cache_Hive_Media_Integration {
 						<?php echo \esc_html( \size_format( $meta['savings'] ?? 0 ) ); ?>
 						(<?php echo ( isset( $meta['original_size'] ) && $meta['original_size'] > 0 ) ? \esc_html( \round( ( ( $meta['savings'] ?? 0 ) / $meta['original_size'] ) * 100, 1 ) ) : 0; ?>%)
 					</p>
-					<button type="button" class="button button-secondary cache-hive-restore-image">
-						<?php \esc_html_e( 'Restore Original', 'cache-hive' ); ?>
-					</button>
+					<button type="button" class="button button-secondary cache-hive-restore-image"><?php \esc_html_e( 'Restore Original', 'cache-hive' ); ?></button>
 				</div>
 			<?php endif; ?>
 		</div>
@@ -209,21 +189,20 @@ final class Cache_Hive_Media_Integration {
 	 */
 	public function ajax_optimize_image() {
 		\check_ajax_referer( 'cache-hive-admin-nonce', 'nonce' );
-
 		if ( ! \current_user_can( 'upload_files' ) ) {
 			\wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
 		}
-
 		$attachment_id = isset( $_POST['attachment_id'] ) ? \absint( $_POST['attachment_id'] ) : 0;
 		if ( ! $attachment_id ) {
 			\wp_send_json_error( array( 'message' => 'Invalid attachment ID.' ), 400 );
 		}
-
 		$result = Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
-
 		if ( \is_wp_error( $result ) ) {
 			\wp_send_json_error( array( 'message' => $result->get_error_message() ), 500 );
 		}
+
+		// STALE CACHE FIX: Explicitly clear the post meta cache for this attachment.
+		\wp_cache_delete( $attachment_id, 'post_meta' );
 
 		\wp_send_json_success( array( 'html' => $this->get_optimization_html( $attachment_id ) ) );
 	}
@@ -235,25 +214,19 @@ final class Cache_Hive_Media_Integration {
 	 */
 	public function ajax_restore_image() {
 		\check_ajax_referer( 'cache-hive-admin-nonce', 'nonce' );
-
 		if ( ! \current_user_can( 'upload_files' ) ) {
 			\wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
 		}
-
 		$attachment_id = isset( $_POST['attachment_id'] ) ? \absint( $_POST['attachment_id'] ) : 0;
 		if ( ! $attachment_id ) {
 			\wp_send_json_error( array( 'message' => 'Invalid attachment ID.' ), 400 );
 		}
-
 		$was_optimized = Cache_Hive_Image_Meta::is_optimized( $attachment_id );
-
 		Cache_Hive_Image_Optimizer::cleanup_on_delete( $attachment_id );
-
 		if ( $was_optimized ) {
 			Cache_Hive_Image_Stats::decrement_optimized_count();
 		}
 
-		// Corrected: Explicitly clear the post meta cache for this attachment.
 		\wp_cache_delete( $attachment_id, 'post_meta' );
 
 		\wp_send_json_success( array( 'html' => $this->get_optimization_html( $attachment_id ) ) );

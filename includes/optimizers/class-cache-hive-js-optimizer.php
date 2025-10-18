@@ -313,7 +313,6 @@ final class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 
 	/**
 	 * Checks if a filename appears to be already minified.
-	 * This version is now robust against query strings.
 	 *
 	 * @param string $filename The URL or path of the script.
 	 * @return bool True if the file contains .min. or -min.
@@ -343,28 +342,48 @@ final class Cache_Hive_JS_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Converts a URL into an absolute server file path.
+	 * Converts a URL into an absolute server file path, hardened against LFI.
 	 *
 	 * @param string $url The URL of the JS file.
 	 * @return string|false The absolute file path or false on failure.
 	 */
 	private static function get_file_path_from_url( $url ) {
+		// SECURITY FIX: Centralized and hardened path resolution logic.
 		$url = strtok( $url, '?#' );
 		if ( 0 === strpos( $url, '//' ) ) {
 			$url = ( is_ssl() ? 'https:' : 'http:' ) . $url;
 		}
+
 		$site_url    = site_url();
 		$content_url = content_url();
-		$abs_path    = rtrim( ABSPATH, '/' );
+		$home_path   = rtrim( ABSPATH, '/' );
+		$path        = '';
+
 		if ( 0 === strpos( $url, $content_url ) ) {
-			return str_replace( $content_url, rtrim( WP_CONTENT_DIR, '/' ), $url );
+			$path = str_replace( $content_url, rtrim( WP_CONTENT_DIR, '/' ), $url );
+		} elseif ( 0 === strpos( $url, $site_url ) ) {
+			$path = str_replace( $site_url, $home_path, $url );
+		} elseif ( 0 === strpos( $url, '/' ) ) {
+			$path = $home_path . $url;
 		}
-		if ( 0 === strpos( $url, $site_url ) ) {
-			return str_replace( $site_url, $abs_path, $url );
+
+		if ( empty( $path ) ) {
+			return false;
 		}
-		if ( 0 === strpos( $url, '/' ) ) {
-			return $abs_path . $url;
+
+		// SECURITY HARDENING: Prevent path traversal attacks (LFI).
+		// 1. Normalize the path.
+		$normalized_path = wp_normalize_path( $path );
+		// 2. Check for directory traversal characters.
+		if ( strpos( $normalized_path, '../' ) !== false || strpos( $normalized_path, '..\\' ) !== false ) {
+			return false;
 		}
-		return false;
+		// 3. Resolve the real path and ensure it's within the WordPress installation.
+		$real_path = realpath( $normalized_path );
+		if ( false === $real_path || strpos( $real_path, wp_normalize_path( ABSPATH ) ) !== 0 ) {
+			return false;
+		}
+
+		return $real_path;
 	}
 }

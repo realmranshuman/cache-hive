@@ -28,7 +28,7 @@ final class Cache_Hive_Object_Cache {
 	 *
 	 * @var string
 	 */
-	private const DROPIN_MARKER = 'Cache Hive Object Cache Drop-in v1.0';
+	private const DROPIN_MARKER = 'Cache Hive Object Cache Drop-in v1.2';
 
 	/**
 	 * Initialize the drop-in path.
@@ -50,7 +50,7 @@ final class Cache_Hive_Object_Cache {
 			$settings = Cache_Hive_Settings::get_settings( true );
 		}
 		if ( ! empty( $settings['object_cache_enabled'] ) ) {
-			self::enable( $settings );
+			self::enable();
 		} else {
 			self::disable();
 		}
@@ -59,10 +59,9 @@ final class Cache_Hive_Object_Cache {
 	/**
 	 * Enable the object-cache.php drop-in.
 	 *
-	 * @param array $settings Settings array.
 	 * @return bool True on success, false on failure.
 	 */
-	public static function enable( $settings ) {
+	public static function enable() {
 		if ( ! self::$dropin_path || ! is_writable( WP_CONTENT_DIR ) ) {
 			return false;
 		}
@@ -71,7 +70,7 @@ final class Cache_Hive_Object_Cache {
 			@rename( self::$dropin_path, self::$dropin_path . '.ch-backup' );
 		}
 
-		$dropin_content = self::get_dropin_content( $settings );
+		$dropin_content = self::get_dropin_content();
 		if ( empty( $dropin_content ) ) {
 			return false;
 		}
@@ -95,11 +94,6 @@ final class Cache_Hive_Object_Cache {
 	/**
 	 * Disable the object-cache.php drop-in.
 	 *
-	 * Deletes the Cache Hive object-cache.php drop-in if present,
-	 * and restores any previous backup (object-cache.php.ch-backup) if it exists
-	 * and is NOT a Cache Hive drop-in (i.e., from another plugin or WordPress).
-	 * If both are ours, both are deleted and nothing is restored.
-	 *
 	 * @return void
 	 */
 	public static function disable() {
@@ -112,22 +106,18 @@ final class Cache_Hive_Object_Cache {
 		$backup_is_ch = false;
 
 		if ( file_exists( $backup_path ) ) {
-			// Check if the backup is also a Cache Hive drop-in.
 			$backup_contents = @file_get_contents( $backup_path, false, null, 0, 128 );
 			$backup_is_ch    = $backup_contents && str_contains( $backup_contents, self::DROPIN_MARKER );
 		}
 
-		// Remove the drop-in if it's ours.
 		if ( $dropin_is_ch && file_exists( self::$dropin_path ) ) {
 			@unlink( self::$dropin_path );
 		}
 
-		// Restore backup ONLY if not a Cache Hive drop-in.
 		if ( file_exists( $backup_path ) ) {
 			if ( ! $backup_is_ch ) {
 				@rename( $backup_path, self::$dropin_path );
 			} else {
-				// Remove the backup if it was from Cache Hive.
 				@unlink( $backup_path );
 			}
 		}
@@ -149,27 +139,27 @@ final class Cache_Hive_Object_Cache {
 	/**
 	 * Generate the content for the object-cache.php drop-in.
 	 *
-	 * @param array $settings The final, authoritative settings array.
 	 * @return string The drop-in PHP code.
 	 */
-	private static function get_dropin_content( $settings ) {
-		$config_to_embed = Cache_Hive_Settings::get_object_cache_runtime_config( $settings );
+	private static function get_dropin_content() {
 		$generation_date = gmdate( 'Y-m-d H:i:s T' );
-		$config_exported = var_export( $config_to_embed, true );
-		$marker          = self::DROPIN_MARKER; // Use correct marker in heredoc.
+		$marker          = self::DROPIN_MARKER;
 
-		// This heredoc contains the entire object-cache.php file.
-		// It is intentionally not namespaced and contains minified functions
-		// to be a valid, self-contained WordPress drop-in.
 		return <<<PHP
 <?php
 /**
  * {$marker}
  * Generated: {$generation_date}
+ *
+ * This is a self-contained WordPress object cache drop-in.
+ * It safely loads its configuration from a non-executable, guarded PHP file.
  */
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 if ( defined( 'WP_CACHE_HIVE_OBJECT_CACHE_LOADED' ) ) { return; }
 
-// Bootstrap Composer autoloader to make Predis/Credis available.
 \$autoloader = WP_CONTENT_DIR . '/plugins/cache-hive/vendor/autoload.php';
 if ( file_exists( \$autoloader ) ) {
 	require_once \$autoloader;
@@ -197,7 +187,7 @@ final class WP_Object_Cache {
     private \$backend; private \$config; private \$blog_prefix; private \$multisite; private \$cache = []; private \$prefetched = false;
     public function __construct() { \$this->reinitialize(); }
     public function reinitialize() {
-        \$this->config = {$config_exported};
+        \$this->config = \$this->load_runtime_config();
         \$this->reset();
         \$plugin_path = WP_CONTENT_DIR . "/plugins/cache-hive/";
         \$files_to_load = [ 'includes/object-cache/interface-backend.php', 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php', 'includes/object-cache/class-cache-hive-redis-predis-backend.php', 'includes/object-cache/class-cache-hive-redis-credis-backend.php', 'includes/object-cache/class-cache-hive-memcached-backend.php', 'includes/object-cache/class-cache-hive-array-backend.php', 'includes/object-cache/class-cache-hive-object-cache-factory.php' ];
@@ -206,10 +196,53 @@ final class WP_Object_Cache {
 		else { \$this->backend = new \\Cache_Hive\\Includes\\Object_Cache\\Cache_Hive_Array_Backend(\$this->config); }
         \$this->multisite = is_multisite();
         \$this->blog_prefix = \$this->multisite ? get_current_blog_id() . ':' : '';
-        if (\$this->config['prefetch'] && (is_admin() || defined('WP_CLI'))) { \$this->prefetch_options(); }
+        if ((\$this->config['prefetch'] ?? false) && (is_admin() || (defined('WP_CLI') && WP_CLI))) { \$this->prefetch_options(); }
+    }
+    private function load_runtime_config() {
+        \$blog_id = function_exists('get_current_blog_id') ? get_current_blog_id() : 1;
+        \$site_path_segment = (defined('MULTISITE') && MULTISITE) ? '/' . \$blog_id : '';
+        \$config_file = WP_CONTENT_DIR . '/cache-hive-config' . \$site_path_segment . '/config.php';
+        if (@is_readable(\$config_file)) {
+            \$config_json = include \$config_file;
+            if (is_string(\$config_json)) {
+                \$settings = json_decode(\$config_json, true);
+                if (is_array(\$settings)) {
+                    return \$this->build_runtime_config_from_settings(\$settings);
+                }
+            }
+        }
+        return \$this->build_runtime_config_from_settings([]);
+    }
+    private function build_runtime_config_from_settings(\$settings) {
+		\$config = [];
+		\$method = \$settings['object_cache_method'] ?? 'redis';
+		\$host = \$settings['object_cache_host'] ?? '127.0.0.1';
+		\$port = (int) (\$settings['object_cache_port'] ?? ('redis' === \$method ? 6379 : 11211));
+		if (strpos(\$host, 'tls://') === 0) { \$config['scheme'] = 'tls'; \$config['host'] = substr(\$host, 6); }
+		elseif (\$port === 0 || \$host[0] === '/') { \$config['scheme'] = 'unix'; \$config['host'] = \$host; }
+		else { \$config['scheme'] = 'tcp'; \$config['host'] = \$host; }
+		\$config['port'] = \$port;
+		\$config['user'] = \$settings['object_cache_username'] ?? '';
+		\$config['pass'] = \$settings['object_cache_password'] ?? '';
+		\$config['timeout'] = (float) (\$settings['object_cache_timeout'] ?? 2.0);
+		\$config['persistent'] = !empty(\$settings['object_cache_persistent_connection']);
+		\$config['prefetch'] = !empty(\$settings['prefetch']);
+		\$config['flush_async'] = !empty(\$settings['flush_async']);
+		\$config['key_prefix'] = \$settings['object_cache_key'] ?? '';
+		\$config['lifetime'] = (int) (\$settings['object_cache_lifetime'] ?? 3600);
+		\$config['global_groups'] = \$settings['object_cache_global_groups'] ?? [];
+		\$config['no_cache_groups'] = \$settings['object_cache_no_cache_groups'] ?? [];
+		\$config['serializer'] = \$settings['serializer'] ?? 'php';
+		if ('redis' === \$method) {
+			\$config['client'] = \$settings['object_cache_client'] ?? 'phpredis';
+			\$config['database'] = (int) (\$settings['object_cache_database'] ?? 0);
+			\$config['compression'] = \$settings['compression'] ?? 'none';
+			if ('tls' === \$config['scheme']) { \$config['tls_options'] = \$settings['object_cache_tls_options'] ?? []; }
+		}
+		return \$config;
     }
     private function get_key(\$key, \$group) { if (empty(\$group)) { \$group = 'default'; } \$salt = \$this->config['key_prefix'] ?? ''; \$global_groups = \$this->config['global_groups'] ?? []; \$prefix = in_array(\$group, \$global_groups, true) ? '' : \$this->blog_prefix; return (\$salt ? \$salt . ':' : '') . \$prefix . "{\$group}:{\$key}"; }
-    private function is_non_persistent_group(\$group) { \$no_cache_groups = \$this->config['no_cache_groups'] ?? []; if (empty(\$group) || empty(\$no_cache_groups)) return false; foreach (\$no_cache_groups as \$no_cache_group) { if (str_starts_with(\$group, \$no_cache_group)) return true; } return false; }
+    private function is_non_persistent_group(\$group) { \$no_cache_groups = \$this->config['no_cache_groups'] ?? []; if (empty(\$group) || empty(\$no_cache_groups)) return false; foreach (\$no_cache_groups as \$no_cache_group) { if (strpos(\$group, \$no_cache_group) === 0) return true; } return false; }
     private function prefetch_options() { if (\$this->prefetched) return; \$alloptions_key = \$this->get_key('alloptions', 'options'); \$alloptions = \$this->backend->get(\$alloptions_key, \$found); if (\$found && is_array(\$alloptions)) { foreach (\$alloptions as \$name => \$value) { \$this->cache[\$this->get_key(\$name, 'options')] = \$value; } \$this->prefetched = true; } }
     public function set(\$key, \$data, \$group = 'default', \$expire = 0) { \$cache_key = \$this->get_key(\$key, \$group); if (\$this->is_non_persistent_group(\$group)) { \$this->cache[\$cache_key] = is_object(\$data) ? clone \$data : \$data; return true; } if (\$this->backend->set(\$cache_key, \$data, \$expire > 0 ? \$expire : \$this->config['lifetime'])) { \$this->cache[\$cache_key] = is_object(\$data) ? clone \$data : \$data; return true; } return false; }
     public function add(\$key, \$data, \$group = 'default', \$expire = 0) { \$cache_key = \$this->get_key(\$key, \$group); if (isset(\$this->cache[\$cache_key])) return false; if (\$this->is_non_persistent_group(\$group)) { \$this->cache[\$cache_key] = is_object(\$data) ? clone \$data : \$data; return true; } if (\$this->backend->add(\$cache_key, \$data, \$expire > 0 ? \$expire : \$this->config['lifetime'])) { \$this->cache[\$cache_key] = is_object(\$data) ? clone \$data : \$data; return true; } return false; }
@@ -220,10 +253,10 @@ final class WP_Object_Cache {
     public function incr(\$key, \$offset = 1, \$group = 'default') { \$cache_key = \$this->get_key(\$key, \$group); unset(\$this->cache[\$cache_key]); if (\$this->is_non_persistent_group(\$group)) { return false; } \$new_value = \$this->backend->increment(\$cache_key, \$offset); if (false !== \$new_value) { \$this->cache[\$cache_key] = \$new_value; } return \$new_value; }
     public function decr(\$key, \$offset = 1, \$group = 'default') { \$cache_key = \$this->get_key(\$key, \$group); unset(\$this->cache[\$cache_key]); if (\$this->is_non_persistent_group(\$group)) { return false; } \$new_value = \$this->backend->decrement(\$cache_key, \$offset); if (false !== \$new_value) { \$this->cache[\$cache_key] = \$new_value; } return \$new_value; }
     public function reset() { \$this->cache = []; \$this->prefetched = false; }
-    public function flush() { \$this->reset(); return \$this->backend->flush(\$this->config['flush_async']); }
+    public function flush() { \$this->reset(); return \$this->backend->flush(\$this->config['flush_async'] ?? true); }
     public function close() { return \$this->backend->close(); }
     public function get_info() { return \$this->backend->get_info(); }
-    public function switch_to_blog(\$blog_id) { if (!\$this->multisite) return; \$this->blog_prefix = (int) \$blog_id . ':'; \$this->reset(); if (\$this->config['prefetch'] && (is_admin() || defined('WP_CLI'))) { \$this->prefetch_options(); } }
+    public function switch_to_blog(\$blog_id) { if (!\$this->multisite) return; \$this->blog_prefix = (int) \$blog_id . ':'; \$this->reset(); if ((\$this->config['prefetch'] ?? false) && (is_admin() || (defined('WP_CLI') && WP_CLI))) { \$this->prefetch_options(); } }
     public function add_global_groups(\$groups) { \$this->config['global_groups'] = array_unique(array_merge(\$this->config['global_groups'], (array) \$groups)); }
     public function __destruct() { \$this->close(); }
 }

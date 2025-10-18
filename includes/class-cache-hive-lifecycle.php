@@ -96,8 +96,9 @@ final class Cache_Hive_Lifecycle {
 	 * @since 1.1.0
 	 */
 	private static function setup_site() {
-		$settings                 = Cache_Hive_Settings::get_settings( true );
-		$settings['use_symlinks'] = 'WIN' !== strtoupper( substr( PHP_OS, 0, 3 ) );
+		$settings                     = Cache_Hive_Settings::get_settings( true );
+		$settings['use_symlinks']     = 'WIN' !== strtoupper( substr( PHP_OS, 0, 3 ) );
+		$settings['object_cache_key'] = 'ch-' . wp_generate_password( 10, false );
 		update_option( 'cache_hive_settings', $settings );
 		self::setup_site_directories();
 		self::create_config_file( $settings );
@@ -115,7 +116,8 @@ final class Cache_Hive_Lifecycle {
 		$dirs_to_create = array( \CACHE_HIVE_BASE_CACHE_DIR, \CACHE_HIVE_PUBLIC_CACHE_DIR, \CACHE_HIVE_PRIVATE_CACHE_DIR, \CACHE_HIVE_PRIVATE_USER_CACHE_DIR, \CACHE_HIVE_PRIVATE_URL_INDEX_DIR, \CACHE_HIVE_IMAGE_CACHE_DIR, \CACHE_HIVE_CONFIG_DIR );
 		foreach ( $dirs_to_create as $dir ) {
 			if ( ! is_dir( $dir ) ) {
-				@mkdir( $dir, 0755, true ); }
+				@mkdir( $dir, 0755, true );
+			}
 		}
 	}
 
@@ -164,7 +166,7 @@ final class Cache_Hive_Lifecycle {
 	}
 
 	/**
-	 * Creates or updates the config file for the current site.
+	 * Creates or updates the config file for the current site using the secure "PHP Guard" method.
 	 *
 	 * @since 1.1.0
 	 * @param array $settings The settings to save.
@@ -183,9 +185,17 @@ final class Cache_Hive_Lifecycle {
 			$settings['multisite_map'] = array();
 		}
 
+		$json_string = wp_json_encode( $settings );
+
+		$file_contents  = "<?php\n";
+		$file_contents .= "// Prevent direct access.\n";
+		$file_contents .= "if ( ! defined( 'ABSPATH' ) ) {\n\texit;\n}\n\n";
+		$file_contents .= '// Return the configuration as a JSON string.' . "\n";
+		$file_contents .= 'return ' . var_export( $json_string, true ) . ';';
+
 		$config_file = \CACHE_HIVE_CONFIG_DIR . '/config.php';
-		$contents    = '<?php return ' . var_export( $settings, true ) . ';';
-		file_put_contents( $config_file, $contents, LOCK_EX );
+		file_put_contents( $config_file, $file_contents, LOCK_EX );
+
 		if ( function_exists( 'opcache_invalidate' ) && ini_get( 'opcache.enable' ) ) {
 			opcache_invalidate( $config_file, true );
 		}
@@ -258,8 +268,25 @@ final class Cache_Hive_Lifecycle {
 	 * @since 1.1.0
 	 */
 	private static function cleanup_site() {
-		wp_clear_scheduled_hook( 'cache_hive_garbage_collection' . ( is_multisite() ? '_' . get_current_blog_id() : '' ) );
-		wp_clear_scheduled_hook( 'cache_hive_image_optimization_batch' . ( is_multisite() ? '_' . get_current_blog_id() : '' ) );
+		// BUG FIX: Use a more robust method to unschedule cron events.
+		$cron_hook_suffix = is_multisite() ? '_' . get_current_blog_id() : '';
+
+		// Unschedule the garbage collection cron.
+		$gc_cron_hook = 'cache_hive_garbage_collection' . $cron_hook_suffix;
+		$timestamp    = wp_next_scheduled( $gc_cron_hook );
+		while ( $timestamp ) {
+			wp_unschedule_event( $timestamp, $gc_cron_hook );
+			$timestamp = wp_next_scheduled( $gc_cron_hook );
+		}
+
+		// Unschedule the image optimization cron.
+		$image_cron_hook = 'cache_hive_image_optimization_batch' . $cron_hook_suffix;
+		$timestamp       = wp_next_scheduled( $image_cron_hook );
+		while ( $timestamp ) {
+			wp_unschedule_event( $timestamp, $image_cron_hook );
+			$timestamp = wp_next_scheduled( $image_cron_hook );
+		}
+
 		Cache_Hive_Purge::purge_disk_cache();
 		Cache_Hive_Object_Cache::disable();
 		self::delete_config_file();

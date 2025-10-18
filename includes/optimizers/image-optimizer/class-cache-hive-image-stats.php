@@ -19,25 +19,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class Cache_Hive_Image_Stats {
 
-	/**
-	 * The option key for storing overall optimization statistics.
-	 *
-	 * @var string
-	 */
-	const STATS_OPTION_KEY = 'cache_hive_image_stats';
-
-	/**
-	 * The option key for storing the current sync/batch process state.
-	 *
-	 * @var string
-	 */
-	const SYNC_STATE_OPTION_KEY = 'cache_hive_image_sync_state';
-
-	/**
-	 * The transient key used to flag when stats need a refresh on the frontend.
-	 *
-	 * @var string
-	 */
+	const STATS_OPTION_KEY       = 'cache_hive_image_stats';
+	const SYNC_STATE_OPTION_KEY  = 'cache_hive_image_sync_state';
 	const STATS_DIRTY_TRANSTIENT = 'cache_hive_stats_dirty';
 
 	/**
@@ -129,54 +112,17 @@ final class Cache_Hive_Image_Stats {
 		$mime2 = 'image/png';
 		$mime3 = 'image/gif';
 
-		// === Total images (WPCS Compliant) ===
-		$total_images = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"
-				SELECT COUNT(*) 
-				FROM {$wpdb->posts}
-				WHERE post_type = 'attachment'
-				  AND post_status = 'inherit'
-				  AND post_mime_type IN (%s, %s, %s)
-				",
-				$mime1,
-				$mime2,
-				$mime3
-			)
-		);
+		$total_images = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status = 'inherit' AND post_mime_type IN (%s, %s, %s)", $mime1, $mime2, $mime3 ) );
 
-		// === Optimized images (WPCS Compliant and using a performant EXISTS subquery) ===
 		$optimized_meta_like = '%' . $wpdb->esc_like( 's:6:"status";s:9:"optimized";' ) . '%';
-		$optimized_images    = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"
-				SELECT COUNT(DISTINCT p.ID)
-				FROM {$wpdb->posts} p
-				WHERE p.post_type = 'attachment'
-				  AND p.post_status = 'inherit'
-				  AND p.post_mime_type IN (%s, %s, %s)
-				  AND EXISTS (
-					SELECT 1
-					FROM {$wpdb->postmeta} pm
-					WHERE pm.post_id = p.ID
-					  AND pm.meta_key = %s
-					  AND pm.meta_value LIKE %s
-				  )
-				",
-				$mime1,
-				$mime2,
-				$mime3,
-				Cache_Hive_Image_Meta::META_KEY,
-				$optimized_meta_like
+		$optimized_images    = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p WHERE p.post_type = 'attachment' AND p.post_status = 'inherit' AND p.post_mime_type IN (%s, %s, %s) AND EXISTS (SELECT 1 FROM {$wpdb->postmeta} pm WHERE pm.post_id = p.ID AND pm.meta_key = %s AND pm.meta_value LIKE %s)", $mime1, $mime2, $mime3, Cache_Hive_Image_Meta::META_KEY, $optimized_meta_like ) );
+
+		return self::update_stats_from_array(
+			array(
+				'total_images'     => $total_images,
+				'optimized_images' => $optimized_images,
 			)
 		);
-
-		$stats = array(
-			'total_images'     => $total_images,
-			'optimized_images' => $optimized_images,
-		);
-
-		return self::update_stats_from_array( $stats );
 	}
 
 	/**
@@ -187,9 +133,8 @@ final class Cache_Hive_Image_Stats {
 	 * @return array The final, complete stats array that was saved.
 	 */
 	private static function update_stats_from_array( array $stats ): array {
-		$total_images     = (int) ( $stats['total_images'] ?? 0 );
-		$optimized_images = (int) ( $stats['optimized_images'] ?? 0 );
-
+		$total_images                  = (int) ( $stats['total_images'] ?? 0 );
+		$optimized_images              = (int) ( $stats['optimized_images'] ?? 0 );
 		$stats['unoptimized_images']   = max( 0, $total_images - $optimized_images );
 		$stats['optimization_percent'] = ( $total_images > 0 ) ? ( $optimized_images / $total_images ) * 100 : 0.0;
 		$stats['optimization_percent'] = round( $stats['optimization_percent'], 1 );
@@ -208,10 +153,8 @@ final class Cache_Hive_Image_Stats {
 	 * @return array The initial state of the sync.
 	 */
 	public static function start_manual_sync(): array {
-		// ** THE FIX **: Get a precise count of images that need optimization, respecting exclusions.
 		$unoptimized_count = self::get_unoptimized_count( true );
-
-		$state = array(
+		$state             = array(
 			'method'            => 'manual',
 			'total_to_optimize' => $unoptimized_count,
 			'processed'         => 0,
@@ -260,11 +203,8 @@ final class Cache_Hive_Image_Stats {
 		if ( ! $state || ! empty( $state['is_finished'] ) ) {
 			return $state ? $state : array( 'is_finished' => true );
 		}
-
-		$settings   = Cache_Hive_Settings::get_settings();
-		$batch_size = (int) ( $settings['image_batch_size'] ?? 10 );
-
-		// ** THE FIX **: Use a simpler query and check for exclusions inside the loop.
+		$settings                 = Cache_Hive_Settings::get_settings();
+		$batch_size               = (int) ( $settings['image_batch_size'] ?? 10 );
 		$unoptimized_images_query = new \WP_Query(
 			array(
 				'post_type'      => 'attachment',
@@ -287,31 +227,20 @@ final class Cache_Hive_Image_Stats {
 				),
 			)
 		);
-
-		$attachment_ids     = $unoptimized_images_query->posts;
-		$found_count        = count( $attachment_ids );
-		$processed_in_batch = 0;
-
+		$attachment_ids           = $unoptimized_images_query->posts;
+		$found_count              = count( $attachment_ids );
+		$processed_in_batch       = 0;
 		if ( ! empty( $attachment_ids ) ) {
 			foreach ( $attachment_ids as $attachment_id ) {
-				// ** THE FIX **: Manually check the status before processing.
 				$meta = Cache_Hive_Image_Meta::get_meta( $attachment_id );
 				if ( isset( $meta['status'] ) && 'excluded' === $meta['status'] ) {
-					continue; // Skip this already-excluded image.
-				}
-
+					continue; }
 				$result = Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
-
-				// Count both successful optimizations and newly identified exclusions as "processed".
 				if ( true === $result || 'skipped' === $result ) {
-					++$processed_in_batch;
-				}
+					++$processed_in_batch; }
 			}
 		}
-
 		$state['processed'] += $processed_in_batch;
-
-		// If the query returned fewer than the batch size, we are done.
 		if ( $found_count < $batch_size || 0 === $found_count ) {
 			$state['is_finished'] = true;
 			self::clear_sync_state();
@@ -352,16 +281,8 @@ final class Cache_Hive_Image_Stats {
 		foreach ( $url_exclusions as $rule ) {
 			$trimmed_rule = trim( $rule );
 			if ( empty( $trimmed_rule ) ) {
-				continue;
-			}
-
-			$ids = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status = 'inherit' AND guid LIKE %s",
-					'%' . $wpdb->esc_like( $trimmed_rule ) . '%'
-				)
-			);
-
+				continue; }
+			$ids = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_status = 'inherit' AND guid LIKE %s", '%' . $wpdb->esc_like( $trimmed_rule ) . '%' ) );
 			if ( ! empty( $ids ) ) {
 				$excluded_ids = array_merge( $excluded_ids, $ids );
 			}

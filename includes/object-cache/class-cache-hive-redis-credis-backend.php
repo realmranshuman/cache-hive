@@ -27,6 +27,14 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	 * @var array
 	 */
 	private $config;
+
+	/**
+	 * The secure data transcoder.
+	 *
+	 * @var Cache_Hive_Transcoder
+	 */
+	private $transcoder;
+
 	/**
 	 * Connection status.
 	 *
@@ -37,13 +45,13 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	/**
 	 * Sets up the Credis connection.
 	 *
-	 * @param array $config The backend configuration.
+	 * @param array                 $config The backend configuration.
+	 * @param Cache_Hive_Transcoder $transcoder The secure transcoder instance.
 	 */
-	public function __construct( $config ) {
-		$this->config = $config;
+	public function __construct( $config, $transcoder ) {
+		$this->config     = $config;
+		$this->transcoder = $transcoder;
 		if ( ! class_exists( 'Cache_Hive\\Vendor\\Credis_Client' ) ) {
-			// Fallback to Array backend if Credis_Client is not available.
-			// This is handled by the factory, so we just return here.
 			return;
 		}
 
@@ -67,20 +75,6 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 	}
 
 	/**
-	 * Unserializes a value if it's a serialized string.
-	 *
-	 * @param mixed $value The value to unserialize.
-	 * @return mixed The unserialized value or the original value if not serialized.
-	 */
-	private function unserialize_value( $value ) {
-		if ( is_string( $value ) ) {
-			$unserialized = @unserialize( $value );
-			return ( false !== $unserialized || 'b:0;' === $value ) ? $unserialized : $value;
-		}
-		return $value;
-	}
-
-	/**
 	 * Retrieves a value from the cache.
 	 *
 	 * @param string $key The key to retrieve.
@@ -96,8 +90,9 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		if ( null === $value ) {
 			return false;
 		}
-		$found = true;
-		return $this->unserialize_value( $value );
+		$decoded = $this->transcoder->decode( $value );
+		$found   = ( false !== $decoded );
+		return $decoded;
 	}
 
 	/**
@@ -114,7 +109,10 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		$result = array();
 		foreach ( $keys as $i => $key ) {
 			if ( isset( $values[ $i ] ) && null !== $values[ $i ] ) {
-				$result[ $key ] = $this->unserialize_value( $values[ $i ] );
+				$decoded = $this->transcoder->decode( $values[ $i ] );
+				if ( false !== $decoded ) {
+					$result[ $key ] = $decoded;
+				}
 			}
 		}
 		return $result;
@@ -132,7 +130,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		if ( ! $this->is_connected() ) {
 			return false;
 		}
-		return $this->client->setex( $key, $ttl, serialize( $value ) );
+		return $this->client->setex( $key, $ttl, $this->transcoder->encode( $value ) );
 	}
 
 	/**
@@ -149,7 +147,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		}
 		return $this->client->set(
 			$key,
-			serialize( $value ),
+			$this->transcoder->encode( $value ),
 			array(
 				'nx',
 				'ex' => $ttl,
@@ -171,7 +169,7 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 		}
 		return $this->client->set(
 			$key,
-			serialize( $value ),
+			$this->transcoder->encode( $value ),
 			array(
 				'xx',
 				'ex' => $ttl,

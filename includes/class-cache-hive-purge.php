@@ -113,10 +113,6 @@ final class Cache_Hive_Purge {
 	/**
 	 * Purges the object cache for the current site.
 	 *
-	 * This function leverages the standard WordPress function `wp_cache_flush()`,
-	 * which correctly triggers the flush method of any active persistent object
-	 * cache drop-in (e.g., Redis, Memcached) and respects multisite prefixes.
-	 *
 	 * @since 1.0.0
 	 */
 	public static function purge_object_cache() {
@@ -270,7 +266,6 @@ final class Cache_Hive_Purge {
 			$symlink_dir    = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
 			$symlink_prefix = substr( $url_hash, 4 );
 
-			// Instead of deleting the entire directory, iterate and delete only matching symlinks.
 			if ( is_dir( $symlink_dir ) ) {
 				try {
 					$iterator = new DirectoryIterator( $symlink_dir );
@@ -285,16 +280,20 @@ final class Cache_Hive_Purge {
 			}
 		} else {
 			// Compatible Path (Windows): Recursively scan the primary user cache directory.
-			if ( is_dir( CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
-				$iterator = new RecursiveIteratorIterator(
-					new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_USER_CACHE_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
-					RecursiveIteratorIterator::SELF_FIRST
-				);
-				foreach ( $iterator as $file ) {
-					if ( $file->isFile() && str_starts_with( $file->getFilename(), $url_hash ) ) {
-						@unlink( $file->getRealPath() );
-						@unlink( $file->getRealPath() . '.meta' );
+			if ( defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) && is_dir( CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
+				try {
+					$iterator = new RecursiveIteratorIterator(
+						new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_USER_CACHE_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
+						RecursiveIteratorIterator::SELF_FIRST
+					);
+					foreach ( $iterator as $file ) {
+						if ( $file->isFile() && str_starts_with( $file->getFilename(), $url_hash ) ) {
+							@unlink( $file->getRealPath() );
+							@unlink( $file->getRealPath() . '.meta' );
+						}
 					}
+				} catch ( \Exception $e ) {
+					// Ignore errors during iteration.
 				}
 			}
 		}
@@ -359,26 +358,44 @@ final class Cache_Hive_Purge {
 		if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) || ! is_dir( CACHE_HIVE_PRIVATE_URL_INDEX_DIR ) ) {
 			return;
 		}
-		$iterator = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_URL_INDEX_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
-			RecursiveIteratorIterator::SELF_FIRST
-		);
-		foreach ( $iterator as $file ) {
-			if ( $file->isFile() && '.ln' === substr( $file->getFilename(), -3 ) ) {
-				// Use is_link() to be safe, then check if the target exists.
-				if ( is_link( $file->getRealPath() ) && ! file_exists( readlink( $file->getRealPath() ) ) ) {
-					@unlink( $file->getRealPath() );
+		try {
+			$iterator = new RecursiveIteratorIterator(
+				new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_URL_INDEX_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
+				RecursiveIteratorIterator::SELF_FIRST
+			);
+			foreach ( $iterator as $file ) {
+				if ( $file->isFile() && '.ln' === substr( $file->getFilename(), -3 ) ) {
+					// Use is_link() to be safe, then check if the target exists.
+					if ( is_link( $file->getRealPath() ) && ! file_exists( readlink( $file->getRealPath() ) ) ) {
+						@unlink( $file->getRealPath() );
+					}
 				}
 			}
+		} catch ( \Exception $e ) {
+			// Ignore errors during garbage collection.
 		}
 	}
 
 	/**
-	 * Recursively deletes a directory and its contents.
+	 * Recursively deletes a directory and its contents with a security safeguard.
 	 *
 	 * @param string $dir The directory path to delete.
 	 */
 	public static function delete_directory( $dir ) {
+		// SECURITY HARDENING: Add a safeguard to ensure we only operate within our designated directories.
+		$real_dir         = realpath( $dir );
+		$real_cache_root  = defined( 'CACHE_HIVE_ROOT_CACHE_DIR' ) ? realpath( CACHE_HIVE_ROOT_CACHE_DIR ) : false;
+		$real_config_root = defined( 'CACHE_HIVE_ROOT_CONFIG_DIR' ) ? realpath( CACHE_HIVE_ROOT_CONFIG_DIR ) : false;
+
+		// Abort if the path is invalid or outside of our allowed root directories.
+		if ( ! $real_dir || ( ( ! $real_cache_root || strpos( $real_dir, $real_cache_root ) !== 0 ) && ( ! $real_config_root || strpos( $real_dir, $real_config_root ) !== 0 ) ) ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( 'Cache Hive Security: Aborted attempt to delete a directory outside of allowed paths: ' . $dir );
+			}
+			return;
+		}
+
 		if ( ! is_dir( $dir ) ) {
 			return;
 		}
