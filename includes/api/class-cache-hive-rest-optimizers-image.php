@@ -71,6 +71,7 @@ class Cache_Hive_REST_Optimizers_Image {
 			'settings'            => $image_settings,
 			'server_capabilities' => $capabilities,
 			'stats'               => Cache_Hive_Image_Stats::get_stats( true ),
+			'is_network_admin'    => is_multisite() && is_network_admin(),
 		);
 
 		return new WP_REST_Response( $response_data, 200 );
@@ -111,12 +112,19 @@ class Cache_Hive_REST_Optimizers_Image {
 
 		$sanitized = Cache_Hive_Settings::sanitize_settings( $input );
 
-		$all_settings = Cache_Hive_Settings::get_settings();
+		$all_settings     = Cache_Hive_Settings::get_settings();
+		$is_network_admin = is_multisite() && is_network_admin();
+
 		foreach ( $sanitized as $key => $value ) {
 			$all_settings[ $key ] = $value;
 		}
 
-		update_option( 'cache_hive_settings', $all_settings, 'yes' );
+		if ( $is_network_admin ) {
+			update_site_option( 'cache_hive_settings', $all_settings );
+		} else {
+			update_option( 'cache_hive_settings', $all_settings, 'yes' );
+		}
+
 		Cache_Hive_Lifecycle::create_config_file( $all_settings );
 		Cache_Hive_Settings::invalidate_settings_snapshot();
 
@@ -205,8 +213,8 @@ class Cache_Hive_REST_Optimizers_Image {
 	 * @return WP_REST_Response
 	 */
 	public static function get_stats_status( WP_REST_Request $request ) {
-		if ( \get_transient( Cache_Hive_Image_Stats::STATS_DIRTY_TRANSIENT ) ) {
-			\delete_transient( Cache_Hive_Image_Stats::STATS_DIRTY_TRANSIENT );
+		if ( \get_transient( Cache_Hive_Image_Stats::STATS_DIRTY_TRANSTIENT ) ) {
+			\delete_transient( Cache_Hive_Image_Stats::STATS_DIRTY_TRANSTIENT );
 			return new WP_REST_Response( array( 'dirty' => true ), 200 );
 		}
 		return new WP_REST_Response( array( 'dirty' => false ), 200 );

@@ -14,6 +14,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { NetworkAlert } from "@/components/ui/network-alert";
+import { AutoPurgeFormData } from "@/api/autopurge";
 
 const autoPurgeSchema = z.object({
   auto_purge_entire_site: z.boolean().optional(),
@@ -32,13 +34,12 @@ const autoPurgeSchema = z.object({
     .array(z.string())
     .optional()
     .transform((val) => val?.filter(Boolean)),
+  is_network_admin: z.boolean().optional(),
 });
-
-export type AutoPurgeFormData = z.infer<typeof autoPurgeSchema>;
 
 interface AutoPurgeTabFormProps {
   initial: Partial<AutoPurgeFormData>;
-  onSubmit: (data: AutoPurgeFormData) => Promise<void>;
+  onSubmit: (data: Partial<AutoPurgeFormData>) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -52,7 +53,7 @@ export function AutoPurgeTabForm({
   onSubmit,
   isSaving,
 }: AutoPurgeTabFormProps) {
-  const form = useForm<AutoPurgeFormData>({
+  const form = useForm<z.infer<typeof autoPurgeSchema>>({
     resolver: zodResolver(autoPurgeSchema),
     defaultValues: initial,
   });
@@ -84,11 +85,12 @@ export function AutoPurgeTabForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <NetworkAlert isNetworkAdmin={initial.is_network_admin} />
         <FormField
           control={form.control}
           name="purge_on_upgrade"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>
                 Purge All Cache on Plugin/Theme/Core Upgrade
               </FormLabel>
@@ -163,7 +165,7 @@ export function AutoPurgeTabForm({
           control={form.control}
           name="serve_stale"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between pt-4">
+            <FormItem className="flex items-center justify-between pt-4 rounded-lg border p-4">
               <FormLabel>Serve Stale Cache While Regenerating</FormLabel>
               <FormControl>
                 <Switch
@@ -177,7 +179,11 @@ export function AutoPurgeTabForm({
         />
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Changes"}
+            {isSaving
+              ? "Saving..."
+              : initial.is_network_admin
+              ? "Save Network Settings"
+              : "Save Site Settings"}
           </Button>
         </div>
       </form>

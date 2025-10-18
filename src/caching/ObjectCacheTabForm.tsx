@@ -35,6 +35,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import { NetworkAlert } from "@/components/ui/network-alert";
 
 const objectCacheSchema = z.object({
   object_cache_enabled: z.boolean().default(false),
@@ -256,6 +257,7 @@ export function ObjectCacheTabForm({
             onSubmit={form.handleSubmit(handleSubmit)}
             className="space-y-6"
           >
+            <NetworkAlert isNetworkAdmin={initial.is_network_admin} />
             <FormField
               control={form.control}
               name="object_cache_enabled"
@@ -554,7 +556,11 @@ export function ObjectCacheTabForm({
             />
             <div className="flex justify-end pt-4">
               <Button type="submit" disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving
+                  ? "Saving..."
+                  : initial.is_network_admin
+                  ? "Save Network Settings"
+                  : "Save Site Settings"}
               </Button>
             </div>
           </form>

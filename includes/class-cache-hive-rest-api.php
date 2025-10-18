@@ -11,6 +11,7 @@ namespace Cache_Hive\Includes;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Autopurge;
 use Cache_Hive\Includes\API\Cache_Hive_REST_BrowserCache;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Cache;
+use Cache_Hive\Includes\API\Cache_Hive_REST_Cloudflare;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Exclusions;
 use Cache_Hive\Includes\API\Cache_Hive_REST_ObjectCache;
 use Cache_Hive\Includes\API\Cache_Hive_REST_Optimizers_CSS;
@@ -38,6 +39,7 @@ require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-js.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-html.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-media.php';
 require_once __DIR__ . '/api/class-cache-hive-rest-optimizers-image.php';
+require_once __DIR__ . '/api/class-cache-hive-rest-cloudflare.php';
 
 /**
  * Manages all REST API endpoints for Cache Hive.
@@ -74,6 +76,7 @@ final class Cache_Hive_REST_API {
 			'/optimizers/html'  => Cache_Hive_REST_Optimizers_HTML::class,
 			'/optimizers/media' => Cache_Hive_REST_Optimizers_Media::class,
 			'/optimizers/image' => Cache_Hive_REST_Optimizers_Image::class,
+			'/cloudflare'       => Cache_Hive_REST_Cloudflare::class,
 		);
 
 		foreach ( $routes as $endpoint => $class ) {
@@ -168,6 +171,10 @@ final class Cache_Hive_REST_API {
 	 * @return bool
 	 */
 	public static function permissions_check() {
+		// For multisite, allow network admins to manage network settings.
+		if ( is_multisite() && is_network_admin() ) {
+			return current_user_can( 'manage_network_options' );
+		}
 		return current_user_can( 'manage_options' );
 	}
 
@@ -180,15 +187,16 @@ final class Cache_Hive_REST_API {
 	 * @return \WP_REST_Response The JSON response for the API call.
 	 */
 	public static function perform_action( \WP_REST_Request $request ) {
-		$action = $request->get_param( 'action' );
+		$action           = $request->get_param( 'action' );
+		$is_network_purge = is_multisite() && is_network_admin();
 
 		switch ( $action ) {
 			case 'purge_all':
-				Cache_Hive_Purge::purge_all();
+				Cache_Hive_Purge::purge_all( $is_network_purge );
 				return new \WP_REST_Response(
 					array(
 						'success' => true,
-						'message' => __( 'All caches purged successfully.', 'cache-hive' ),
+						'message' => $is_network_purge ? __( 'All caches for all sites purged successfully.', 'cache-hive' ) : __( 'All caches purged successfully.', 'cache-hive' ),
 					),
 					200
 				);

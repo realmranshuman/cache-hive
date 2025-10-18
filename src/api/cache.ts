@@ -1,5 +1,13 @@
 import { wpApiSettings } from "./shared";
-import { CacheFormData } from "@/caching/CacheTabForm";
+export interface CacheFormData {
+  enable_cache: boolean;
+  cache_logged_users: boolean;
+  cache_commenters: boolean;
+  cache_rest_api: boolean;
+  cache_mobile: boolean;
+  mobile_user_agents?: string[];
+  is_network_admin?: boolean;
+}
 
 export async function getCacheSettings(): Promise<CacheFormData> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/cache`, {
@@ -15,7 +23,7 @@ export async function getCacheSettings(): Promise<CacheFormData> {
 }
 
 export async function updateCacheSettings(
-  data: CacheFormData
+  data: Partial<CacheFormData>
 ): Promise<CacheFormData> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/cache`, {
     method: "POST",

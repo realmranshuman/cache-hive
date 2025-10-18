@@ -13,6 +13,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { NetworkAlert } from "@/components/ui/network-alert";
+import { CacheFormData } from "@/api/cache";
 
 const cacheSchema = z.object({
   enable_cache: z.boolean(),
@@ -24,13 +26,12 @@ const cacheSchema = z.object({
     .array(z.string())
     .optional()
     .transform((val) => val?.filter(Boolean)),
+  is_network_admin: z.boolean().optional(),
 });
-
-export type CacheFormData = z.infer<typeof cacheSchema>;
 
 interface CacheTabFormProps {
   initial: Partial<CacheFormData>;
-  onSubmit: (data: CacheFormData) => Promise<void>;
+  onSubmit: (data: Partial<CacheFormData>) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -39,7 +40,7 @@ export function CacheTabForm({
   onSubmit,
   isSaving,
 }: CacheTabFormProps) {
-  const form = useForm<CacheFormData>({
+  const form = useForm<z.infer<typeof cacheSchema>>({
     resolver: zodResolver(cacheSchema),
     defaultValues: {
       enable_cache: initial.enable_cache ?? false,
@@ -77,11 +78,13 @@ export function CacheTabForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <NetworkAlert isNetworkAdmin={initial.is_network_admin} />
+
         <FormField
           control={form.control}
           name="enable_cache"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Enable Full-Page Caching</FormLabel>
               <FormControl>
                 <Switch
@@ -97,7 +100,7 @@ export function CacheTabForm({
           control={form.control}
           name="cache_logged_users"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Cache for Logged-in Users</FormLabel>
               <FormControl>
                 <Switch
@@ -113,7 +116,7 @@ export function CacheTabForm({
           control={form.control}
           name="cache_commenters"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Cache for Commenters</FormLabel>
               <FormControl>
                 <Switch
@@ -129,7 +132,7 @@ export function CacheTabForm({
           control={form.control}
           name="cache_rest_api"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Cache REST API Requests</FormLabel>
               <FormControl>
                 <Switch
@@ -145,7 +148,7 @@ export function CacheTabForm({
           control={form.control}
           name="cache_mobile"
           render={({ field }) => (
-            <FormItem className="flex items-center justify-between">
+            <FormItem className="flex items-center justify-between rounded-lg border p-4">
               <FormLabel>Cache for Mobile Devices</FormLabel>
               <FormControl>
                 <Switch
@@ -182,7 +185,11 @@ export function CacheTabForm({
         )}
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Changes"}
+            {isSaving
+              ? "Saving..."
+              : initial.is_network_admin
+              ? "Save Network Settings"
+              : "Save Site Settings"}
           </Button>
         </div>
       </form>

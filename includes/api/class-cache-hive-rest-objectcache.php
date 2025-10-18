@@ -78,6 +78,7 @@ class Cache_Hive_REST_ObjectCache {
 				'client' => 'Drop-in not active.',
 			),
 			'server_capabilities'                => self::get_server_capabilities(),
+			'is_network_admin'                   => is_multisite() && is_network_admin(),
 		);
 
 		return new WP_REST_Response( $response_data, 200 );
@@ -92,12 +93,16 @@ class Cache_Hive_REST_ObjectCache {
 	public static function update_settings( WP_REST_Request $request ) {
 		$params           = $request->get_json_params();
 		$settings_to_save = Cache_Hive_Settings::sanitize_settings( $params );
+		$is_network_admin = is_multisite() && is_network_admin();
 		$live_status      = null;
 
 		if ( ! empty( $settings_to_save['object_cache_enabled'] ) ) {
+			// Unconditionally regenerate the key. This acts as a cache salt/buster,
+			// effectively invalidating all old cache entries without needing a FLUSH command.
 			$settings_to_save['object_cache_key'] = 'ch-' . wp_generate_password( 10, false );
-			$runtime_config                       = Cache_Hive_Settings::get_object_cache_runtime_config( $settings_to_save );
-			$test_backend                         = Cache_Hive_Object_Cache_Factory::create( $runtime_config );
+
+			$runtime_config = Cache_Hive_Settings::get_object_cache_runtime_config( $settings_to_save );
+			$test_backend   = Cache_Hive_Object_Cache_Factory::create( $runtime_config );
 
 			if ( ! $test_backend || ! $test_backend->is_connected() ) {
 				return new WP_REST_Response(
@@ -113,7 +118,13 @@ class Cache_Hive_REST_ObjectCache {
 			$test_backend->close();
 		}
 
-		update_option( 'cache_hive_settings', $settings_to_save, 'yes' );
+		// Save settings at the network level or site level.
+		if ( $is_network_admin ) {
+			update_site_option( 'cache_hive_settings', $settings_to_save );
+		} else {
+			update_option( 'cache_hive_settings', $settings_to_save, 'yes' );
+		}
+
 		Cache_Hive_Lifecycle::create_config_file( $settings_to_save );
 		Cache_Hive_Object_Cache::manage_dropin( $settings_to_save );
 

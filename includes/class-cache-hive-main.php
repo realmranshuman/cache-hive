@@ -86,7 +86,8 @@ final class Cache_Hive_Main {
 		// Image Optimization hooks.
 		add_action( 'add_attachment', array( Cache_Hive_Image_Optimizer::class, 'auto_optimize_on_upload' ) );
 		add_action( 'delete_attachment', array( Cache_Hive_Image_Optimizer::class, 'cleanup_on_delete' ) );
-		add_action( Cache_Hive_Image_Batch_Processor::CRON_HOOK, array( Cache_Hive_Image_Batch_Processor::class, 'process_batch' ) );
+		// Use the dynamic, site-specific hook name.
+		add_action( Cache_Hive_Image_Batch_Processor::get_cron_hook(), array( Cache_Hive_Image_Batch_Processor::class, 'process_batch' ) );
 
 		// Image Stats atomic counter hooks.
 		add_action( 'add_attachment', array( Cache_Hive_Image_Stats::class, 'increment_total_count' ) );

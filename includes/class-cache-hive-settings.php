@@ -47,10 +47,16 @@ final class Cache_Hive_Settings {
 			return self::$settings;
 		}
 
-		$db_settings = get_option( 'cache_hive_settings', array() );
-		$defaults    = self::get_default_settings();
+		$defaults = self::get_default_settings();
 
-		$merged_settings = wp_parse_args( $db_settings, $defaults );
+		// In a multisite network, check for network-level settings first.
+		if ( is_multisite() ) {
+			$network_settings = get_site_option( 'cache_hive_settings', array() );
+			$defaults         = wp_parse_args( $network_settings, $defaults );
+		}
+
+		$site_settings   = get_option( 'cache_hive_settings', array() );
+		$merged_settings = wp_parse_args( $site_settings, $defaults );
 
 		// Self-correction for migrating old string values to arrays.
 		foreach ( $merged_settings as $key => &$value ) {
@@ -390,13 +396,20 @@ final class Cache_Hive_Settings {
 		}
 		$config['port'] = $port;
 
-		$config['user']            = $settings['object_cache_username'] ?? '';
-		$config['pass']            = $settings['object_cache_password'] ?? '';
-		$config['timeout']         = (float) ( $settings['object_cache_timeout'] ?? 2.0 );
-		$config['persistent']      = ! empty( $settings['object_cache_persistent_connection'] );
-		$config['prefetch']        = ! empty( $settings['prefetch'] );
-		$config['flush_async']     = ! empty( $settings['flush_async'] );
-		$config['key_prefix']      = $settings['object_cache_key'] ?? '';
+		$config['user']        = $settings['object_cache_username'] ?? '';
+		$config['pass']        = $settings['object_cache_password'] ?? '';
+		$config['timeout']     = (float) ( $settings['object_cache_timeout'] ?? 2.0 );
+		$config['persistent']  = ! empty( $settings['object_cache_persistent_connection'] );
+		$config['prefetch']    = ! empty( $settings['prefetch'] );
+		$config['flush_async'] = ! empty( $settings['flush_async'] );
+
+		// MULTISITE: Prefix the key with the blog ID to prevent collisions in a shared cache.
+		$key_prefix = $settings['object_cache_key'] ?? '';
+		if ( is_multisite() ) {
+			$key_prefix = get_current_blog_id() . ':' . $key_prefix;
+		}
+		$config['key_prefix'] = $key_prefix;
+
 		$config['lifetime']        = $settings['object_cache_lifetime'] ?? 3600;
 		$config['global_groups']   = $settings['object_cache_global_groups'] ?? array();
 		$config['no_cache_groups'] = $settings['object_cache_no_cache_groups'] ?? array();

@@ -34,11 +34,12 @@ class Cache_Hive_REST_BrowserCache {
 		$settings = Cache_Hive_Settings::get_settings();
 		$server   = Cache_Hive_Browser_Cache::get_server_software();
 		$status   = array(
-			'settings' => array(
+			'settings'         => array(
 				'browser_cache_enabled' => (bool) ( $settings['browser_cache_enabled'] ?? false ),
 				'browser_cache_ttl'     => (int) ( $settings['browser_cache_ttl'] ?? 0 ),
 			),
-			'server'   => $server,
+			'server'           => $server,
+			'is_network_admin' => is_multisite() && is_network_admin(),
 		);
 
 		if ( 'apache' === $server || 'litespeed' === $server ) {
@@ -67,10 +68,16 @@ class Cache_Hive_REST_BrowserCache {
 	 * @return WP_REST_Response The response object with the updated status.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
-		$params       = $request->get_json_params();
-		$new_settings = Cache_Hive_Settings::sanitize_settings( $params );
+		$params           = $request->get_json_params();
+		$new_settings     = Cache_Hive_Settings::sanitize_settings( $params );
+		$is_network_admin = is_multisite() && is_network_admin();
 
-		update_option( 'cache_hive_settings', $new_settings );
+		if ( $is_network_admin ) {
+			update_site_option( 'cache_hive_settings', $new_settings );
+		} else {
+			update_option( 'cache_hive_settings', $new_settings, 'yes' );
+		}
+
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
 		$server = Cache_Hive_Browser_Cache::get_server_software();

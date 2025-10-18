@@ -1,6 +1,6 @@
 <?php
 /**
- * Cache settings REST API logic for Cache Hive.
+ * Cloudflare settings REST API logic for Cache Hive.
  *
  * @package Cache_Hive
  */
@@ -17,31 +17,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Handles REST API endpoints for general cache settings.
+ * Handles REST API endpoints for Cloudflare settings.
  */
-class Cache_Hive_REST_Cache {
+class Cache_Hive_REST_Cloudflare {
 
 	/**
-	 * Retrieves the general cache settings.
+	 * Retrieves the Cloudflare settings.
 	 *
 	 * @return WP_REST_Response The response object.
 	 */
 	public static function get_settings() {
 		$settings      = Cache_Hive_Settings::get_settings();
 		$response_data = array(
-			'enable_cache'       => (bool) ( $settings['enable_cache'] ?? false ),
-			'cache_logged_users' => (bool) ( $settings['cache_logged_users'] ?? false ),
-			'cache_commenters'   => (bool) ( $settings['cache_commenters'] ?? false ),
-			'cache_rest_api'     => (bool) ( $settings['cache_rest_api'] ?? false ),
-			'cache_mobile'       => (bool) ( $settings['cache_mobile'] ?? false ),
-			'mobile_user_agents' => $settings['mobile_user_agents'] ?? array(),
-			'is_network_admin'   => is_multisite() && is_network_admin(),
+			'cloudflare_enabled'   => (bool) ( $settings['cloudflare_enabled'] ?? false ),
+			'cloudflare_api_token' => $settings['cloudflare_api_token'] ? '********' : '', // Never expose the token.
+			'cloudflare_zone_id'   => $settings['cloudflare_zone_id'] ?? '',
+			'is_network_admin'     => is_multisite() && is_network_admin(),
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}
 
 	/**
-	 * Updates the general cache settings.
+	 * Updates the Cloudflare settings.
 	 *
 	 * @param WP_REST_Request $request The request object containing the new settings.
 	 * @return WP_REST_Response The response object with the updated settings.
@@ -58,8 +55,6 @@ class Cache_Hive_REST_Cache {
 		}
 
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
-
-		// Invalidate the static settings snapshot to ensure the next get_settings() call is fresh.
 		Cache_Hive_Settings::invalidate_settings_snapshot();
 
 		return self::get_settings();

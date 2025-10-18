@@ -20,11 +20,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Cache_Hive_Image_Batch_Processor {
 
 	/**
-	 * The cron hook name.
+	 * The base cron hook name.
 	 *
 	 * @var string
 	 */
-	const CRON_HOOK = 'cache_hive_image_optimization_batch';
+	const CRON_HOOK_BASE = 'cache_hive_image_optimization_batch';
 
 	/**
 	 * The transient key used as a lock to prevent concurrent runs.
@@ -32,6 +32,16 @@ final class Cache_Hive_Image_Batch_Processor {
 	 * @var string
 	 */
 	const LOCK_TRANSIENT = 'cache_hive_image_batch_lock';
+
+	/**
+	 * Gets the site-specific cron hook name.
+	 *
+	 * @since 1.1.0
+	 * @return string The full cron hook name.
+	 */
+	public static function get_cron_hook(): string {
+		return self::CRON_HOOK_BASE . ( is_multisite() ? '_' . get_current_blog_id() : '' );
+	}
 
 	/**
 	 * Schedules the cron event if batch processing is enabled.
@@ -42,9 +52,10 @@ final class Cache_Hive_Image_Batch_Processor {
 		// First, add our custom schedule to WordPress.
 		add_filter( 'cron_schedules', array( __CLASS__, 'add_fifteen_minute_schedule' ) );
 
+		$cron_hook = self::get_cron_hook();
 		// Then, schedule the event using our custom interval.
-		if ( ! \wp_next_scheduled( self::CRON_HOOK ) ) {
-			\wp_schedule_event( time(), 'fifteen_minutes', self::CRON_HOOK );
+		if ( ! \wp_next_scheduled( $cron_hook ) ) {
+			\wp_schedule_event( time(), 'fifteen_minutes', $cron_hook );
 		}
 	}
 
@@ -69,12 +80,12 @@ final class Cache_Hive_Image_Batch_Processor {
 	}
 
 	/**
-	 * Clears the scheduled cron event.
+	 * Clears the scheduled cron event for the current site.
 	 *
 	 * @since 1.0.0
 	 */
 	public static function clear_scheduled_event() {
-		\wp_clear_scheduled_hook( self::CRON_HOOK );
+		\wp_clear_scheduled_hook( self::get_cron_hook() );
 	}
 
 	/**

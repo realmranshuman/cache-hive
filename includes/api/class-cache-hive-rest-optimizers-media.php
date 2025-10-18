@@ -35,7 +35,7 @@ class Cache_Hive_REST_Optimizers_Media {
 			'media_iframe_excludes'        => $settings['media_iframe_excludes'] ?? array(),
 			'media_add_missing_sizes'      => (bool) ( $settings['media_add_missing_sizes'] ?? false ),
 			'media_responsive_placeholder' => (bool) ( $settings['media_responsive_placeholder'] ?? false ),
-			// Removed: media_optimize_uploads, media_optimization_quality, media_auto_resize_uploads, media_resize_width, media_resize_height.
+			'is_network_admin'             => is_multisite() && is_network_admin(),
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}
@@ -47,10 +47,16 @@ class Cache_Hive_REST_Optimizers_Media {
 	 * @return WP_REST_Response The response object with the updated settings.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
-		$params       = $request->get_json_params();
-		$new_settings = Cache_Hive_Settings::sanitize_settings( $params );
+		$params           = $request->get_json_params();
+		$new_settings     = Cache_Hive_Settings::sanitize_settings( $params );
+		$is_network_admin = is_multisite() && is_network_admin();
 
-		update_option( 'cache_hive_settings', $new_settings, 'yes' );
+		if ( $is_network_admin ) {
+			update_site_option( 'cache_hive_settings', $new_settings );
+		} else {
+			update_option( 'cache_hive_settings', $new_settings, 'yes' );
+		}
+
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
 		// Invalidate the static settings snapshot to ensure the next get_settings() call is fresh.

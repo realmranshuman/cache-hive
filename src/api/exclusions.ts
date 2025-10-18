@@ -1,5 +1,12 @@
 import { wpApiSettings } from "./shared";
-import { ExclusionsFormData } from "@/caching/ExclusionsTabForm";
+
+export interface ExclusionsFormData {
+  exclude_uris?: string[];
+  exclude_query_strings?: string[];
+  exclude_cookies?: string[];
+  exclude_roles?: string[];
+  is_network_admin?: boolean;
+}
 
 export async function getExclusionsSettings(): Promise<ExclusionsFormData> {
   const response = await fetch(
@@ -18,7 +25,7 @@ export async function getExclusionsSettings(): Promise<ExclusionsFormData> {
 }
 
 export async function updateExclusionsSettings(
-  data: ExclusionsFormData
+  data: Partial<ExclusionsFormData>
 ): Promise<ExclusionsFormData> {
   const response = await fetch(
     `${wpApiSettings.root}cache-hive/v1/exclusions`,

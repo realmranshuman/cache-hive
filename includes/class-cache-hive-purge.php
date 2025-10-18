@@ -40,6 +40,9 @@ final class Cache_Hive_Purge {
 		// Purge on theme/plugin/core updates.
 		add_action( 'upgrader_process_complete', array( __CLASS__, 'on_upgrade' ), 10, 2 );
 
+		// Purge when a user's profile is updated (e.g., role change).
+		add_action( 'profile_update', array( __CLASS__, 'purge_user_private_cache' ), 10, 1 );
+
 		// Register custom purge hooks from settings.
 		$custom_hooks = Cache_Hive_Settings::get( 'custom_purge_hooks' );
 		if ( ! empty( $custom_hooks ) && is_array( $custom_hooks ) ) {
@@ -48,48 +51,71 @@ final class Cache_Hive_Purge {
 			}
 		}
 
-		// Hook up the garbage collector to a daily cron job, only if using symlinks.
+		// MULTISITE: Make cron hooks site-specific to avoid conflicts.
+		$cron_hook_suffix = is_multisite() ? '_' . get_current_blog_id() : '';
+		$gc_cron_hook     = 'cache_hive_garbage_collection' . $cron_hook_suffix;
+
 		if ( Cache_Hive_Settings::get( 'use_symlinks' ) ) {
-			add_action( 'cache_hive_garbage_collection', array( __CLASS__, 'garbage_collect_private_cache' ) );
-			if ( ! wp_next_scheduled( 'cache_hive_garbage_collection' ) ) {
-				wp_schedule_event( time(), 'daily', 'cache_hive_garbage_collection' );
+			add_action( $gc_cron_hook, array( __CLASS__, 'garbage_collect_private_cache' ) );
+			if ( ! wp_next_scheduled( $gc_cron_hook ) ) {
+				wp_schedule_event( time(), 'daily', $gc_cron_hook );
 			}
+		} else {
+			wp_clear_scheduled_hook( $gc_cron_hook );
 		}
 	}
 
 	/**
-	 * Purges the entire cache, including disk, object, and third-party caches like Cloudflare.
+	 * Purges the entire cache for the current site or the entire network.
 	 * This is the master purge function that orchestrates all other purge types.
 	 *
 	 * @since 1.0.0
+	 * @param bool $network_wide If true, purges all sites in the network.
 	 */
-	public static function purge_all() {
-		self::purge_disk_cache();
-		self::purge_object_cache();
-
-		// Also purge Cloudflare if it's enabled.
-		if ( Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
-			Cache_Hive_Cloudflare::purge_all();
+	public static function purge_all( $network_wide = false ) {
+		if ( is_multisite() && ( $network_wide || is_network_admin() ) ) {
+			foreach ( get_sites( array( 'fields' => 'ids' ) ) as $blog_id ) {
+				switch_to_blog( $blog_id );
+				self::purge_site_caches();
+				restore_current_blog();
+			}
+		} else {
+			self::purge_site_caches();
 		}
 	}
 
 	/**
-	 * Purges the entire disk cache (both public and private page cache).
+	 * Helper function to purge all caches for the current site.
+	 *
+	 * @since 1.1.0
+	 */
+	private static function purge_site_caches() {
+		self::purge_disk_cache();
+		self::purge_object_cache();
+
+		if ( Cache_Hive_Settings::get( 'cloudflare_enabled' ) ) {
+			Integrations\Cache_Hive_Cloudflare::purge_all();
+		}
+	}
+
+
+	/**
+	 * Purges the entire disk cache (both public and private page cache) for the current site.
 	 *
 	 * @since 1.0.0
 	 */
 	public static function purge_disk_cache() {
-		if ( is_dir( CACHE_HIVE_BASE_CACHE_DIR ) ) {
+		if ( defined( 'CACHE_HIVE_BASE_CACHE_DIR' ) && is_dir( CACHE_HIVE_BASE_CACHE_DIR ) ) {
 			self::delete_directory( CACHE_HIVE_BASE_CACHE_DIR );
 		}
 	}
 
 	/**
-	 * Purges the object cache.
+	 * Purges the object cache for the current site.
 	 *
 	 * This function leverages the standard WordPress function `wp_cache_flush()`,
 	 * which correctly triggers the flush method of any active persistent object
-	 * cache drop-in (e.g., Redis, Memcached).
+	 * cache drop-in (e.g., Redis, Memcached) and respects multisite prefixes.
 	 *
 	 * @since 1.0.0
 	 */
@@ -139,7 +165,7 @@ final class Cache_Hive_Purge {
 	 */
 	public static function on_upgrade( $upgrader, $options ) {
 		if ( Cache_Hive_Settings::get( 'purge_on_upgrade' ) && 'update' === ( $options['action'] ?? '' ) ) {
-			self::purge_all();
+			self::purge_all( true ); // Purge all sites on upgrade.
 		}
 	}
 
@@ -330,7 +356,7 @@ final class Cache_Hive_Purge {
 			return;
 		}
 
-		if ( ! is_dir( CACHE_HIVE_PRIVATE_URL_INDEX_DIR ) ) {
+		if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) || ! is_dir( CACHE_HIVE_PRIVATE_URL_INDEX_DIR ) ) {
 			return;
 		}
 		$iterator = new RecursiveIteratorIterator(
@@ -339,7 +365,8 @@ final class Cache_Hive_Purge {
 		);
 		foreach ( $iterator as $file ) {
 			if ( $file->isFile() && '.ln' === substr( $file->getFilename(), -3 ) ) {
-				if ( ! @file_exists( $file->getRealPath() ) ) {
+				// Use is_link() to be safe, then check if the target exists.
+				if ( is_link( $file->getRealPath() ) && ! file_exists( readlink( $file->getRealPath() ) ) ) {
 					@unlink( $file->getRealPath() );
 				}
 			}
@@ -355,17 +382,22 @@ final class Cache_Hive_Purge {
 		if ( ! is_dir( $dir ) ) {
 			return;
 		}
-		$iterator = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
-			RecursiveIteratorIterator::CHILD_FIRST
-		);
-		foreach ( $iterator as $file ) {
-			if ( $file->isDir() ) {
-				@rmdir( $file->getRealPath() );
-			} else {
-				@unlink( $file->getRealPath() );
+		try {
+			$iterator = new RecursiveIteratorIterator(
+				new RecursiveDirectoryIterator( $dir, RecursiveDirectoryIterator::SKIP_DOTS ),
+				RecursiveIteratorIterator::CHILD_FIRST
+			);
+			foreach ( $iterator as $file ) {
+				if ( $file->isDir() ) {
+					// Use @ to suppress warnings on permission errors.
+					@rmdir( $file->getRealPath() );
+				} else {
+					@unlink( $file->getRealPath() );
+				}
 			}
+			@rmdir( $dir );
+		} catch ( \Exception $e ) {
+			// Fails silently if permissions are not sufficient.
 		}
-		@rmdir( $dir );
 	}
 }

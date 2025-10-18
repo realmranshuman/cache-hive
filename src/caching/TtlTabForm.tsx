@@ -12,6 +12,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { NetworkAlert } from "@/components/ui/network-alert";
+import { TtlFormData } from "@/api/ttl";
 
 const MIN_TTL = 300;
 const MAX_TTL = 63072000;
@@ -22,18 +24,17 @@ const ttlSchema = z.object({
   front_page_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
   feed_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
   rest_ttl: z.coerce.number().min(MIN_TTL).max(MAX_TTL),
+  is_network_admin: z.boolean().optional(),
 });
-
-export type TtlFormData = z.infer<typeof ttlSchema>;
 
 interface TtlTabFormProps {
   initial: Partial<TtlFormData>;
-  onSubmit: (data: TtlFormData) => Promise<void>;
+  onSubmit: (data: Partial<TtlFormData>) => Promise<void>;
   isSaving: boolean;
 }
 
 export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
-  const form = useForm<TtlFormData>({
+  const form = useForm<z.infer<typeof ttlSchema>>({
     resolver: zodResolver(ttlSchema),
     defaultValues: {
       public_cache_ttl: initial.public_cache_ttl || MIN_TTL,
@@ -56,108 +57,112 @@ export function TtlTabForm({ initial, onSubmit, isSaving }: TtlTabFormProps) {
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
-      >
-        <FormField
-          control={form.control}
-          name="public_cache_ttl"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Default TTL for Public Cache (seconds)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min={MIN_TTL}
-                  max={MAX_TTL}
-                  disabled={isSaving}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="private_cache_ttl"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Default TTL for Private Cache (seconds)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min={MIN_TTL}
-                  max={MAX_TTL}
-                  disabled={isSaving}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="front_page_ttl"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Default TTL for Front Page (seconds)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min={MIN_TTL}
-                  max={MAX_TTL}
-                  disabled={isSaving}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="feed_ttl"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Default TTL for Feeds (seconds)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min={MIN_TTL}
-                  max={MAX_TTL}
-                  disabled={isSaving}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="rest_ttl"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Default TTL for REST API (seconds)</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  type="number"
-                  min={MIN_TTL}
-                  max={MAX_TTL}
-                  disabled={isSaving}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <NetworkAlert isNetworkAdmin={initial.is_network_admin} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="public_cache_ttl"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Default TTL for Public Cache (seconds)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    min={MIN_TTL}
+                    max={MAX_TTL}
+                    disabled={isSaving}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="private_cache_ttl"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Default TTL for Private Cache (seconds)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    min={MIN_TTL}
+                    max={MAX_TTL}
+                    disabled={isSaving}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="front_page_ttl"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Default TTL for Front Page (seconds)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    min={MIN_TTL}
+                    max={MAX_TTL}
+                    disabled={isSaving}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="feed_ttl"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Default TTL for Feeds (seconds)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    min={MIN_TTL}
+                    max={MAX_TTL}
+                    disabled={isSaving}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="rest_ttl"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Default TTL for REST API (seconds)</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    type="number"
+                    min={MIN_TTL}
+                    max={MAX_TTL}
+                    disabled={isSaving}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <div className="flex justify-end col-span-full">
           <Button type="submit" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Changes"}
+            {isSaving
+              ? "Saving..."
+              : initial.is_network_admin
+              ? "Save Network Settings"
+              : "Save Site Settings"}
           </Button>
         </div>
       </form>

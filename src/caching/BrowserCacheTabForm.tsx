@@ -20,6 +20,7 @@ import {
 } from "@/api";
 import { toast as sonnerToast } from "sonner";
 import { wrapPromise } from "@/utils/wrapPromise";
+import { NetworkAlert } from "@/components/ui/network-alert";
 
 const browserCacheSchema = z.object({
   browser_cache_enabled: z.boolean(),
@@ -177,6 +178,7 @@ export function BrowserCacheTabForm({
 
   return (
     <div className="space-y-6">
+      <NetworkAlert isNetworkAdmin={initialStatus.is_network_admin} />
       {initialStatus.rules_present && (
         <div className="bg-green-100 text-green-800 p-3 rounded">
           <p className="font-bold">Browser cache is active.</p>
@@ -231,7 +233,11 @@ export function BrowserCacheTabForm({
               type="submit"
               disabled={isSaving || initialStatus.htaccess_writable === false}
             >
-              {isSaving ? "Saving..." : "Save Changes"}
+              {isSaving
+                ? "Saving..."
+                : initialStatus.is_network_admin
+                ? "Save Network Settings"
+                : "Save Site Settings"}
             </Button>
           </div>
         </form>

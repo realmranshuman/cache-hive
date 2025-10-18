@@ -3,7 +3,7 @@
  * Plugin Name:       Cache Hive
  * Plugin URI:        https://github.com/realmranshuman/cache-hive
  * Description:       A powerful caching and performance optimization plugin for WordPress.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Author:            Anshuman
  * Author URI:        https://github.com/realmranshuman
  * License:           GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // PLUGIN CONSTANTS
 // =========================================================================
 if ( ! defined( 'CACHE_HIVE_VERSION' ) ) {
-	define( 'CACHE_HIVE_VERSION', '1.0.0' );
+	define( 'CACHE_HIVE_VERSION', '1.1.0' );
 }
 if ( ! defined( 'CACHE_HIVE_FILE' ) ) {
 	define( 'CACHE_HIVE_FILE', __FILE__ );
@@ -43,69 +43,48 @@ if ( ! defined( 'CACHE_HIVE_URL' ) ) {
 }
 
 /**
- * The base directory for all Cache Hive cache files.
+ * The absolute root directory for all Cache Hive cache files across a multisite network.
  *
- * @since 1.0.0
+ * @since 1.1.0
  */
+if ( ! defined( 'CACHE_HIVE_ROOT_CACHE_DIR' ) ) {
+	define( 'CACHE_HIVE_ROOT_CACHE_DIR', WP_CONTENT_DIR . '/cache/cache-hive' );
+}
+
+/**
+ * The absolute root directory for all Cache Hive configuration files across a multisite network.
+ *
+ * @since 1.1.0
+ */
+if ( ! defined( 'CACHE_HIVE_ROOT_CONFIG_DIR' ) ) {
+	define( 'CACHE_HIVE_ROOT_CONFIG_DIR', WP_CONTENT_DIR . '/cache-hive-config' );
+}
+
+/**
+ * Define site-specific constants immediately.
+ * This ensures they are available for activation hooks and all subsequent actions.
+ * WordPress functions like is_multisite() are NOT available here, so we must rely on
+ * the `get_current_blog_id()` which will be defined if MS is loaded.
+ */
+$site_path_segment = defined( 'MULTISITE' ) && MULTISITE ? '/' . get_current_blog_id() : '';
+
+$base_cache_dir  = CACHE_HIVE_ROOT_CACHE_DIR . $site_path_segment;
+$base_config_dir = CACHE_HIVE_ROOT_CONFIG_DIR . $site_path_segment;
+
 if ( ! defined( 'CACHE_HIVE_BASE_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_BASE_CACHE_DIR', WP_CONTENT_DIR . '/cache/cache-hive' );
-}
-
-/**
- * The directory for storing public (anonymous user) cache files.
- *
- * @since 1.0.0
- */
+	define( 'CACHE_HIVE_BASE_CACHE_DIR', $base_cache_dir ); }
 if ( ! defined( 'CACHE_HIVE_PUBLIC_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_PUBLIC_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/public' );
-}
-
-/**
- * The base directory for all private (logged-in user) cache data.
- *
- * @since 1.0.0
- */
+	define( 'CACHE_HIVE_PUBLIC_CACHE_DIR', $base_cache_dir . '/public' ); }
 if ( ! defined( 'CACHE_HIVE_PRIVATE_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/private' );
-}
-
-/**
- * The primary storage directory for private cache, organized by user hash.
- * This is where the actual cache files are stored.
- *
- * @since 1.0.0
- */
+	define( 'CACHE_HIVE_PRIVATE_CACHE_DIR', $base_cache_dir . '/private' ); }
 if ( ! defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', CACHE_HIVE_PRIVATE_CACHE_DIR . '/user_cache' );
-}
-
-/**
- * The symlink index directory for private cache, organized by URL hash.
- * This directory only contains pointers to the real files for fast URL-based purges.
- *
- * @since 1.0.0
- */
+	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', $base_cache_dir . '/private/user_cache' ); }
 if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR', CACHE_HIVE_PRIVATE_CACHE_DIR . '/url_index' );
-}
-
-/**
- * The directory for storing optimized image assets (WebP, AVIF).
- *
- * @since 1.0.0
- */
+	define( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR', $base_cache_dir . '/private/url_index' ); }
 if ( ! defined( 'CACHE_HIVE_IMAGE_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_IMAGE_CACHE_DIR', CACHE_HIVE_BASE_CACHE_DIR . '/images' );
-}
-
-/**
- * The configuration directory for Cache Hive.
- *
- * @since 1.0.0
- */
+	define( 'CACHE_HIVE_IMAGE_CACHE_DIR', $base_cache_dir . '/images' ); }
 if ( ! defined( 'CACHE_HIVE_CONFIG_DIR' ) ) {
-	define( 'CACHE_HIVE_CONFIG_DIR', WP_CONTENT_DIR . '/cache-hive-config' );
-}
+	define( 'CACHE_HIVE_CONFIG_DIR', $base_config_dir ); }
 
 
 // =========================================================================
@@ -115,6 +94,7 @@ if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
 	require_once __DIR__ . '/vendor/autoload.php';
 }
 
+require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-settings.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-disk.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-engine.php';
@@ -128,7 +108,6 @@ require_once CACHE_HIVE_DIR . 'includes/optimizers/class-cache-hive-media-optimi
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-rest-api.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-admin-bar.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-main.php';
-require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-object-cache.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/interface-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-phpredis-backend.php';
@@ -137,16 +116,12 @@ require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-redis-cred
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-memcached-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-array-backend.php';
 require_once CACHE_HIVE_DIR . 'includes/object-cache/class-cache-hive-object-cache-factory.php';
-
-// START: Image Optimization Suite Includes.
 require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-stats.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-meta.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-rewrite.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-optimizer.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-image-batch-processor.php';
 require_once CACHE_HIVE_DIR . 'includes/optimizers/image-optimizer/class-cache-hive-media-integration.php';
-// END: Image Optimization Suite Includes.
-
 
 // =========================================================================
 // PLUGIN LIFECYCLE & INITIALIZATION
@@ -164,13 +139,11 @@ function cache_hive_init() {
 	if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Purge' ) ) {
 		Cache_Hive_Purge::init();
 	}
-	// Initialize the admin bar functionality.
 	if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Admin_Bar' ) ) {
 		Cache_Hive_Admin_Bar::init();
 	}
 }
 add_action( 'init', 'cache_hive_init' );
-
 
 /**
  * Begins execution of the main plugin class on plugins_loaded.
@@ -181,7 +154,7 @@ add_action( 'init', 'cache_hive_init' );
 function cache_hive_run() {
 	return Cache_Hive_Main::instance();
 }
-add_action( 'plugins_loaded', 'cache_hive_run' );
+add_action( 'plugins_loaded', 'cache_hive_run', 10 );
 
 
 // =========================================================================
@@ -208,55 +181,12 @@ add_filter( 'plugin_action_links_' . CACHE_HIVE_BASE, 'cache_hive_add_settings_l
  * @since 1.0.0
  */
 function cache_hive_register_admin_menu() {
-	add_menu_page(
-		'Cache Hive',
-		'Cache Hive',
-		'manage_options',
-		'cache-hive',
-		'cache_hive_render_admin_page',
-		'dashicons-performance',
-		80
-	);
-	add_submenu_page(
-		'cache-hive',
-		'Dashboard',
-		'Dashboard',
-		'manage_options',
-		'cache-hive',
-		'cache_hive_render_admin_page'
-	);
-	add_submenu_page(
-		'cache-hive',
-		'Caching Settings',
-		'Caching',
-		'manage_options',
-		'cache-hive-caching',
-		'cache_hive_render_admin_page'
-	);
-	add_submenu_page(
-		'cache-hive',
-		'Page Optimization',
-		'Page Optimization',
-		'manage_options',
-		'cache-hive-optimization',
-		'cache_hive_render_admin_page'
-	);
-	add_submenu_page(
-		'cache-hive',
-		'Image Optimization',
-		'Image Optimization',
-		'manage_options',
-		'cache-hive-image-optimization',
-		'cache_hive_render_admin_page'
-	);
-	add_submenu_page(
-		'cache-hive',
-		'Cloudflare',
-		'Cloudflare',
-		'manage_options',
-		'cache-hive-cloudflare',
-		'cache_hive_render_admin_page'
-	);
+	add_menu_page( 'Cache Hive', 'Cache Hive', 'manage_options', 'cache-hive', 'cache_hive_render_admin_page', 'dashicons-performance', 80 );
+	add_submenu_page( 'cache-hive', 'Dashboard', 'Dashboard', 'manage_options', 'cache-hive', 'cache_hive_render_admin_page' );
+	add_submenu_page( 'cache-hive', 'Caching Settings', 'Caching', 'manage_options', 'cache-hive-caching', 'cache_hive_render_admin_page' );
+	add_submenu_page( 'cache-hive', 'Page Optimization', 'Page Optimization', 'manage_options', 'cache-hive-optimization', 'cache_hive_render_admin_page' );
+	add_submenu_page( 'cache-hive', 'Image Optimization', 'Image Optimization', 'manage_options', 'cache-hive-image-optimization', 'cache_hive_render_admin_page' );
+	add_submenu_page( 'cache-hive', 'Cloudflare', 'Cloudflare', 'manage_options', 'cache-hive-cloudflare', 'cache_hive_render_admin_page' );
 }
 add_action( 'admin_menu', 'cache_hive_register_admin_menu' );
 
@@ -276,20 +206,11 @@ function cache_hive_render_admin_page() {
  * @param string $hook The current admin page hook.
  */
 function cache_hive_enqueue_admin_assets( $hook ) {
-	// Enqueue main React app for all plugin pages.
 	if ( false !== strpos( $hook, 'cache-hive' ) ) {
 		$script_path = CACHE_HIVE_DIR . 'build/index.js';
 		$style_path  = CACHE_HIVE_DIR . 'build/index.css';
-
 		if ( file_exists( $script_path ) ) {
-			wp_enqueue_script(
-				'cache-hive-app',
-				CACHE_HIVE_URL . 'build/index.js',
-				array( 'wp-element', 'wp-i18n' ),
-				filemtime( $script_path ),
-				true
-			);
-
+			wp_enqueue_script( 'cache-hive-app', CACHE_HIVE_URL . 'build/index.js', array( 'wp-element', 'wp-i18n' ), filemtime( $script_path ), true );
 			wp_localize_script(
 				'cache-hive-app',
 				'wpApiSettings',
@@ -299,35 +220,17 @@ function cache_hive_enqueue_admin_assets( $hook ) {
 				)
 			);
 		}
-
 		if ( file_exists( $style_path ) ) {
-			wp_enqueue_style(
-				'cache-hive-style',
-				CACHE_HIVE_URL . 'build/index.css',
-				array(),
-				filemtime( $style_path )
-			);
-
-			// Ensure the React app can use full width in admin.
+			wp_enqueue_style( 'cache-hive-style', CACHE_HIVE_URL . 'build/index.css', array(), filemtime( $style_path ) );
 			$custom_css = "\n\tbody[class*='_page_cache-hive'] #wpcontent {\n\t\tpadding-left: 0;\n\t}\n\t";
 			wp_add_inline_style( 'cache-hive-style', $custom_css );
 		}
 	}
-
-	// Enqueue Media Library script only on relevant pages.
 	$media_library_hooks = array( 'upload.php', 'post.php' );
 	if ( in_array( $hook, $media_library_hooks, true ) ) {
-		// Assuming your build process creates a 'media-library.js' file.
 		$media_script_path = CACHE_HIVE_DIR . 'build/media-library.js';
 		if ( file_exists( $media_script_path ) ) {
-			wp_enqueue_script(
-				'cache-hive-media-library',
-				CACHE_HIVE_URL . 'build/media-library.js',
-				array(),
-				filemtime( $media_script_path ),
-				true
-			);
-
+			wp_enqueue_script( 'cache-hive-media-library', CACHE_HIVE_URL . 'build/media-library.js', array(), filemtime( $media_script_path ), true );
 			wp_localize_script(
 				'cache-hive-media-library',
 				'cacheHiveMedia',

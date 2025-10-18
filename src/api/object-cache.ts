@@ -42,6 +42,7 @@ export interface ObjectCacheSettings {
       lzf: boolean;
     };
   };
+  is_network_admin?: boolean;
 }
 
 export async function getObjectCacheSettings(): Promise<ObjectCacheSettings> {

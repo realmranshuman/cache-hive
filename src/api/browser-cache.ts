@@ -10,6 +10,7 @@ export interface BrowserCacheStatus {
   nginx_verified?: boolean | null;
   rules: string;
   rules_present?: boolean;
+  is_network_admin?: boolean;
 }
 
 export async function getBrowserCacheSettings(): Promise<BrowserCacheStatus> {

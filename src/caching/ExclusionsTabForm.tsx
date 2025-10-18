@@ -14,8 +14,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { wrapPromise } from "@/utils/wrapPromise";
-import { getRoles } from "../api";
+import { getRoles, ExclusionsFormData } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
+import { NetworkAlert } from "@/components/ui/network-alert";
 
 const exclusionsSchema = z.object({
   exclude_uris: z
@@ -31,13 +32,12 @@ const exclusionsSchema = z.object({
     .optional()
     .transform((val) => val?.filter(Boolean)),
   exclude_roles: z.array(z.string()).optional(),
+  is_network_admin: z.boolean().optional(),
 });
-
-export type ExclusionsFormData = z.infer<typeof exclusionsSchema>;
 
 interface ExclusionsTabFormProps {
   initial: Partial<ExclusionsFormData>;
-  onSubmit: (data: ExclusionsFormData) => Promise<void>;
+  onSubmit: (data: Partial<ExclusionsFormData>) => Promise<void>;
   isSaving: boolean;
 }
 
@@ -49,7 +49,7 @@ function ExclusionsRolesField({
   isSaving,
 }: {
   roles: { id: string; name: string }[];
-  form: ReturnType<typeof useForm<ExclusionsFormData>>;
+  form: ReturnType<typeof useForm<z.infer<typeof exclusionsSchema>>>;
   isSaving: boolean;
 }) {
   return (
@@ -107,7 +107,7 @@ export function ExclusionsTabForm({
   onSubmit,
   isSaving,
 }: ExclusionsTabFormProps) {
-  const form = useForm<ExclusionsFormData>({
+  const form = useForm<z.infer<typeof exclusionsSchema>>({
     resolver: zodResolver(exclusionsSchema),
     defaultValues: {
       exclude_uris: initial.exclude_uris ?? [],
@@ -136,6 +136,8 @@ export function ExclusionsTabForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <NetworkAlert isNetworkAdmin={initial.is_network_admin} />
+
         <FormField
           control={form.control}
           name="exclude_uris"
@@ -208,7 +210,11 @@ export function ExclusionsTabForm({
         </React.Suspense>
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Changes"}
+            {isSaving
+              ? "Saving..."
+              : initial.is_network_admin
+              ? "Save Network Settings"
+              : "Save Site Settings"}
           </Button>
         </div>
       </form>

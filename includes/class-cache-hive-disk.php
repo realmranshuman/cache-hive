@@ -52,7 +52,7 @@ final class Cache_Hive_Disk {
 			$settings = Cache_Hive_Settings::get_settings();
 
 			// Determine TTL based on whether the cache is private or public.
-			if ( false !== \strpos( $cache_file, CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
+			if ( false !== \strpos( $cache_file, \CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
 				$ttl = $settings['private_cache_ttl'] ?? 1800;
 			} else {
 				$ttl = Cache_Hive_Settings::get_current_page_ttl();

@@ -168,7 +168,7 @@ final class Cache_Hive_Engine {
 		$filename_base = \substr( $url_hash, 4 );
 		$file_suffix   = self::is_mobile() ? '-mobile' : '';
 
-		$dir_path  = CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
+		$dir_path  = \CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
 		$file_name = $filename_base . $file_suffix . '.html';
 
 		return $dir_path . '/' . $file_name;
@@ -205,7 +205,7 @@ final class Cache_Hive_Engine {
 		$url_level2_dir    = \substr( $url_hash, 2, 2 );
 		$url_filename_base = \substr( $url_hash, 4 );
 		$file_suffix       = self::is_mobile() ? '-mobile' : '';
-		$symlink_dir       = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
+		$symlink_dir       = \CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
 		// The symlink name must be unique per-user for the same URL.
 		$symlink_name = $url_filename_base . '-' . $user_hash . $file_suffix . '.ln';
 		$symlink_path = $symlink_dir . '/' . $symlink_name;
@@ -232,7 +232,7 @@ final class Cache_Hive_Engine {
 		$user_level1_dir = \substr( $user_hash, 0, 2 );
 		$user_level2_dir = \substr( $user_hash, 2, 2 );
 		$user_dir_base   = \substr( $user_hash, 4 );
-		$user_dir_path   = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
+		$user_dir_path   = \CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
 
 		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
 		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';

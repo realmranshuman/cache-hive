@@ -1,5 +1,13 @@
 import { wpApiSettings } from "./shared";
-import { TtlFormData } from "@/caching/TtlTabForm";
+
+export interface TtlFormData {
+  public_cache_ttl: number;
+  private_cache_ttl: number;
+  front_page_ttl: number;
+  feed_ttl: number;
+  rest_ttl: number;
+  is_network_admin?: boolean;
+}
 
 export async function getTtlSettings(): Promise<TtlFormData> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/ttl`, {
@@ -15,7 +23,7 @@ export async function getTtlSettings(): Promise<TtlFormData> {
 }
 
 export async function updateTtlSettings(
-  data: TtlFormData
+  data: Partial<TtlFormData>
 ): Promise<TtlFormData> {
   const response = await fetch(`${wpApiSettings.root}cache-hive/v1/ttl`, {
     method: "POST",
