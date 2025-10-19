@@ -102,43 +102,43 @@ final class Cache_Hive_Image_Batch_Processor {
 		// Set a lock to prevent concurrent runs, with a 15-minute expiration.
 		\set_transient( self::LOCK_TRANSIENT, true, 15 * MINUTE_IN_SECONDS );
 
+		global $wpdb;
 		$settings   = Cache_Hive_Settings::get_settings();
 		$batch_size = (int) ( $settings['image_batch_size'] ?? 10 );
+		$meta_key   = Cache_Hive_Image_Meta::META_KEY;
 
-		$query_args = array(
-			'post_type'      => 'attachment',
-			'post_status'    => 'inherit',
-			'posts_per_page' => $batch_size,
-			'fields'         => 'ids',
-			'meta_query'     => array(
-				'relation' => 'OR',
-				array(
-					// Condition 1: The optimization meta key does not exist at all.
-					'key'     => Cache_Hive_Image_Meta::META_KEY,
-					'compare' => 'NOT EXISTS',
-				),
-				array(
-					// ** THE FIX **: Find images that are not optimized AND not already excluded.
-					'relation' => 'AND',
-					array(
-						'key'     => Cache_Hive_Image_Meta::META_KEY,
-						'value'   => 's:6:"status";s:9:"optimized";',
-						'compare' => 'NOT LIKE',
-					),
-					array(
-						'key'     => Cache_Hive_Image_Meta::META_KEY,
-						'value'   => 's:6:"status";s:8:"excluded";',
-						'compare' => 'NOT LIKE',
-					),
-				),
-			),
+		// Use LIKE clauses for serialized data. This is more robust than simple string comparison.
+		$not_optimized_like = '%' . $wpdb->esc_like( 's:6:"status";s:9:"optimized";' ) . '%';
+		$not_excluded_like  = '%' . $wpdb->esc_like( 's:6:"status";s:8:"excluded";' ) . '%';
+		$mime_jpeg          = 'image/jpeg';
+		$mime_png           = 'image/png';
+		$mime_gif           = 'image/gif';
+
+		// This direct SQL query is significantly more performant on large media libraries than using WP_Query with meta_query.
+		$attachment_ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT p.ID
+				 FROM {$wpdb->posts} p
+				 LEFT JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id AND pm.meta_key = %s)
+				 WHERE p.post_type = 'attachment'
+				   AND p.post_status = 'inherit'
+				   AND p.post_mime_type IN (%s, %s, %s)
+				   AND (pm.meta_value IS NULL OR (pm.meta_value NOT LIKE %s AND pm.meta_value NOT LIKE %s))
+				 ORDER BY p.ID ASC
+				 LIMIT %d",
+				$meta_key,
+				$mime_jpeg,
+				$mime_png,
+				$mime_gif,
+				$not_optimized_like,
+				$not_excluded_like,
+				$batch_size
+			)
 		);
 
-		$attachments = new \WP_Query( $query_args );
-
-		if ( $attachments->have_posts() ) {
-			foreach ( $attachments->posts as $attachment_id ) {
-				Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
+		if ( ! empty( $attachment_ids ) ) {
+			foreach ( $attachment_ids as $attachment_id ) {
+				Cache_Hive_Image_Optimizer::optimize_attachment( (int) $attachment_id );
 			}
 		}
 
