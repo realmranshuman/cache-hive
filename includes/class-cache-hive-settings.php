@@ -248,7 +248,6 @@ final class Cache_Hive_Settings {
 				'woocommerce_cart_hash',
 				'comment_author_',
 				'wordpress_sec_',
-				'wordpress_test_cookie',
 				'wp_woocommerce_session_',
 				'woocommerce_items_in_cart',
 			),
@@ -319,28 +318,36 @@ final class Cache_Hive_Settings {
 			'cloudflare_zone_id'                 => '',
 
 			// Page Optimization - CSS.
-			'css_minify'                         => false,
-			'css_combine'                        => false,
-			'css_combine_external_inline'        => false,
-			'css_font_optimization'              => 'default',
+			'css_minify'                         => true,
+			'css_combine'                        => true,
+			'css_combine_external_inline'        => true,
+			'css_font_optimization'              => 'swap',
 			'css_excludes'                       => array(),
 
 			// Page Optimization - JS.
-			'js_minify'                          => false,
+			'js_minify'                          => true,
 			'js_combine'                         => false,
 			'js_combine_external_inline'         => false,
-			'js_defer_mode'                      => 'off',
-			'js_excludes'                        => array(),
-			'js_defer_excludes'                  => array(),
+			'js_defer_mode'                      => 'deferred',
+			'js_excludes' => array(
+				'jquery.js',
+				'jquery.min.js',
+			),
+			'js_defer_excludes' => array(
+				'jquery.js',
+				'jquery.min.js',
+				'gtm.js',
+				'analytics.js',
+			),
 
 			// Page Optimization - HTML.
-			'html_minify'                        => false,
+			'html_minify'                        => true,
 			'html_dns_prefetch'                  => array(),
 			'html_dns_preconnect'                => array(),
-			'auto_dns_prefetch'                  => false,
-			'google_fonts_async'                 => false,
-			'html_keep_comments'                 => false,
-			'remove_emoji_scripts'               => false,
+			'auto_dns_prefetch'                  => true,
+			'google_fonts_async'                 => true,
+			'html_keep_comments'                 => true,
+			'remove_emoji_scripts'               => true,
 			'html_remove_noscript'               => false,
 
 			// Page Optimization - Media.
@@ -353,11 +360,11 @@ final class Cache_Hive_Settings {
 
 			// Image Optimization Settings.
 			'image_optimization_library'         => 'gd',
-			'image_optimize_losslessly'          => true,
+			'image_optimize_losslessly'          => false,
 			'image_optimize_original'            => true,
 			'image_next_gen_format'              => 'webp',
 			'image_quality'                      => 80,
-			'image_delivery_method'              => 'rewrite',
+			'image_delivery_method'              => 'picture',
 			'image_remove_exif'                  => true,
 			'image_auto_resize'                  => false,
 			'image_max_width'                    => 1920,
@@ -367,7 +374,7 @@ final class Cache_Hive_Settings {
 			'image_exclude_images'               => array(), // FIX: Changed from '' to array().
 			'image_exclude_picture_rewrite'      => array(), // NEW: Added new setting.
 			'image_selected_thumbnails'          => array( 'thumbnail', 'medium' ),
-			'image_disable_png_gif'              => true,
+			'image_disable_png_gif'              => false,
 		);
 	}
 
