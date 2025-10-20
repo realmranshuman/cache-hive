@@ -329,11 +329,11 @@ final class Cache_Hive_Settings {
 			'js_combine'                         => false,
 			'js_combine_external_inline'         => false,
 			'js_defer_mode'                      => 'deferred',
-			'js_excludes' => array(
+			'js_excludes'                        => array(
 				'jquery.js',
 				'jquery.min.js',
 			),
-			'js_defer_excludes' => array(
+			'js_defer_excludes'                  => array(
 				'jquery.js',
 				'jquery.min.js',
 				'gtm.js',

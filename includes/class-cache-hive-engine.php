@@ -89,64 +89,61 @@ final class Cache_Hive_Engine {
 
 	/**
 	 * Callback function for output buffering to write the cache file.
-	 * Implements the dual-index symlink strategy for private cache on compatible systems.
+	 * This now serves the optimized version to the first visitor.
 	 *
 	 * @param string $buffer The captured output buffer content.
-	 * @return string The original buffer content.
+	 * @return string The original or optimized buffer content.
 	 */
 	private static function write_cache_file( $buffer ) {
-		// Flag to track if cache generation was attempted on this request.
-		$cache_was_generated = false;
+		if ( ! self::is_content_cacheable( $buffer ) ) {
+			return $buffer;
+		}
 
-		if ( self::is_content_cacheable( $buffer ) ) {
-			$is_private_cache = \is_user_logged_in() && ( self::$settings['cache_logged_users'] ?? false );
+		$is_private_cache = \is_user_logged_in() && ( self::$settings['cache_logged_users'] ?? false );
+		$cache_file       = null;
+		$symlink_file     = null;
 
-			if ( $is_private_cache ) {
-				// --- NEW: Replace dynamic HTML elements with placeholders before caching. ---
-				if ( class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) ) {
-					$buffer = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::replace_dynamic_elements_with_placeholders( $buffer );
-				}
-				// ---------------------------------------------------------------------------
-
-				// OS-aware logic: Use symlinks only on compatible systems (non-Windows).
-				if ( self::$settings['use_symlinks'] ) {
-					list( $cache_file, $symlink_file ) = self::get_private_cache_paths();
-					if ( $cache_file && $symlink_file ) {
-						Cache_Hive_Disk::cache_page( $buffer, $cache_file );
-						self::create_symlink( $cache_file, $symlink_file );
-						$cache_was_generated = true;
-					}
-				} else {
-					// Fallback for Windows: Only write the primary cache file.
-					$cache_file = self::get_private_cache_primary_path();
-					if ( $cache_file ) {
-						Cache_Hive_Disk::cache_page( $buffer, $cache_file );
-						$cache_was_generated = true;
-					}
-				}
-			} else {
-				// Public cache logic is universal.
-				$cache_file = self::get_public_cache_path();
-				if ( $cache_file ) {
-					Cache_Hive_Disk::cache_page( $buffer, $cache_file );
-					$cache_was_generated = true;
-				}
+		// If caching for a logged-in user, replace dynamic elements with placeholders before optimization.
+		if ( $is_private_cache ) {
+			if ( class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) ) {
+				$buffer = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::replace_dynamic_elements_with_placeholders( $buffer );
 			}
 		}
 
-		// If we just generated a cache file, this request served an unoptimized version.
-		// Send headers to instruct upstream caches (like Cloudflare) NOT to cache this specific response.
-		// This is the key to your architecture.
-		if ( $cache_was_generated && ! headers_sent() ) {
-			// Custom header for debugging and specific Cloudflare rules.
-			header( 'X-Cache-Hive-Status: Generating' );
-			// Standard header to prevent caching by any compliant proxy or browser.
-			header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+		// Determine the correct cache file path.
+		if ( $is_private_cache ) {
+			if ( self::$settings['use_symlinks'] ) {
+				list( $cache_file, $symlink_file ) = self::get_private_cache_paths();
+			} else {
+				$cache_file = self::get_private_cache_primary_path();
+			}
+		} else {
+			$cache_file = self::get_public_cache_path();
 		}
 
-		// Return the original, unoptimized buffer to the browser for the fastest possible response.
+		// If a valid cache path was determined, optimize, cache, and serve the optimized content.
+		if ( $cache_file ) {
+			// This call now optimizes, saves the file, and returns the optimized buffer (with signature) on success.
+			$final_content = Cache_Hive_Disk::cache_page( $buffer, $cache_file );
+
+			// Check if caching was successful by seeing if the content changed.
+			if ( $final_content !== $buffer ) {
+				if ( $symlink_file ) {
+					self::create_symlink( $cache_file, $symlink_file );
+				}
+				if ( ! headers_sent() ) {
+					header( 'X-Cache-Hive-Engine: Miss (Generated)' );
+				}
+			}
+
+			// Return the final content (either original on failure or optimized with signature on success).
+			return $final_content;
+		}
+
+		// Fallback: If no cache path was determined, return the buffer (with placeholders if private).
 		return $buffer;
 	}
+
 
 	/**
 	 * Generates the path for a public cache file.
