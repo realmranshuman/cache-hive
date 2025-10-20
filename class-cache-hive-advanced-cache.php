@@ -265,10 +265,28 @@ final class Cache_Hive_Advanced_Cache {
 	 * @return void
 	 */
 	private function deliver_cache() {
-		$cache_file = $this->get_cache_file_path();
-		if ( $this->is_cache_valid( $cache_file ) ) {
-			header( 'X-Cache-Hive: Hit (Advanced)' );
-			$this->serve_file( $cache_file );
+		$cache_file   = $this->get_cache_file_path();
+		$cache_status = $this->is_cache_valid( $cache_file );
+
+		switch ( $cache_status ) {
+			case 'valid':
+				header( 'X-Cache-Hive: Hit (Advanced)' );
+				$this->serve_file( $cache_file );
+				break;
+
+			case 'expired':
+				if ( ! empty( $this->settings['serve_stale'] ) ) {
+					header( 'X-Cache-Hive: Stale' );
+					register_shutdown_function( array( $this, 'trigger_background_regeneration' ) );
+					$this->serve_file( $cache_file );
+				}
+				// If not serving stale, we fall through and treat it as a miss.
+				break;
+
+			case 'invalid':
+			default:
+				// Do nothing, let WordPress handle the request. This is a cache miss.
+				break;
 		}
 	}
 
@@ -376,28 +394,65 @@ final class Cache_Hive_Advanced_Cache {
 	}
 
 	/**
-	 * Checks if a cache file is valid (exists and is not expired).
+	 * Checks if a cache file is valid, expired, or invalid.
 	 *
 	 * @param string $cache_file The full path to the cache file.
-	 * @return bool
+	 * @return string 'valid', 'expired', or 'invalid'.
 	 */
 	private function is_cache_valid( $cache_file ) {
 		if ( empty( $cache_file ) ) {
-			return false;
+			return 'invalid';
 		}
 		$meta_file = $cache_file . '.meta';
 		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
-			return false; }
+			return 'invalid'; }
 		$meta_contents = @file_get_contents( $meta_file );
 		if ( false === $meta_contents ) {
-			return false;
+			return 'invalid';
 		}
 		$meta_data = json_decode( $meta_contents, true );
 		if ( ! is_array( $meta_data ) || empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
-			return false; }
+			return 'invalid'; }
 		if ( 0 === (int) $meta_data['ttl'] ) {
-			return true; }
-		return ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time();
+			return 'valid'; }
+
+		if ( ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time() ) {
+			return 'valid';
+		}
+
+		return 'expired';
+	}
+
+	/**
+	 * Triggers a non-blocking background request to regenerate the cache.
+	 * This is fired as a shutdown function after serving stale content.
+	 */
+	public function trigger_background_regeneration() {
+		$scheme  = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'ssl://' : '';
+		$host    = $_SERVER['HTTP_HOST'] ?? '';
+		$port    = ( 'ssl://' === $scheme ) ? 443 : 80;
+		$path    = $_SERVER['REQUEST_URI'] ?? '/';
+		$timeout = 1; // We just need to fire the request, not wait for a response.
+
+		if ( empty( $host ) ) {
+			return;
+		}
+
+		// Open a socket connection without waiting for the full response.
+		$fp = fsockopen( $scheme . $host, $port, $errno, $errstr, $timeout );
+		if ( ! is_resource( $fp ) ) {
+			return; // Could not open socket.
+		}
+
+		// We use a POST request because it is already bypassed by the caching engine.
+		$request  = "POST {$path} HTTP/1.1\r\n";
+		$request .= "Host: {$host}\r\n";
+		$request .= "User-Agent: Cache-Hive-Regenerator/1.0\r\n";
+		$request .= "Connection: Close\r\n";
+		$request .= "Content-Length: 0\r\n\r\n";
+
+		fwrite( $fp, $request );
+		fclose( $fp );
 	}
 }
 
