@@ -138,28 +138,45 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $editor;
 		}
 
+		// Get supported formats directly from Imagick if available.
+		$supported_formats = array();
+		if ( 'imagemagick' === $library && \extension_loaded( 'imagick' ) && class_exists( 'Imagick' ) ) {
+			try {
+				$supported_formats = array_map( 'strtoupper', \Imagick::queryFormats() );
+			} catch ( \Exception $e ) {
+				// Could not query formats, proceed with WP default check.
+			}
+		}
+
 		$quality = $settings['image_optimize_losslessly'] ? 100 : (int) $settings['image_quality'];
 		$editor->set_quality( $quality );
 
-		$next_gen_format = $settings['image_next_gen_format'];
+		$next_gen_format = $settings['image_next_gen_format'] ?? 'webp';
 		$optimized_path  = '';
 		$mime_type       = '';
+		$is_supported    = false;
 
-		if ( 'webp' === $next_gen_format && $editor->supports_mime_type( 'image/webp' ) ) {
-			$optimized_path = $file_path . '.webp';
-			$mime_type      = 'image/webp';
-		} elseif ( 'avif' === $next_gen_format && $editor->supports_mime_type( 'image/avif' ) ) {
-			$optimized_path = $file_path . '.avif';
-			$mime_type      = 'image/avif';
+		if ( 'webp' === $next_gen_format ) {
+			$is_supported = ( ! empty( $supported_formats ) ) ? in_array( 'WEBP', $supported_formats, true ) : $editor->supports_mime_type( 'image/webp' );
+			if ( $is_supported ) {
+				$optimized_path = $file_path . '.webp';
+				$mime_type      = 'image/webp';
+			}
+		} elseif ( 'avif' === $next_gen_format ) {
+			$is_supported = ( ! empty( $supported_formats ) ) ? in_array( 'AVIF', $supported_formats, true ) : $editor->supports_mime_type( 'image/avif' );
+			if ( $is_supported ) {
+				$optimized_path = $file_path . '.avif';
+				$mime_type      = 'image/avif';
+			}
 		}
 
 		$savings = 0;
-		if ( $optimized_path && $mime_type ) {
+		if ( $optimized_path && $mime_type && $is_supported ) {
 			$saved = $editor->save( $optimized_path, $mime_type );
 
 			if ( \is_wp_error( $saved ) || ! file_exists( $saved['path'] ) || 0 === filesize( $saved['path'] ) ) {
 				if ( isset( $saved['path'] ) && file_exists( $saved['path'] ) ) {
-					unlink( $saved['path'] );
+					@unlink( $saved['path'] );
 				}
 				$error_message = \is_wp_error( $saved ) ? $saved->get_error_message() : 'Generated file is empty or missing.';
 				return new \WP_Error( 'image_save_error', $error_message );
@@ -169,7 +186,7 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			$current_savings = $original_size - $optimized_size;
 
 			if ( $current_savings < 0 ) {
-				unlink( $saved['path'] );
+				@unlink( $saved['path'] );
 			} else {
 				$savings = $current_savings;
 			}
@@ -269,17 +286,47 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Detects if Imagick is old (< 7.x) for PNG/GIF safety.
+	 * Detects if the installed Imagick version has known transparency bugs with WebP.
 	 *
-	 * @return bool
+	 * This check is based on known issues where specific versions of ImageMagick
+	 * improperly handled the alpha channel when converting from PNG or GIF to WebP.
+	 *
+	 * @since 1.0.0
+	 * @return bool True if the Imagick version is known to be problematic, false otherwise.
 	 */
 	public static function is_imagick_old() {
-		if ( \extension_loaded( 'imagick' ) && class_exists( 'Imagick' ) ) {
-			$v = \Imagick::getVersion();
-			if ( isset( $v['versionString'] ) && preg_match( '/ImageMagick ([0-6])\./', $v['versionString'] ) ) {
-				return true;
-			}
+		if ( ! \extension_loaded( 'imagick' ) || ! class_exists( 'Imagick' ) ) {
+			return false;
 		}
+
+		$v = \Imagick::getVersion();
+		if ( ! isset( $v['versionString'] ) ) {
+			return false; // Cannot determine version.
+		}
+
+		// Use preg_match to extract the version number, e.g., "ImageMagick 6.9.12-98 ...".
+		if ( ! preg_match( '/ImageMagick (\d+\.\d+\.\d+)-?(\d+)?/', $v['versionString'], $matches ) ) {
+			return false; // Could not parse version string.
+		}
+
+		$version = $matches[1];
+		$patch   = $matches[2] ?? 0;
+
+		// Bug Condition 1 (PNG->WebP alpha issues): Affects ImageMagick 6.9.10-0 to 6.9.12-40.
+		// The bug was fixed in 6.9.12-41.
+		if ( \version_compare( $version, '6.9.10', '>=' ) && \version_compare( $version, '6.9.12', '<' ) ) {
+			return true;
+		}
+		if ( \version_compare( $version, '6.9.12', '==' ) && $patch < 41 ) {
+			return true;
+		}
+
+		// Bug Condition 2 (GIF->WebP transparency issues): Affects early ImageMagick 7.1.0 builds.
+		// The bug was fixed in 7.1.0-22.
+		if ( \version_compare( $version, '7.1.0', '==' ) && $patch < 22 ) {
+			return true;
+		}
+
 		return false;
 	}
 
@@ -329,5 +376,109 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 		$saved = $editor->save( $file_path );
 
 		return ! \is_wp_error( $saved );
+	}
+
+	/**
+	 * Gathers and returns all registered thumbnail sizes for the frontend.
+	 *
+	 * @since 1.1.0
+	 * @return array A list of thumbnail sizes with their properties.
+	 */
+	public static function get_all_thumbnail_sizes(): array {
+		$sizes_data         = array();
+		$intermediate_sizes = \get_intermediate_image_sizes();
+
+		foreach ( $intermediate_sizes as $size_name ) {
+			// WordPress default sizes are stored in options.
+			if ( in_array( $size_name, array( 'thumbnail', 'medium', 'medium_large', 'large' ), true ) ) {
+				$width  = (int) \get_option( "{$size_name}_size_w" );
+				$height = (int) \get_option( "{$size_name}_size_h" );
+			} else {
+				// Custom sizes are stored in a global variable.
+				global $_wp_additional_image_sizes;
+				if ( isset( $_wp_additional_image_sizes[ $size_name ] ) ) {
+					$width  = (int) $_wp_additional_image_sizes[ $size_name ]['width'];
+					$height = (int) $_wp_additional_image_sizes[ $size_name ]['height'];
+				} else {
+					// Skip if size details can't be found.
+					continue;
+				}
+			}
+
+			$sizes_data[] = array(
+				'id'   => esc_attr( $size_name ),
+				'name' => ucwords( str_replace( array( '_', '-' ), ' ', $size_name ) ),
+				'size' => "{$width}x{$height}",
+			);
+		}
+		return $sizes_data;
+	}
+
+	/**
+	 * Gathers and returns the server's image processing capabilities.
+	 *
+	 * This is the definitive method for checking what the server supports and should be
+	 * used to generate the `server_capabilities` object for the frontend API.
+	 *
+	 * @since 1.1.0
+	 * @return array An array of server capabilities.
+	 */
+	public static function get_server_capabilities(): array {
+		$capabilities = array(
+			'gd_support'           => false,
+			'gd_webp_support'      => false,
+			'gd_avif_support'      => false,
+			'imagick_support'      => false,
+			'imagick_version'      => '',
+			'imagick_webp_support' => false,
+			'imagick_avif_support' => false,
+			'is_imagick_old'       => false,
+			'thumbnail_sizes'      => array(),
+		);
+
+		// 1. Check for GD support
+		if ( extension_loaded( 'gd' ) && function_exists( 'gd_info' ) ) {
+			$capabilities['gd_support'] = true;
+			$gd_info                    = gd_info();
+			if ( isset( $gd_info['WebP Support'] ) && $gd_info['WebP Support'] ) {
+				$capabilities['gd_webp_support'] = true;
+			}
+			if ( isset( $gd_info['AVIF Support'] ) && $gd_info['AVIF Support'] ) {
+				$capabilities['gd_avif_support'] = true;
+			}
+		}
+
+		// 2. Check for Imagick support using the direct and reliable query method
+		if ( extension_loaded( 'imagick' ) && class_exists( 'Imagick' ) ) {
+			$capabilities['imagick_support'] = true;
+
+			try {
+				$version_info = \Imagick::getVersion();
+				if ( isset( $version_info['versionString'] ) && preg_match( '/ImageMagick (\d+\.\d+\.\d+)/', $version_info['versionString'], $matches ) ) {
+					$capabilities['imagick_version'] = $matches[1];
+				}
+
+				// Directly query supported formats. Format names are returned in uppercase.
+				$supported_formats = \Imagick::queryFormats();
+
+				if ( in_array( 'WEBP', $supported_formats, true ) ) {
+					$capabilities['imagick_webp_support'] = true;
+				}
+				if ( in_array( 'AVIF', $supported_formats, true ) ) {
+					$capabilities['imagick_avif_support'] = true;
+				}
+			} catch ( \Exception $e ) {
+				// If Imagick throws an error, we mark it as not supported.
+				$capabilities['imagick_support'] = false;
+			}
+
+			// Check for old Imagick version with transparency bugs.
+			$capabilities['is_imagick_old'] = self::is_imagick_old();
+		}
+
+		// 3. Get all registered thumbnail sizes
+		$capabilities['thumbnail_sizes'] = self::get_all_thumbnail_sizes();
+
+		return $capabilities;
 	}
 }

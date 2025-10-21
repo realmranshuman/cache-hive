@@ -55,17 +55,9 @@ class Cache_Hive_REST_Optimizers_Image {
 			'image_disable_png_gif'         => $settings['image_disable_png_gif'] ?? true,
 		);
 
-		$capabilities = array(
-			'gd_support'           => extension_loaded( 'gd' ),
-			'gd_webp_support'      => function_exists( 'imagewebp' ),
-			'gd_avif_support'      => function_exists( 'imageavif' ),
-			'imagick_support'      => extension_loaded( 'imagick' ) && class_exists( 'Imagick' ),
-			'imagick_version'      => phpversion( 'imagick' ),
-			'is_imagick_old'       => Cache_Hive_Image_Optimizer::is_imagick_old(),
-			'imagick_webp_support' => defined( 'IMAGICK_HAVE_WEBP' ) && IMAGICK_HAVE_WEBP,
-			'imagick_avif_support' => defined( 'IMAGICK_HAVE_AVIF' ) && IMAGICK_HAVE_AVIF,
-			'thumbnail_sizes'      => self::get_all_image_sizes_for_rest(),
-		);
+		// Replaced the old, unreliable capability detection logic with a single call
+		// to our new, robust function in the Cache_Hive_Image_Optimizer class.
+		$capabilities = Cache_Hive_Image_Optimizer::get_server_capabilities();
 
 		$response_data = array(
 			'settings'            => $image_settings,
@@ -216,42 +208,5 @@ class Cache_Hive_REST_Optimizers_Image {
 			return new WP_REST_Response( array( 'dirty' => true ), 200 );
 		}
 		return new WP_REST_Response( array( 'dirty' => false ), 200 );
-	}
-
-
-	/**
-	 * Helper to get all image sizes formatted for REST response.
-	 *
-	 * @since 1.0.0
-	 * @return array
-	 */
-	private static function get_all_image_sizes_for_rest() {
-		global $_wp_additional_image_sizes;
-		$sizes     = \get_intermediate_image_sizes();
-		$all_sizes = array();
-
-		foreach ( $sizes as $size ) {
-			$width  = 0;
-			$height = 0;
-			if ( in_array( $size, array( 'thumbnail', 'medium', 'medium_large', 'large' ), true ) ) {
-				$width  = intval( \get_option( "{$size}_size_w" ) );
-				$height = intval( \get_option( "{$size}_size_h" ) );
-			} elseif ( isset( $_wp_additional_image_sizes[ $size ] ) ) {
-				$width  = $_wp_additional_image_sizes[ $size ]['width'];
-				$height = $_wp_additional_image_sizes[ $size ]['height'];
-			}
-			$all_sizes[] = array(
-				'id'   => $size,
-				'name' => ucwords( str_replace( array( '-', '_' ), ' ', $size ) ),
-				'size' => ( 0 === $width && 0 === $height ) ? 'N/A' : "{$width}x{$height}",
-			);
-		}
-		// Add full size option.
-		$all_sizes[] = array(
-			'id'   => 'full',
-			'name' => 'Full Size (Original)',
-			'size' => 'Original',
-		);
-		return $all_sizes;
 	}
 }
