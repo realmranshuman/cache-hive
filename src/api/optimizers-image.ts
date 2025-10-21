@@ -88,6 +88,7 @@ export async function updateImageOptimizationSettings(
 
 export async function destroyAllImageOptimizationData(): Promise<{
   message: string;
+  stats: ImageStats;
 }> {
   const response = await fetch(
     `${wpApiSettings.root}cache-hive/v1/optimizers/image/all-data`,

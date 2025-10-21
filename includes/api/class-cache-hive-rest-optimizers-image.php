@@ -155,7 +155,13 @@ class Cache_Hive_REST_Optimizers_Image {
 			return new WP_REST_Response( array( 'message' => $result->get_error_message() ), 500 );
 		}
 
-		return new WP_REST_Response( array( 'message' => 'All image optimization data has been successfully deleted.' ), 200 );
+		return new WP_REST_Response(
+			array(
+				'message' => __( 'All image optimization data has been successfully deleted.', 'cache-hive' ),
+				'stats'   => $result,
+			),
+			200
+		);
 	}
 
 	/**

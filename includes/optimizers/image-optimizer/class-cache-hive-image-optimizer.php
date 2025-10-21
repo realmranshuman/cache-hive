@@ -247,16 +247,54 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Deletes all optimized files and metadata from the database.
+	 * Deletes all optimized files and metadata from the database in a scalable, cache-aware way.
 	 *
 	 * @since 1.0.0
-	 * @return true|\WP_Error True on success, or a WP_Error object.
+	 * @return array|\WP_Error The new stats array on success, or a WP_Error object.
 	 */
 	public static function delete_all_data() {
 		global $wpdb;
 
-		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = %s", Cache_Hive_Image_Meta::META_KEY ) );
+		$batch_size = 5000; // Process 5000 records at a time to prevent memory issues.
 
+		// First, handle the metadata and cache invalidation in batches.
+		while ( true ) {
+			// 1. Get a batch of post IDs that have our metadata. This is fast and memory-efficient.
+			$attachment_ids = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s LIMIT %d",
+					Cache_Hive_Image_Meta::META_KEY,
+					$batch_size
+				)
+			);
+
+			// If no more IDs are found, we are done.
+			if ( empty( $attachment_ids ) ) {
+				break;
+			}
+
+			// 2. Loop through the batch and delete metadata and invalidate cache for each.
+			// This is the WPCS-compliant way to handle bulk operations without dynamic IN clauses.
+			foreach ( $attachment_ids as $attachment_id ) {
+				// Delete metadata for the specific attachment.
+				$wpdb->delete(
+					$wpdb->postmeta,
+					array(
+						'post_id'  => $attachment_id,
+						'meta_key' => Cache_Hive_Image_Meta::META_KEY,
+					),
+					array(
+						'%d',
+						'%s',
+					)
+				);
+
+				// 3. CRITICAL: Invalidate the object cache for each post ID we just cleaned up.
+				\wp_cache_delete( $attachment_id, 'post_meta' );
+			}
+		}
+
+		// Second, handle file cleanup.
 		$upload_dir = \wp_upload_dir();
 		$path       = \trailingslashit( $upload_dir['basedir'] );
 
@@ -274,16 +312,17 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return new \WP_Error( 'file_scan_error', 'Could not scan uploads directory to delete files.' );
 		}
 
+		// Finally, clean up the global stats and options.
 		\delete_option( Cache_Hive_Image_Stats::STATS_OPTION_KEY );
 		\delete_option( Cache_Hive_Image_Stats::SYNC_STATE_OPTION_KEY );
 
 		\wp_cache_delete( Cache_Hive_Image_Stats::STATS_OPTION_KEY, 'options' );
 		\wp_cache_delete( Cache_Hive_Image_Stats::SYNC_STATE_OPTION_KEY, 'options' );
 
-		Cache_Hive_Image_Stats::recalculate_stats();
-
-		return true;
+		// Recalculate and return the fresh stats.
+		return Cache_Hive_Image_Stats::recalculate_stats();
 	}
+
 
 	/**
 	 * Detects if the installed Imagick version has known transparency bugs with WebP.

@@ -41,6 +41,7 @@ import {
   cancelImageSync,
   ImageOptimizationApiResponse,
   ImageOptimizationSettings as TImageOptimizationSettings,
+  ImageStats,
 } from "@/api/optimizers-image";
 import { toast as sonnerToast } from "sonner";
 import { wrapPromise } from "@/utils/wrapPromise";
@@ -165,8 +166,13 @@ function ImageOptimizationSettingsForm({
     initial.image_disable_png_gif
   );
 
+  const [stats, setStats] = useState<ImageStats>(initialData.stats);
   const [syncState, setSyncState] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    setStats(initialData.stats);
+  }, [initialData.stats]);
 
   useEffect(() => {
     let interval: number;
@@ -178,7 +184,18 @@ function ImageOptimizationSettingsForm({
           if (status.is_finished) {
             setIsSyncing(false);
             sonnerToast.success("Bulk optimization complete!");
-            onSaved();
+
+            // FIX: Instead of calling onSaved() which causes a full refresh,
+            // we manually fetch the latest stats and update the state smoothly.
+            getImageOptimizationSettings()
+              .then((data) => {
+                setStats(data.stats);
+              })
+              .catch(() => {
+                sonnerToast.error(
+                  "Could not refresh stats automatically. Please refresh the page."
+                );
+              });
           }
         } catch (error) {
           setIsSyncing(false);
@@ -187,13 +204,13 @@ function ImageOptimizationSettingsForm({
       }, 5000);
     }
     return () => clearInterval(interval);
-  }, [isSyncing, onSaved]);
+  }, [isSyncing, onSaved]); // onSaved is kept in dependencies for ESLint, though not called directly in the fix
 
   const handleStartSync = async () => {
     setIsSyncing(true);
     setSyncState({
       processed: 0,
-      total_to_optimize: initialData.stats.unoptimized_images,
+      total_to_optimize: stats.unoptimized_images,
       is_finished: false,
     });
 
@@ -202,6 +219,7 @@ function ImageOptimizationSettingsForm({
       if (initialState.is_finished) {
         setIsSyncing(false);
         sonnerToast.info("All images are already optimized.");
+        // We call onSaved here because nothing was processed, so a fresh state is good.
         onSaved();
       } else {
         setSyncState(initialState);
@@ -302,7 +320,7 @@ function ImageOptimizationSettingsForm({
     setSaving(true);
     const destroyPromise = destroyAllImageOptimizationData()
       .then((res) => {
-        onSaved();
+        setStats(res.stats); // Instantly update the UI with the new stats
         return res;
       })
       .catch((err) => {
@@ -327,11 +345,11 @@ function ImageOptimizationSettingsForm({
     () => [
       {
         name: "optimized",
-        value: initialData.stats.optimization_percent,
+        value: stats.optimization_percent,
         fill: "hsl(var(--primary))",
       },
     ],
-    [initialData.stats.optimization_percent]
+    [stats.optimization_percent]
   );
 
   const chartEndAngle = useMemo(() => {
@@ -881,8 +899,8 @@ function ImageOptimizationSettingsForm({
                   </ChartContainer>
                 </div>
                 <div className="text-center text-sm text-muted-foreground">
-                  {initialData.stats.optimized_images} /{" "}
-                  {initialData.stats.total_images} images optimized
+                  {stats.optimized_images} / {stats.total_images} images
+                  optimized
                 </div>
                 {isSyncing ? (
                   <div className="space-y-2">
@@ -903,9 +921,7 @@ function ImageOptimizationSettingsForm({
                   <Button
                     onClick={handleStartSync}
                     className="w-full"
-                    disabled={
-                      saving || initialData.stats.unoptimized_images === 0
-                    }
+                    disabled={saving || stats.unoptimized_images === 0}
                   >
                     Optimize All Unoptimized Images
                   </Button>
