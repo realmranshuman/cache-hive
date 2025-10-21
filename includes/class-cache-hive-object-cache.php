@@ -238,6 +238,8 @@ final class WP_Object_Cache {
 			\$config['database'] = (int) (\$settings['object_cache_database'] ?? 0);
 			\$config['compression'] = \$settings['compression'] ?? 'none';
 			if ('tls' === \$config['scheme']) { \$config['tls_options'] = \$settings['object_cache_tls_options'] ?? []; }
+		} elseif ('memcached' === \$method) {
+			\$config['client'] = 'memcached';
 		}
 		return \$config;
     }
