@@ -24,17 +24,17 @@ final class Cache_Hive_Disk {
 	 * @since 1.0.0
 	 * @param string $buffer The raw page content to cache from the output buffer.
 	 * @param string $cache_file The full, explicit path where the cache file should be saved.
-	 * @return string The optimized buffer to be served to the browser.
+	 * @return string|false The optimized buffer on success, false on failure.
 	 */
 	public static function cache_page( $buffer, $cache_file ) {
 		if ( empty( $cache_file ) || ! is_string( $buffer ) ) {
-			return $buffer;
+			return false;
 		}
 
 		$cache_dir = \dirname( $cache_file );
 		if ( ! \is_dir( $cache_dir ) ) {
 			if ( ! @\mkdir( $cache_dir, 0755, true ) ) {
-				return $buffer;
+				return false;
 			}
 		}
 
@@ -44,11 +44,11 @@ final class Cache_Hive_Disk {
 
 		$meta_file = $cache_file . '.meta';
 
-		// THE FIX: Create the final content with the signature *before* writing and returning.
-		$final_content = $optimized_buffer . self::get_cache_signature();
+		// Create the final content with the signature for the cache file.
+		$final_content_for_disk = $optimized_buffer . self::get_cache_signature();
 
 		// Write the *fully optimized* buffer to the cache file.
-		$cache_created = \file_put_contents( $cache_file, $final_content, LOCK_EX );
+		$cache_created = \file_put_contents( $cache_file, $final_content_for_disk, LOCK_EX );
 
 		if ( $cache_created ) {
 			$settings = Cache_Hive_Settings::get_settings();
@@ -71,12 +71,11 @@ final class Cache_Hive_Disk {
 			);
 			\file_put_contents( $meta_file, \json_encode( $meta_data ), LOCK_EX );
 
-			// Return the final content (including the signature) so the engine can serve it directly.
-			return $final_content;
+			// Return the optimized buffer (without signature) to the engine.
+			return $optimized_buffer;
 		}
 
-		// If caching failed, return the original buffer.
-		return $buffer;
+		return false;
 	}
 
 	/**
@@ -87,6 +86,6 @@ final class Cache_Hive_Disk {
 	 */
 	public static function get_cache_signature() {
 		// The signature indicates when the optimized cache file was generated.
-		return '<!-- Optimized and cached by Cache Hive on ' . \gmdate( 'Y-m-d H:i:s' ) . ' UTC -->';
+		return '<!-- Optimized and cached by Cache Hive on ' . \gmdate( 'Y-m-d H-i:s' ) . ' UTC -->';
 	}
 }

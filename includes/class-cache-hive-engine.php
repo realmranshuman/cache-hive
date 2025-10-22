@@ -89,7 +89,7 @@ final class Cache_Hive_Engine {
 
 	/**
 	 * Callback function for output buffering to write the cache file.
-	 * This now serves the optimized version to the first visitor.
+	 * This now serves the optimized version to the first visitor correctly.
 	 *
 	 * @param string $buffer The captured output buffer content.
 	 * @return string The original or optimized buffer content.
@@ -102,6 +102,7 @@ final class Cache_Hive_Engine {
 		$is_private_cache = \is_user_logged_in() && ( self::$settings['cache_logged_users'] ?? false );
 		$cache_file       = null;
 		$symlink_file     = null;
+		$original_buffer  = $buffer; // Keep a copy of the original buffer for fallback.
 
 		// If caching for a logged-in user, replace dynamic elements with placeholders before optimization.
 		if ( $is_private_cache ) {
@@ -121,27 +122,35 @@ final class Cache_Hive_Engine {
 			$cache_file = self::get_public_cache_path();
 		}
 
-		// If a valid cache path was determined, optimize, cache, and serve the optimized content.
+		// If a valid cache path was determined, optimize and cache the page.
 		if ( $cache_file ) {
-			// This call now optimizes, saves the file, and returns the optimized buffer (with signature) on success.
-			$final_content = Cache_Hive_Disk::cache_page( $buffer, $cache_file );
+			// This call now optimizes, saves the file, and returns the optimized buffer on success.
+			$optimized_buffer = Cache_Hive_Disk::cache_page( $buffer, $cache_file );
 
-			// Check if caching was successful by seeing if the content changed.
-			if ( $final_content !== $buffer ) {
+			// Check if caching was successful.
+			if ( false !== $optimized_buffer ) {
 				if ( $symlink_file ) {
 					self::create_symlink( $cache_file, $symlink_file );
 				}
 				if ( ! headers_sent() ) {
 					header( 'X-Cache-Hive-Engine: Miss (Generated)' );
 				}
-			}
 
-			// Return the final content (either original on failure or optimized with signature on success).
-			return $final_content;
+				// This is the CRITICAL FIX:
+				// If it's a private cache, inject dynamic elements back before serving.
+				// For public cache, the optimized buffer is ready to be served.
+				$final_content_for_browser = $optimized_buffer;
+				if ( $is_private_cache && class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) ) {
+					$final_content_for_browser = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::inject_dynamic_elements_from_placeholders( $optimized_buffer );
+				}
+
+				// Append the signature and return the fully processed, functional page.
+				return $final_content_for_browser . Cache_Hive_Disk::get_cache_signature();
+			}
 		}
 
-		// Fallback: If no cache path was determined, return the buffer (with placeholders if private).
-		return $buffer;
+		// Fallback: If caching failed or no path was determined, return the original buffer.
+		return $original_buffer;
 	}
 
 
