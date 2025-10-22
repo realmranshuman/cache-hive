@@ -147,23 +147,30 @@ final class Cache_Hive_Image_Stats {
 	}
 
 	/**
-	 * Starts a new manual sync process with an accurate total count.
+	 * Starts or resumes a manual sync process.
 	 *
-	 * @since 1.0.0
-	 * @return array The initial state of the sync.
+	 * @since 1.2.0
+	 * @return array The initial or current state of the sync.
 	 */
 	public static function start_manual_sync(): array {
+		$state = self::get_sync_state();
+
+		// If a sync is already running or paused, just return its current state.
+		if ( $state && ! empty( $state['is_running'] ) ) {
+			return $state;
+		}
+
 		$unoptimized_count = self::get_unoptimized_count( true );
+		$is_finished       = ( 0 === $unoptimized_count );
 		$state             = array(
-			'method'            => 'manual',
 			'total_to_optimize' => $unoptimized_count,
 			'processed'         => 0,
-			'is_finished'       => ( 0 === $unoptimized_count ),
+			'is_finished'       => $is_finished,
+			'is_running'        => ! $is_finished,
 			'start_time'        => time(),
 		);
 
-		// Only save the state if a sync is actually starting.
-		if ( ! $state['is_finished'] ) {
+		if ( ! $is_finished ) {
 			\update_option( self::SYNC_STATE_OPTION_KEY, $state, 'no' );
 		} else {
 			self::clear_sync_state();
@@ -193,59 +200,60 @@ final class Cache_Hive_Image_Stats {
 	}
 
 	/**
-	 * Processes the next batch of images for a manual sync.
+	 * Processes the next single image for a manual, browser-driven sync.
 	 *
-	 * @since 1.0.0
+	 * @since 1.2.0
 	 * @return array The updated sync state.
 	 */
-	public static function process_next_manual_batch(): array {
+	public static function process_next_manual_item(): array {
 		$state = self::get_sync_state();
-		if ( ! $state || ! empty( $state['is_finished'] ) ) {
-			return $state ? $state : array( 'is_finished' => true );
+
+		// If there's no active sync, return a finished state.
+		if ( ! $state || ! $state['is_running'] || ! empty( $state['is_finished'] ) ) {
+			return $state ? $state : array(
+				'is_finished' => true,
+				'is_running'  => false,
+			);
 		}
-		$settings                 = Cache_Hive_Settings::get_settings();
-		$batch_size               = (int) ( $settings['image_batch_size'] ?? 10 );
-		$unoptimized_images_query = new \WP_Query(
-			array(
-				'post_type'      => 'attachment',
-				'post_status'    => 'inherit',
-				'posts_per_page' => $batch_size,
-				'orderby'        => 'ID',
-				'order'          => 'ASC',
-				'fields'         => 'ids',
-				'meta_query'     => array(
-					'relation' => 'OR',
-					array(
-						'key'     => Cache_Hive_Image_Meta::META_KEY,
-						'compare' => 'NOT EXISTS',
-					),
-					array(
-						'key'     => Cache_Hive_Image_Meta::META_KEY,
-						'value'   => 's:6:"status";s:9:"optimized";',
-						'compare' => 'NOT LIKE',
-					),
-				),
+
+		global $wpdb;
+		$meta_key = Cache_Hive_Image_Meta::META_KEY;
+
+		$not_optimized_like = '%' . $wpdb->esc_like( 's:6:"status";s:9:"optimized";' ) . '%';
+		$not_excluded_like  = '%' . $wpdb->esc_like( 's:6:"status";s:8:"excluded";' ) . '%';
+
+		// Direct, performant query for a single unoptimized image.
+		$attachment_id = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT p.ID
+				 FROM {$wpdb->posts} p
+				 LEFT JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id AND pm.meta_key = %s)
+				 WHERE p.post_type = 'attachment'
+				   AND p.post_status = 'inherit'
+				   AND p.post_mime_type IN ('image/jpeg', 'image/png', 'image/gif')
+				   AND (pm.meta_value IS NULL OR (pm.meta_value NOT LIKE %s AND pm.meta_value NOT LIKE %s))
+				 ORDER BY p.ID ASC
+				 LIMIT 1",
+				$meta_key,
+				$not_optimized_like,
+				$not_excluded_like
 			)
 		);
-		$attachment_ids           = $unoptimized_images_query->posts;
-		$found_count              = count( $attachment_ids );
-		$processed_in_batch       = 0;
-		if ( ! empty( $attachment_ids ) ) {
-			foreach ( $attachment_ids as $attachment_id ) {
-				$meta = Cache_Hive_Image_Meta::get_meta( $attachment_id );
-				if ( isset( $meta['status'] ) && 'excluded' === $meta['status'] ) {
-					continue; }
-				$result = Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id );
-				if ( true === $result || 'skipped' === $result ) {
-					++$processed_in_batch; }
-			}
-		}
-		$state['processed'] += $processed_in_batch;
-		if ( $found_count < $batch_size || 0 === $found_count ) {
-			$state['is_finished'] = true;
-			self::clear_sync_state();
-		} else {
+
+		if ( $attachment_id ) {
+			// We found an image, process it.
+			Cache_Hive_Image_Optimizer::optimize_attachment( (int) $attachment_id );
+
+			// Increment the processed count.
+			++$state['processed'];
+
+			// Update the state in the database.
 			\update_option( self::SYNC_STATE_OPTION_KEY, $state, 'no' );
+		} else {
+			// No more images were found, the sync is complete.
+			$state['is_finished'] = true;
+			$state['is_running']  = false;
+			self::clear_sync_state(); // This also recalculates final stats.
 		}
 
 		return $state;

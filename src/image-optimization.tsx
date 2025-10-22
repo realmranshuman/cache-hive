@@ -1,5 +1,12 @@
 import * as React from "react";
-import { useState, Suspense, useCallback, useMemo, useEffect } from "react";
+import {
+  useState,
+  Suspense,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from "react";
 import {
   Card,
   CardContent,
@@ -24,7 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { InfoIcon, Trash2Icon } from "lucide-react";
+import { InfoIcon, Trash2Icon, PlayIcon, SquareIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +49,7 @@ import {
   ImageOptimizationApiResponse,
   ImageOptimizationSettings as TImageOptimizationSettings,
   ImageStats,
+  SyncState,
 } from "@/api/optimizers-image";
 import { toast as sonnerToast } from "sonner";
 import { wrapPromise } from "@/utils/wrapPromise";
@@ -117,7 +125,11 @@ function ImageOptimizationSettingsForm({
   setSaving: (v: boolean) => void;
   onSaved: () => void;
 }) {
-  const { settings: initial, server_capabilities: capabilities } = initialData;
+  const {
+    settings: initial,
+    server_capabilities: capabilities,
+    sync_state: initialSyncState,
+  } = initialData;
 
   const [imageOptimizationLibrary, setImageOptimizationLibrary] = useState<
     TImageOptimizationSettings["image_optimization_library"]
@@ -147,11 +159,8 @@ function ImageOptimizationSettingsForm({
   const [imageMaxHeight, setImageMaxHeight] = useState(
     String(initial.image_max_height)
   );
-  const [imageBatchProcessing, setImageBatchProcessing] = useState(
-    initial.image_batch_processing
-  );
-  const [imageBatchSize, setImageBatchSize] = useState(
-    String(initial.image_batch_size)
+  const [imageCronOptimization, setImageCronOptimization] = useState(
+    initial.image_cron_optimization
   );
   const [imageExcludeImages, setImageExcludeImages] = useState(
     initial.image_exclude_images
@@ -167,77 +176,82 @@ function ImageOptimizationSettingsForm({
   );
 
   const [stats, setStats] = useState<ImageStats>(initialData.stats);
-  const [syncState, setSyncState] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncState, setSyncState] = useState<SyncState | false>(
+    initialSyncState
+  );
+  const [isSyncing, setIsSyncing] = useState(
+    initialSyncState && initialSyncState.is_running
+  );
+
+  const isSyncingRef = useRef(isSyncing);
+  useEffect(() => {
+    isSyncingRef.current = isSyncing;
+  }, [isSyncing]);
 
   useEffect(() => {
     setStats(initialData.stats);
-  }, [initialData.stats]);
-
-  useEffect(() => {
-    let interval: number;
-    if (isSyncing) {
-      interval = window.setInterval(async () => {
-        try {
-          const status = await getImageSyncStatus();
-          setSyncState(status);
-          if (status.is_finished) {
-            setIsSyncing(false);
-            sonnerToast.success("Bulk optimization complete!");
-
-            // FIX: Instead of calling onSaved() which causes a full refresh,
-            // we manually fetch the latest stats and update the state smoothly.
-            getImageOptimizationSettings()
-              .then((data) => {
-                setStats(data.stats);
-              })
-              .catch(() => {
-                sonnerToast.error(
-                  "Could not refresh stats automatically. Please refresh the page."
-                );
-              });
-          }
-        } catch (error) {
-          setIsSyncing(false);
-          sonnerToast.error("Failed to get sync status.");
-        }
-      }, 5000);
+    const currentSyncState = initialData.sync_state;
+    setSyncState(currentSyncState);
+    if (currentSyncState && currentSyncState.is_running && !isSyncing) {
+      setIsSyncing(true);
     }
-    return () => clearInterval(interval);
-  }, [isSyncing, onSaved]); // onSaved is kept in dependencies for ESLint, though not called directly in the fix
+  }, [initialData]);
 
-  const handleStartSync = async () => {
-    setIsSyncing(true);
-    setSyncState({
-      processed: 0,
-      total_to_optimize: stats.unoptimized_images,
-      is_finished: false,
-    });
+  const processNextImage = useCallback(async () => {
+    if (!isSyncingRef.current) return;
 
     try {
-      const initialState = await startImageSync();
-      if (initialState.is_finished) {
+      const newStatus = await getImageSyncStatus();
+      setSyncState(newStatus);
+
+      if (newStatus.is_finished) {
         setIsSyncing(false);
-        sonnerToast.info("All images are already optimized.");
-        // We call onSaved here because nothing was processed, so a fresh state is good.
-        onSaved();
+        sonnerToast.success("Bulk optimization complete!");
+        getImageOptimizationSettings()
+          .then((data) => setStats(data.stats))
+          .catch(() =>
+            sonnerToast.error("Could not refresh final stats automatically.")
+          );
       } else {
-        setSyncState(initialState);
+        setTimeout(processNextImage, 300); // Short delay between requests to be nice to the server
       }
     } catch (error) {
       setIsSyncing(false);
+      sonnerToast.error(
+        "Optimization stopped due to an error. You can resume it at any time."
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isSyncing) {
+      processNextImage();
+    }
+  }, [isSyncing, processNextImage]);
+
+  const handleStartSync = async () => {
+    try {
+      const initialState = await startImageSync();
+      setSyncState(initialState);
+      if (initialState.is_finished) {
+        sonnerToast.info("All images are already optimized.");
+        onSaved();
+      } else {
+        setIsSyncing(true);
+      }
+    } catch (error) {
       sonnerToast.error("Failed to start optimization process.");
     }
   };
 
   const handleCancelSync = async () => {
-    setIsSyncing(false);
+    setIsSyncing(false); // This will stop the loop via the ref
     try {
       await cancelImageSync();
-      sonnerToast.success("Optimization cancelled.");
-      onSaved();
+      sonnerToast.info("Optimization process has been paused.");
+      onSaved(); // Refresh to show the latest stats and paused state.
     } catch (error) {
-      sonnerToast.error("Failed to cancel optimization.");
+      sonnerToast.error("Failed to cancel optimization process.");
     }
   };
 
@@ -278,8 +292,7 @@ function ImageOptimizationSettingsForm({
       image_auto_resize: imageAutoResize,
       image_max_width: Number(imageMaxWidth),
       image_max_height: Number(imageMaxHeight),
-      image_batch_processing: imageBatchProcessing,
-      image_batch_size: Number(imageBatchSize),
+      image_cron_optimization: imageCronOptimization,
       image_exclude_images: imageExcludeImages,
       image_exclude_picture_rewrite: imageExcludePictureRewrite,
       image_selected_thumbnails: imageSelectedThumbnails,
@@ -287,8 +300,8 @@ function ImageOptimizationSettingsForm({
     };
 
     const savePromise = updateImageOptimizationSettings(payload)
-      .then(() => {
-        onSaved();
+      .then((data) => {
+        setStats(data.stats); // Update stats after saving settings too
         return { name: "Settings" };
       })
       .catch((err) => {
@@ -367,6 +380,11 @@ function ImageOptimizationSettingsForm({
       color: "hsl(var(--primary))",
     },
   } satisfies ChartConfig;
+
+  const syncButtonText =
+    syncState && syncState.processed > 0
+      ? "Resume Optimization"
+      : "Optimize All Unoptimized Images";
 
   return (
     <TooltipProvider>
@@ -783,46 +801,29 @@ function ImageOptimizationSettingsForm({
           {/* Batch Processing */}
           <Card>
             <CardHeader>
-              <CardTitle>Batch Processing</CardTitle>
+              <CardTitle>Automatic Background Optimization</CardTitle>
               <CardDescription>
-                Enable background processing via cron jobs to avoid timeouts on
-                large libraries or slow servers.
+                Enable background processing via server cron jobs to
+                automatically optimize new uploads.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="batch-processing">
-                    Enable Batch Processing
+                  <Label htmlFor="cron-optimization">
+                    Enable Automatic Optimization
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Process images in scheduled batches to reduce server load.
+                    Recommended for most sites. Images are processed in the
+                    background using WP-Cron.
                   </p>
                 </div>
                 <Switch
-                  id="batch-processing"
-                  checked={imageBatchProcessing}
-                  onCheckedChange={setImageBatchProcessing}
+                  id="cron-optimization"
+                  checked={imageCronOptimization}
+                  onCheckedChange={setImageCronOptimization}
                 />
               </div>
-
-              {imageBatchProcessing && (
-                <div className="space-y-2 pl-4 pt-4 border-t">
-                  <Label htmlFor="batch-size">Images Per Batch</Label>
-                  <Input
-                    id="batch-size"
-                    type="number"
-                    value={imageBatchSize}
-                    onChange={(e) => setImageBatchSize(e.target.value)}
-                    min="5"
-                    max="50"
-                    placeholder="10"
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Recommended: 5-50. Default: 10.
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
 
@@ -840,7 +841,7 @@ function ImageOptimizationSettingsForm({
             {/* Manual Bulk Optimization Card */}
             <Card>
               <CardHeader>
-                <CardTitle>Bulk Optimization</CardTitle>
+                <CardTitle>Manual Bulk Optimization</CardTitle>
                 <CardDescription>
                   Manually process all unoptimized images in your Media Library.
                 </CardDescription>
@@ -902,19 +903,20 @@ function ImageOptimizationSettingsForm({
                   {stats.optimized_images} / {stats.total_images} images
                   optimized
                 </div>
-                {isSyncing ? (
+                {isSyncing && syncState ? (
                   <div className="space-y-2">
                     <Progress value={progressValue} />
                     <p className="text-xs text-center text-muted-foreground">
-                      Processing... ({syncState?.processed || 0} /{" "}
-                      {syncState?.total_to_optimize || 0})
+                      Processing... ({syncState.processed || 0} /{" "}
+                      {syncState.total_to_optimize || 0})
                     </p>
                     <Button
                       variant="outline"
                       onClick={handleCancelSync}
                       className="w-full"
                     >
-                      Cancel Optimization
+                      <SquareIcon className="mr-2 h-4 w-4" />
+                      Pause Optimization
                     </Button>
                   </div>
                 ) : (
@@ -923,7 +925,8 @@ function ImageOptimizationSettingsForm({
                     className="w-full"
                     disabled={saving || stats.unoptimized_images === 0}
                   >
-                    Optimize All Unoptimized Images
+                    <PlayIcon className="mr-2 h-4 w-4" />
+                    {syncButtonText}
                   </Button>
                 )}
               </CardContent>

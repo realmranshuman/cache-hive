@@ -10,8 +10,7 @@ export interface ImageOptimizationSettings {
   image_auto_resize: boolean;
   image_max_width: number;
   image_max_height: number;
-  image_batch_processing: boolean;
-  image_batch_size: number;
+  image_cron_optimization: boolean; // RENAMED
   image_exclude_images: string;
   image_exclude_picture_rewrite: string;
   image_selected_thumbnails: string[];
@@ -43,10 +42,18 @@ export interface ImageStats {
   optimization_percent: number;
 }
 
+export interface SyncState {
+  is_running: boolean;
+  is_finished: boolean;
+  total_to_optimize: number;
+  processed: number;
+}
+
 export interface ImageOptimizationApiResponse {
   settings: ImageOptimizationSettings;
   server_capabilities: ServerCapabilities;
   stats: ImageStats;
+  sync_state: SyncState | false;
 }
 
 export async function getImageOptimizationSettings(): Promise<ImageOptimizationApiResponse> {
@@ -108,7 +115,7 @@ export async function destroyAllImageOptimizationData(): Promise<{
 }
 
 // API functions for manual sync
-export async function startImageSync() {
+export async function startImageSync(): Promise<SyncState> {
   const response = await fetch(
     `${wpApiSettings.root}cache-hive/v1/optimizers/image/sync`,
     {
@@ -121,7 +128,7 @@ export async function startImageSync() {
   return response.json();
 }
 
-export async function getImageSyncStatus() {
+export async function getImageSyncStatus(): Promise<SyncState> {
   const response = await fetch(
     `${wpApiSettings.root}cache-hive/v1/optimizers/image/sync`,
     {
@@ -134,7 +141,7 @@ export async function getImageSyncStatus() {
   return response.json();
 }
 
-export async function cancelImageSync() {
+export async function cancelImageSync(): Promise<{ message: string }> {
   const response = await fetch(
     `${wpApiSettings.root}cache-hive/v1/optimizers/image/sync`,
     {

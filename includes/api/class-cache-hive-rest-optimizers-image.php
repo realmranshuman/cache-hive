@@ -47,22 +47,20 @@ class Cache_Hive_REST_Optimizers_Image {
 			'image_auto_resize'             => $settings['image_auto_resize'] ?? false,
 			'image_max_width'               => $settings['image_max_width'] ?? 1920,
 			'image_max_height'              => $settings['image_max_height'] ?? 1080,
-			'image_batch_processing'        => $settings['image_batch_processing'] ?? false,
-			'image_batch_size'              => $settings['image_batch_size'] ?? 10,
+			'image_cron_optimization'       => $settings['image_cron_optimization'] ?? false, // RENAMED: from image_batch_processing.
 			'image_exclude_images'          => implode( "\n", $settings['image_exclude_images'] ?? array() ),
 			'image_exclude_picture_rewrite' => implode( "\n", $settings['image_exclude_picture_rewrite'] ?? array() ),
 			'image_selected_thumbnails'     => $settings['image_selected_thumbnails'] ?? array( 'thumbnail', 'medium' ),
 			'image_disable_png_gif'         => $settings['image_disable_png_gif'] ?? true,
 		);
 
-		// Replaced the old, unreliable capability detection logic with a single call
-		// to our new, robust function in the Cache_Hive_Image_Optimizer class.
 		$capabilities = Cache_Hive_Image_Optimizer::get_server_capabilities();
 
 		$response_data = array(
 			'settings'            => $image_settings,
 			'server_capabilities' => $capabilities,
 			'stats'               => Cache_Hive_Image_Stats::get_stats( true ),
+			'sync_state'          => Cache_Hive_Image_Stats::get_sync_state(),
 			'is_network_admin'    => is_multisite() && is_network_admin(),
 		);
 
@@ -90,8 +88,7 @@ class Cache_Hive_REST_Optimizers_Image {
 			'image_auto_resize'             => (bool) ( $params['image_auto_resize'] ?? false ),
 			'image_max_width'               => (int) ( $params['image_max_width'] ?? 1920 ),
 			'image_max_height'              => (int) ( $params['image_max_height'] ?? 1080 ),
-			'image_batch_processing'        => (bool) ( $params['image_batch_processing'] ?? false ),
-			'image_batch_size'              => (int) ( $params['image_batch_size'] ?? 10 ),
+			'image_cron_optimization'       => (bool) ( $params['image_cron_optimization'] ?? false ), // RENAMED: from image_batch_processing.
 			'image_exclude_images'          => sanitize_textarea_field( $params['image_exclude_images'] ?? '' ),
 			'image_exclude_picture_rewrite' => sanitize_textarea_field( $params['image_exclude_picture_rewrite'] ?? '' ),
 			'image_selected_thumbnails'     => is_array( $params['image_selected_thumbnails'] ?? null ) ? array_map( 'sanitize_text_field', $params['image_selected_thumbnails'] ) : array( 'thumbnail', 'medium' ),
@@ -131,7 +128,7 @@ class Cache_Hive_REST_Optimizers_Image {
 		}
 
 		// Correctly schedule or clear the cron job when the setting is changed.
-		if ( ! empty( $all_settings['image_batch_processing'] ) ) {
+		if ( ! empty( $all_settings['image_cron_optimization'] ) ) {
 			Cache_Hive_Image_Batch_Processor::schedule_event();
 		} else {
 			Cache_Hive_Image_Batch_Processor::clear_scheduled_event();
@@ -165,7 +162,7 @@ class Cache_Hive_REST_Optimizers_Image {
 	}
 
 	/**
-	 * Handles sync actions like start, get status, and cancel.
+	 * Handles manual sync actions for the browser-driven queue.
 	 *
 	 * @since 1.0.0
 	 * @param WP_REST_Request $request The request object.
@@ -175,25 +172,19 @@ class Cache_Hive_REST_Optimizers_Image {
 		$method = $request->get_method();
 
 		if ( 'POST' === $method ) {
-			// Only START the sync. Do NOT process the first batch here.
+			// This starts or resumes the sync. It just sets up the state.
 			$state = Cache_Hive_Image_Stats::start_manual_sync();
 			return new WP_REST_Response( $state, 200 );
 		}
 
 		if ( 'GET' === $method ) {
-			// Process the next batch and return the current status.
-			$state = Cache_Hive_Image_Stats::get_sync_state();
-			if ( $state && ! $state['is_finished'] ) {
-				$state = Cache_Hive_Image_Stats::process_next_manual_batch();
-			} elseif ( ! $state ) {
-				// If no state exists, return the latest stats instead of an error.
-				return new WP_REST_Response( array( 'stats' => Cache_Hive_Image_Stats::get_stats( true ) ), 200 );
-			}
+			// This is the worker: it processes the next single image in the queue.
+			$state = Cache_Hive_Image_Stats::process_next_manual_item();
 			return new WP_REST_Response( $state, 200 );
 		}
 
 		if ( 'DELETE' === $method ) {
-			// Cancel a sync.
+			// This cancels the sync.
 			Cache_Hive_Image_Stats::clear_sync_state();
 			return new WP_REST_Response( array( 'message' => 'Sync cancelled.' ), 200 );
 		}
