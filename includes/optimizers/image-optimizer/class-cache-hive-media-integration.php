@@ -3,8 +3,7 @@
  * Integrates image optimization features into the WordPress Media Library.
  *
  * This class is responsible for rendering the UI components (custom column, metabox)
- * and handling the backend AJAX requests for image optimization. It does NOT
- * enqueue its own scripts; that is handled by the main plugin file.
+ * and handling the backend AJAX requests for image optimization.
  *
  * @package   Cache_Hive
  * @since     1.0.0
@@ -12,7 +11,8 @@
 
 namespace Cache_Hive\Includes\Optimizers\Image_Optimizer;
 
-use Cache_Hive\Includes\Cache_Hive_Settings;
+// Note: You may need to adjust the namespace for Cache_Hive_Image_Meta if it's different.
+use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Meta;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -32,7 +32,6 @@ final class Cache_Hive_Media_Integration {
 		if ( ! \is_admin() ) {
 			return;
 		}
-		// NOTE: The 'admin_enqueue_scripts' hook has been removed from this class.
 		\add_filter( 'manage_media_columns', array( $this, 'add_media_column' ) );
 		\add_action( 'manage_media_custom_column', array( $this, 'render_media_column' ), 10, 2 );
 		\add_action( 'attachment_submitbox_misc_actions', array( $this, 'render_submitbox_metabox' ) );
@@ -61,7 +60,8 @@ final class Cache_Hive_Media_Integration {
 	 */
 	public function render_media_column( string $column_name, int $attachment_id ) {
 		if ( 'cache_hive_optimization' === $column_name ) {
-			echo wp_kses_post( $this->get_optimization_html( $attachment_id ) );
+			// The get_optimization_html() method returns a sanitized string.
+			echo wp_kses_post( $this->get_optimization_html( $attachment_id, '' ) );
 		}
 	}
 
@@ -72,59 +72,79 @@ final class Cache_Hive_Media_Integration {
 	 */
 	public function render_submitbox_metabox() {
 		global $post;
-		echo '<div class="misc-pub-section misc-pub-cache-hive" data-id="' . \esc_attr( $post->ID ) . '">';
-		echo '<h4>' . \esc_html__( 'Cache Hive', 'cache-hive' ) . '</h4>';
-		echo \wp_kses_post( $this->get_optimization_html( $post->ID ) );
-		echo '</div>';
+		if ( $post && \wp_attachment_is_image( $post->ID ) ) {
+			echo '<div class="misc-pub-section misc-pub-cache-hive">';
+			echo '<h4>' . \esc_html__( 'Cache Hive', 'cache-hive' ) . '</h4>';
+			// The get_optimization_html() method returns a sanitized string.
+			echo wp_kses_post( $this->get_optimization_html( $post->ID, '' ) );
+			echo '</div>';
+		}
 	}
 
 	/**
 	 * Generates the HTML for the optimization status and action buttons.
 	 *
-	 * @since 1.0.0
+	 * @since 1.1.0
 	 * @access private
-	 * @param  int $attachment_id The ID of the attachment.
-	 * @return string The generated HTML.
+	 *
+	 * @param int    $attachment_id The ID of the attachment.
+	 * @param string $single_format Optional. If provided, returns HTML for only this format.
+	 * @return string The generated and sanitized HTML.
 	 */
-	private function get_optimization_html( int $attachment_id ): string {
+	private function get_optimization_html( int $attachment_id, string $single_format = '' ): string {
 		if ( ! \wp_attachment_is_image( $attachment_id ) ) {
 			return \esc_html__( 'Not an image.', 'cache-hive' );
 		}
-		$settings      = Cache_Hive_Settings::get_settings();
-		$target_format = $settings['image_next_gen_format'] ?? 'webp';
-		$meta          = Cache_Hive_Image_Meta::get_meta( $attachment_id );
-		$format_meta   = $meta[ $target_format ] ?? array();
-		$status        = $format_meta['status'] ?? 'pending';
-		$savings       = $format_meta['savings'] ?? 0;
-		$error         = $format_meta['error'] ?? '';
+
+		$meta    = Cache_Hive_Image_Meta::get_meta( $attachment_id );
+		$formats = $single_format ? array( $single_format ) : array( 'webp', 'avif' );
 
 		\ob_start();
-		?>
-		<div class="cache-hive-media-actions" data-id="<?php echo \esc_attr( $attachment_id ); ?>">
-			<?php if ( 'pending' === $status || 'failed' === $status || 'unoptimized' === $status ) : ?>
-				<button type="button" class="button button-secondary cache-hive-optimize-now" data-format="<?php echo esc_attr( $target_format ); ?>"><?php \esc_html_e( 'Optimize Now', 'cache-hive' ); ?></button>
-				<?php if ( 'failed' === $status && ! empty( $error ) ) : ?>
-					<p class="error-notice" title="<?php echo \esc_attr( $error ); ?>"><?php \esc_html_e( 'Last attempt failed.', 'cache-hive' ); ?></p>
-				<?php endif; ?>
-			<?php elseif ( 'in-progress' === $status ) : ?>
-				<p class="in-progress-notice"><?php \esc_html_e( 'Optimizing...', 'cache-hive' ); ?></p>
-			<?php elseif ( 'optimized' === $status ) : ?>
-				<div class="optimization-stats">
-					<p>
-						<strong><?php \esc_html_e( 'Savings:', 'cache-hive' ); ?></strong>
-						<?php echo \esc_html( \size_format( $savings ) ); ?>
-						(<?php echo ( isset( $meta['original_size'] ) && $meta['original_size'] > 0 ) ? \esc_html( \round( ( $savings / $meta['original_size'] ) * 100, 1 ) ) : 0; ?>%)
-					</p>
-					<button type="button" class="button button-secondary cache-hive-restore-image" data-format="<?php echo esc_attr( $target_format ); ?>"><?php \esc_html_e( 'Restore Original', 'cache-hive' ); ?></button>
-				</div>
-			<?php endif; ?>
-		</div>
-		<?php
+
+		// The main wrapper is only added when rendering ALL formats initially.
+		if ( ! $single_format ) {
+			echo '<div class="cache-hive-optimization-wrapper" data-id="' . \esc_attr( $attachment_id ) . '">';
+		}
+
+		foreach ( $formats as $format ) {
+			$format_meta = $meta[ $format ] ?? array();
+			$status      = $format_meta['status'] ?? 'pending';
+			$savings     = $format_meta['savings'] ?? 0;
+			$error       = $format_meta['error'] ?? '';
+
+			// This container is for a single format and will be targeted by JS for replacement.
+			echo '<div class="cache-hive-media-actions" data-format="' . \esc_attr( $format ) . '" style="padding:10px 12px; border:1px solid #ddd; border-radius:8px; margin-bottom:10px; background:#fafafa;">';
+
+			echo '<h4 style="margin:0 0 8px; font-weight:600; font-size:13px; text-transform:uppercase;">' . \esc_html( strtoupper( $format ) ) . '</h4>';
+
+			if ( in_array( $status, array( 'pending', 'failed', 'unoptimized' ), true ) ) {
+				echo '<button type="button" class="button button-secondary cache-hive-optimize-now">' . \esc_html__( 'Optimize Now', 'cache-hive' ) . '</button>';
+				if ( 'failed' === $status && ! empty( $error ) ) {
+					echo '<p class="error-notice" style="color:#b32d2e; margin-top:6px;" title="' . \esc_attr( $error ) . '">' . \esc_html__( 'Last attempt failed.', 'cache-hive' ) . '</p>';
+				}
+			} elseif ( 'in-progress' === $status ) {
+				echo '<p class="in-progress-notice" style="color:#646970;">' . \esc_html__( 'Optimizing...', 'cache-hive' ) . '</p>';
+			} elseif ( 'optimized' === $status ) {
+				$original_size = $meta['original_size'] ?? 0;
+				$percentage    = ( $original_size > 0 ) ? \round( ( $savings / $original_size ) * 100, 1 ) : 0;
+
+				echo '<div class="optimization-stats">';
+				echo '<p style="margin:0 0 6px;"><strong>' . \esc_html__( 'Savings:', 'cache-hive' ) . '</strong> ' . \esc_html( \size_format( $savings ) ) . ' (' . \esc_html( $percentage ) . '%)</p>';
+				echo '<button type="button" class="button button-secondary cache-hive-restore-image">' . \esc_html__( 'Restore Original', 'cache-hive' ) . '</button>';
+				echo '</div>';
+			}
+			echo '</div>'; // End .cache-hive-media-actions.
+		}
+
+		if ( ! $single_format ) {
+			echo '</div>'; // End .cache-hive-optimization-wrapper.
+		}
+
 		return \ob_get_clean();
 	}
 
 	/**
-	 * AJAX handler to trigger optimization for a single image.
+	 * AJAX handler to trigger optimization for a single image format.
 	 *
 	 * @since 1.0.0
 	 */
@@ -134,22 +154,21 @@ final class Cache_Hive_Media_Integration {
 			\wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
 		}
 		$attachment_id = isset( $_POST['attachment_id'] ) ? \absint( $_POST['attachment_id'] ) : 0;
-		$format        = isset( $_POST['format'] ) ? sanitize_key( $_POST['format'] ) : '';
+		$format        = isset( $_POST['format'] ) ? \sanitize_key( $_POST['format'] ) : '';
 
 		if ( ! $attachment_id || ! in_array( $format, array( 'webp', 'avif' ), true ) ) {
-			\wp_send_json_error( array( 'message' => 'Invalid attachment ID or format was provided.' ), 400 );
+			\wp_send_json_error( array( 'message' => 'Invalid attachment ID or format.' ), 400 );
 		}
 
-		$result = Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id, $format );
-		if ( \is_wp_error( $result ) ) {
-			\wp_send_json_error( array( 'message' => $result->get_error_message() ), 500 );
-		}
+		Cache_Hive_Image_Optimizer::optimize_attachment( $attachment_id, $format );
 		\wp_cache_delete( $attachment_id, 'post_meta' );
-		\wp_send_json_success( array( 'html' => $this->get_optimization_html( $attachment_id ) ) );
+
+		// Return only the HTML for the updated format.
+		\wp_send_json_success( array( 'html' => $this->get_optimization_html( $attachment_id, $format ) ) );
 	}
 
 	/**
-	 * AJAX handler to restore an image to its original state.
+	 * AJAX handler to restore an image to its original state for a specific format.
 	 *
 	 * @since 1.0.0
 	 */
@@ -159,14 +178,16 @@ final class Cache_Hive_Media_Integration {
 			\wp_send_json_error( array( 'message' => 'Permission denied.' ), 403 );
 		}
 		$attachment_id = isset( $_POST['attachment_id'] ) ? \absint( $_POST['attachment_id'] ) : 0;
-		$format        = isset( $_POST['format'] ) ? sanitize_key( $_POST['format'] ) : '';
+		$format        = isset( $_POST['format'] ) ? \sanitize_key( $_POST['format'] ) : '';
 
 		if ( ! $attachment_id || ! in_array( $format, array( 'webp', 'avif' ), true ) ) {
-			\wp_send_json_error( array( 'message' => 'Invalid attachment ID or format was provided.' ), 400 );
+			\wp_send_json_error( array( 'message' => 'Invalid attachment ID or format.' ), 400 );
 		}
 
 		Cache_Hive_Image_Optimizer::revert_attachment_format( $attachment_id, $format );
 		\wp_cache_delete( $attachment_id, 'post_meta' );
-		\wp_send_json_success( array( 'html' => $this->get_optimization_html( $attachment_id ) ) );
+
+		// Return only the HTML for the updated format.
+		\wp_send_json_success( array( 'html' => $this->get_optimization_html( $attachment_id, $format ) ) );
 	}
 }
