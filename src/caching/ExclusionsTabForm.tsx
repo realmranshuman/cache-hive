@@ -1,4 +1,6 @@
 import * as React from "react";
+// Import useEffect and useState
+import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -13,9 +15,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { wrapPromise } from "@/utils/wrapPromise";
-import { getRoles, ExclusionsFormData } from "../api";
+// No longer need wrapPromise here
+import { getRoles, getExclusionsSettings, ExclusionsFormData } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
+import { ExclusionsSettingsSkeleton } from "@/components/skeletons/exclusions-settings-skeleton";
 import { NetworkAlert } from "@/components/ui/network-alert";
 
 const exclusionsSchema = z.object({
@@ -36,12 +39,10 @@ const exclusionsSchema = z.object({
 });
 
 interface ExclusionsTabFormProps {
-  initial: Partial<ExclusionsFormData>;
+  initial: Partial<ExclusionsFormData>; // This will be empty now
   onSubmit: (data: Partial<ExclusionsFormData>) => Promise<void>;
   isSaving: boolean;
 }
-
-const rolesResource = wrapPromise(getRoles());
 
 function ExclusionsRolesField({
   roles,
@@ -103,28 +104,46 @@ function ExclusionsRolesField({
 }
 
 export function ExclusionsTabForm({
-  initial,
   onSubmit,
   isSaving,
 }: ExclusionsTabFormProps) {
+  // State for holding the fetched settings and roles
+  const [initialData, setInitialData] =
+    useState<Partial<ExclusionsFormData> | null>(null);
+  const [roles, setRoles] = useState<{ id: string; name: string }[] | null>(
+    null
+  );
+
   const form = useForm<z.infer<typeof exclusionsSchema>>({
     resolver: zodResolver(exclusionsSchema),
     defaultValues: {
-      exclude_uris: initial.exclude_uris ?? [],
-      exclude_query_strings: initial.exclude_query_strings ?? [],
-      exclude_cookies: initial.exclude_cookies ?? [],
-      exclude_roles: initial.exclude_roles ?? [],
+      exclude_uris: [],
+      exclude_query_strings: [],
+      exclude_cookies: [],
+      exclude_roles: [],
     },
   });
 
-  React.useEffect(() => {
-    form.reset({
-      exclude_uris: initial.exclude_uris ?? [],
-      exclude_query_strings: initial.exclude_query_strings ?? [],
-      exclude_cookies: initial.exclude_cookies ?? [],
-      exclude_roles: initial.exclude_roles ?? [],
-    });
-  }, [initial, form.reset]);
+  // This useEffect hook runs only ONCE when the component mounts
+  useEffect(() => {
+    // Fetch both settings and roles when the tab becomes visible
+    Promise.all([getExclusionsSettings(), getRoles()])
+      .then(([settingsData, rolesData]) => {
+        setInitialData(settingsData);
+        setRoles(rolesData);
+        // Once data is fetched, reset the form with the correct values
+        form.reset({
+          exclude_uris: settingsData.exclude_uris ?? [],
+          exclude_query_strings: settingsData.exclude_query_strings ?? [],
+          exclude_cookies: settingsData.exclude_cookies ?? [],
+          exclude_roles: settingsData.exclude_roles ?? [],
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to load exclusions data:", error);
+        // Handle error state if needed
+      });
+  }, [form.reset]); // form.reset is stable, so this still runs only once
 
   const handleTextareaChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>,
@@ -133,10 +152,15 @@ export function ExclusionsTabForm({
     field.onChange(e.target.value.split("\n"));
   };
 
+  // While data is loading, show a skeleton screen
+  if (!initialData || !roles) {
+    return <ExclusionsSettingsSkeleton />;
+  }
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <NetworkAlert isNetworkAdmin={initial.is_network_admin} />
+        <NetworkAlert isNetworkAdmin={initialData.is_network_admin} />
 
         <FormField
           control={form.control}
@@ -201,18 +225,13 @@ export function ExclusionsTabForm({
             </FormItem>
           )}
         />
-        <React.Suspense fallback={<ExclusionsRolesSkeleton />}>
-          <ExclusionsRolesField
-            roles={rolesResource.read()}
-            form={form}
-            isSaving={isSaving}
-          />
-        </React.Suspense>
+        {/* The roles field will now only render after roles have been fetched */}
+        <ExclusionsRolesField roles={roles} form={form} isSaving={isSaving} />
         <div className="flex justify-end">
           <Button type="submit" disabled={isSaving}>
             {isSaving
               ? "Saving..."
-              : initial.is_network_admin
+              : initialData.is_network_admin
               ? "Save Network Settings"
               : "Save Site Settings"}
           </Button>

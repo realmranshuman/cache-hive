@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Suspense, useState, useCallback } from "react";
+// Important: Add useEffect to the import list
+import { Suspense, useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CacheTabForm } from "./caching/CacheTabForm";
@@ -50,6 +51,22 @@ const updaterMap: { [key: string]: (data: any) => Promise<any> } = {
   browser: API.updateBrowserCacheSettings,
 };
 
+// Helper to get the active sub-tab from the URL's query parameters
+function getSubTabFromUrl(defaultValue: string): string {
+  const searchParams = new URLSearchParams(window.location.search);
+  return searchParams.get("tab") || defaultValue;
+}
+
+// Helper to update the URL's query parameter when a tab is changed
+function setUrlForSubTab(tab: string) {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("tab") !== tab) {
+    url.searchParams.set("tab", tab);
+    // Use replaceState to update the URL without adding a new browser history entry
+    window.history.replaceState({ path: url.toString() }, "", url.toString());
+  }
+}
+
 export function Caching() {
   const tabList = [
     { value: "cache", label: "Cache" },
@@ -59,7 +76,10 @@ export function Caching() {
     { value: "object", label: "Object" },
     { value: "browser", label: "Browser" },
   ];
-  const [activeTab, setActiveTab] = useState("cache");
+
+  // Initialize the active tab by reading from the URL
+  const [activeTab, setActiveTab] = useState(() => getSubTabFromUrl("cache"));
+
   const [saving, setSaving] = useState({
     cache: false,
     ttl: false,
@@ -76,12 +96,30 @@ export function Caching() {
   const [resources, setResources] = useState<{ [key: string]: any }>(() => {
     const initialResources: { [key: string]: any } = {};
     tabList.forEach((tab) => {
-      if (fetcherMap[tab.value]) {
+      // Defer fetching for the exclusions tab to fix the infinite loop
+      if (fetcherMap[tab.value] && tab.value !== "exclusions") {
         initialResources[tab.value] = wrapPromise(fetcherMap[tab.value]());
       }
     });
     return initialResources;
   });
+
+  // This function now handles both setting state and updating the URL
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    setUrlForSubTab(tab);
+  };
+
+  // This effect listens for browser back/forward button clicks
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getSubTabFromUrl("cache"));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   const handleSave = useCallback(
     (section: string) => async (data: any) => {
@@ -189,7 +227,12 @@ export function Caching() {
         <CardTitle>Caching Settings</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {/* Pass the new handler to onValueChange */}
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="w-full"
+        >
           <div className="relative rounded-sm overflow-x-scroll h-10 bg-muted mb-6">
             <TabsList className="absolute flex flex-row justify-stretch w-full pt-1 pl-1 pr-1 pb-0">
               {tabList.map((tab, idx) => (
@@ -208,7 +251,8 @@ export function Caching() {
               key={tab.value}
               value={tab.value}
               className="mt-6"
-              forceMount
+              // Only force mount for non-exclusions tabs
+              {...(tab.value !== "exclusions" ? { forceMount: true } : {})}
               hidden={activeTab !== tab.value}
             >
               <ErrorBoundary
@@ -219,9 +263,18 @@ export function Caching() {
                 }
               >
                 <Suspense fallback={skeletonMap[tab.value]}>
-                  <SectionSuspense resource={resources[tab.value]}>
-                    {(initial: any) => formMap[tab.value](initial)}
-                  </SectionSuspense>
+                  {/* For exclusions, the component will handle its own data fetching */}
+                  {tab.value === "exclusions" ? (
+                    <ExclusionsTabForm
+                      initial={{}} // Pass empty initial, it will fetch its own
+                      onSubmit={handleSave("exclusions")}
+                      isSaving={saving.exclusions}
+                    />
+                  ) : (
+                    <SectionSuspense resource={resources[tab.value]}>
+                      {(initial: any) => formMap[tab.value](initial)}
+                    </SectionSuspense>
+                  )}
                 </Suspense>
               </ErrorBoundary>
             </TabsContent>

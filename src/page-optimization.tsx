@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Suspense, useState, useCallback } from "react";
+// Important: Add useEffect to the import list
+import { Suspense, useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CssSettingsForm } from "./pageOptimization/CssSettingsForm";
@@ -51,6 +52,22 @@ const updaterMap: { [key: string]: (data: any) => Promise<any> } = {
   media: updateMediaSettings,
 };
 
+// Helper to get the active sub-tab from the URL's query parameters
+function getSubTabFromUrl(defaultValue: string): string {
+  const searchParams = new URLSearchParams(window.location.search);
+  return searchParams.get("tab") || defaultValue;
+}
+
+// Helper to update the URL's query parameter when a tab is changed
+function setUrlForSubTab(tab: string) {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("tab") !== tab) {
+    url.searchParams.set("tab", tab);
+    // Use replaceState to update the URL without adding a new browser history entry
+    window.history.replaceState({ path: url.toString() }, "", url.toString());
+  }
+}
+
 export function PageOptimization() {
   const tabList = [
     { value: "css", label: "CSS" },
@@ -58,7 +75,10 @@ export function PageOptimization() {
     { value: "html", label: "HTML" },
     { value: "media", label: "Media" },
   ];
-  const [activeTab, setActiveTab] = useState("css");
+
+  // Initialize the active tab by reading from the URL
+  const [activeTab, setActiveTab] = useState(() => getSubTabFromUrl("css"));
+
   const [saving, setSaving] = useState({
     css: false,
     js: false,
@@ -75,6 +95,23 @@ export function PageOptimization() {
     });
     return initialResources;
   });
+
+  // This function now handles both setting state and updating the URL
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    setUrlForSubTab(tab);
+  };
+
+  // This effect listens for browser back/forward button clicks
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getSubTabFromUrl("css"));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   const handleSave = useCallback(
     (section: string) => async (data: any) => {
@@ -152,7 +189,12 @@ export function PageOptimization() {
         <CardTitle>Page Optimization</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {/* Pass the new handler to onValueChange */}
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="w-full"
+        >
           <div className="relative rounded-sm overflow-x-scroll h-10 bg-muted mb-6">
             <TabsList className="absolute flex flex-row justify-stretch w-full pt-1 pl-1 pr-1 pb-0">
               {tabList.map((tab, idx) => (
