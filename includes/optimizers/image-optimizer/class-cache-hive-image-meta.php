@@ -62,9 +62,6 @@ final class Cache_Hive_Image_Meta {
 	/**
 	 * Generate and store initial metadata for a new attachment.
 	 *
-	 * This sets the status to 'pending' and gathers information about all
-	 * available thumbnail sizes for the attachment.
-	 *
 	 * @since 1.0.0
 	 * @param int $attachment_id The attachment ID.
 	 * @return array The newly generated metadata array.
@@ -75,73 +72,64 @@ final class Cache_Hive_Image_Meta {
 			return array();
 		}
 
+		$base_format_meta = array(
+			'status'  => 'pending',
+			'savings' => 0,
+		);
+
 		$meta = array(
-			'status'         => 'unoptimized', // unoptimized, in-progress, optimized, failed.
-			'original_size'  => filesize( $file_path ),
-			'optimized_size' => 0,
-			'savings'        => 0,
-			'error'          => '',
-			'sizes'          => array(),
+			'original_size' => filesize( $file_path ),
+			'webp'          => $base_format_meta,
+			'avif'          => $base_format_meta,
 		);
-
-		$attachment_meta = wp_get_attachment_metadata( $attachment_id );
-
-		// Add original file.
-		$meta['sizes']['full'] = array(
-			'file'           => basename( $file_path ),
-			'original_size'  => $meta['original_size'],
-			'optimized_size' => 0,
-			'webp_size'      => 0,
-			'avif_size'      => 0,
-			'status'         => 'pending',
-		);
-
-		// Add thumbnails.
-		if ( ! empty( $attachment_meta['sizes'] ) ) {
-			foreach ( $attachment_meta['sizes'] as $size => $size_data ) {
-				$thumbnail_path = dirname( $file_path ) . '/' . $size_data['file'];
-				if ( file_exists( $thumbnail_path ) ) {
-					$meta['sizes'][ $size ] = array(
-						'file'           => $size_data['file'],
-						'original_size'  => filesize( $thumbnail_path ),
-						'optimized_size' => 0,
-						'webp_size'      => 0,
-						'avif_size'      => 0,
-						'status'         => 'pending',
-					);
-				}
-			}
-		}
 
 		self::update_meta( $attachment_id, $meta );
 		return $meta;
 	}
 
 	/**
-	 * Check if an image is already optimized.
+	 * Check if an image is already optimized for a specific format.
 	 *
-	 * @since 1.0.0
-	 * @param int $attachment_id The attachment ID.
+	 * @since 1.2.0
+	 * @param int    $attachment_id The attachment ID.
+	 * @param string $format The format to check ('webp' or 'avif').
 	 * @return bool True if status is 'optimized'.
 	 */
-	public static function is_optimized( int $attachment_id ): bool {
+	public static function is_optimized( int $attachment_id, string $format ): bool {
 		$meta = self::get_meta( $attachment_id );
-		return isset( $meta['status'] ) && 'optimized' === $meta['status'];
+		return isset( $meta[ $format ]['status'] ) && 'optimized' === $meta[ $format ]['status'];
 	}
 
 	/**
-	 * Updates the status of an image.
+	 * Updates the status of an image for a specific format.
 	 *
-	 * @since 1.0.0
+	 * @since 1.2.0
 	 * @param int    $attachment_id The attachment ID.
+	 * @param string $format The format to update ('webp' or 'avif').
 	 * @param string $status The new status (e.g., 'in-progress', 'optimized', 'failed').
+	 * @param array  $data Optional data to merge into the format's meta.
 	 */
-	public static function update_status( int $attachment_id, string $status ) {
+	public static function update_format_status( int $attachment_id, string $format, string $status, array $data = array() ) {
+		if ( 'webp' !== $format && 'avif' !== $format ) {
+			return;
+		}
+
 		$meta = self::get_meta( $attachment_id );
 		if ( ! $meta ) {
 			$meta = self::generate_meta( $attachment_id );
 		}
-		$meta['status'] = $status;
+
+		// Ensure the format key exists.
+		if ( ! isset( $meta[ $format ] ) ) {
+			$meta[ $format ] = array(
+				'status'  => 'pending',
+				'savings' => 0,
+			);
+		}
+
+		$meta[ $format ]['status'] = $status;
+		$meta[ $format ]           = array_merge( $meta[ $format ], $data );
+
 		self::update_meta( $attachment_id, $meta );
 	}
 }

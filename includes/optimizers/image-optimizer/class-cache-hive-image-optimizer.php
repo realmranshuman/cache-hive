@@ -21,40 +21,33 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 
 	/**
-	 * Main entry point to optimize a single WordPress attachment and its thumbnails.
+	 * Main entry point to optimize an attachment for a specific format.
 	 *
 	 * @since 1.0.0
-	 * @param int $attachment_id The ID of the attachment to optimize.
+	 * @param int    $attachment_id The ID of the attachment to optimize.
+	 * @param string $target_format The format to optimize to ('webp' or 'avif'). If empty, uses setting.
 	 * @return true|'skipped'|\WP_Error True on success, 'skipped' if excluded, WP_Error on failure.
 	 */
-	public static function optimize_attachment( int $attachment_id ) {
+	public static function optimize_attachment( int $attachment_id, string $target_format = '' ) {
 		$settings = Cache_Hive_Settings::get_settings();
+		if ( empty( $target_format ) ) {
+			$target_format = ! empty( $settings['image_next_gen_format'] ) ? $settings['image_next_gen_format'] : 'webp';
+		}
 
-		// Check if the image is excluded from optimization by URL.
-		$url_exclusions = $settings['image_exclude_images'] ?? array();
-		if ( ! empty( $url_exclusions ) ) {
-			$attachment_url = \wp_get_attachment_url( $attachment_id );
-			if ( $attachment_url ) {
-				// Sanitize and check each rule.
-				foreach ( $url_exclusions as $rule ) {
-					$trimmed_rule = trim( $rule );
-					if ( ! empty( $trimmed_rule ) && str_contains( $attachment_url, $trimmed_rule ) ) {
-						// Mark the image as excluded in the database so it's not picked up again.
-						Cache_Hive_Image_Meta::update_status( $attachment_id, 'excluded' );
-						return 'skipped';
-					}
-				}
-			}
+		if ( 'webp' !== $target_format && 'avif' !== $target_format ) {
+			return 'skipped';
+		}
+
+		if ( self::is_attachment_excluded_by_url( $attachment_id, $settings ) ) {
+			return 'skipped';
 		}
 
 		if ( ! \wp_attachment_is_image( $attachment_id ) ) {
 			return new \WP_Error( 'not_an_image', 'The provided ID is not an image.' );
 		}
 
-		$old_meta              = Cache_Hive_Image_Meta::get_meta( $attachment_id );
-		$was_already_optimized = ( $old_meta && 'optimized' === $old_meta['status'] );
-
-		Cache_Hive_Image_Meta::update_status( $attachment_id, 'in-progress' );
+		$was_already_optimized = Cache_Hive_Image_Meta::is_optimized( $attachment_id, $target_format );
+		Cache_Hive_Image_Meta::update_format_status( $attachment_id, $target_format, 'in-progress' );
 
 		$full_path   = \get_attached_file( $attachment_id );
 		$meta        = \wp_get_attachment_metadata( $attachment_id );
@@ -75,7 +68,7 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			}
 
 			$file_path = dirname( $full_path ) . '/' . $data['file'];
-			$result    = self::optimize_single_file( $file_path, $settings );
+			$result    = self::optimize_single_file( $file_path, $settings, $target_format );
 
 			if ( \is_wp_error( $result ) ) {
 				$optimization_error = $result;
@@ -86,38 +79,70 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			$total_savings  += $result['savings'];
 		}
 
-		$final_meta = Cache_Hive_Image_Meta::get_meta( $attachment_id );
-		if ( ! $final_meta ) {
-			$final_meta = Cache_Hive_Image_Meta::generate_meta( $attachment_id );
-		}
-
 		if ( $optimization_error ) {
-			$final_meta['status'] = 'failed';
-			$final_meta['error']  = $optimization_error->get_error_message();
+			Cache_Hive_Image_Meta::update_format_status(
+				$attachment_id,
+				$target_format,
+				'failed',
+				array( 'error' => $optimization_error->get_error_message() )
+			);
 		} else {
-			$final_meta['status']         = 'optimized';
-			$final_meta['original_size']  = $total_original;
-			$final_meta['optimized_size'] = $total_original - $total_savings;
-			$final_meta['savings']        = $total_savings;
-		}
-		Cache_Hive_Image_Meta::update_meta( $attachment_id, $final_meta );
+			Cache_Hive_Image_Meta::update_format_status(
+				$attachment_id,
+				$target_format,
+				'optimized',
+				array( 'savings' => $total_savings )
+			);
 
-		if ( ! $was_already_optimized && 'optimized' === $final_meta['status'] ) {
-			Cache_Hive_Image_Stats::increment_optimized_count();
+			if ( ! $was_already_optimized ) {
+				Cache_Hive_Image_Stats::increment_optimized_count( $target_format, $total_savings );
+			}
 		}
-
-		return $optimization_error ? $optimization_error : true;
+		// WPCS compliance: Replaced short ternary.
+		return ! empty( $optimization_error ) ? $optimization_error : true;
 	}
 
 	/**
-	 * Optimizes a single image file based on plugin settings.
+	 * Checks if an attachment is excluded by URL rules.
+	 *
+	 * @param int   $attachment_id The attachment ID.
+	 * @param array $settings The plugin settings.
+	 * @return bool True if excluded, false otherwise.
+	 */
+	private static function is_attachment_excluded_by_url( int $attachment_id, array $settings ): bool {
+		$url_exclusions = $settings['image_exclude_images'] ?? array();
+		if ( empty( $url_exclusions ) ) {
+			return false;
+		}
+
+		$attachment_url = \wp_get_attachment_url( $attachment_id );
+		if ( ! $attachment_url ) {
+			return false;
+		}
+
+		foreach ( $url_exclusions as $rule ) {
+			$trimmed_rule = trim( $rule );
+			if ( ! empty( $trimmed_rule ) && str_contains( $attachment_url, $trimmed_rule ) ) {
+				Cache_Hive_Image_Meta::update_format_status( $attachment_id, 'webp', 'excluded' );
+				Cache_Hive_Image_Meta::update_format_status( $attachment_id, 'avif', 'excluded' );
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+
+	/**
+	 * Optimizes a single image file to a specific next-gen format.
 	 *
 	 * @since 1.0.0
 	 * @param string $file_path The absolute path to the image file.
 	 * @param array  $settings  The plugin settings.
+	 * @param string $target_format The format to convert to ('webp' or 'avif').
 	 * @return array|\WP_Error An array with optimization results or WP_Error on failure.
 	 */
-	public static function optimize_single_file( string $file_path, array $settings ) {
+	public static function optimize_single_file( string $file_path, array $settings, string $target_format ) {
 		if ( ! file_exists( $file_path ) ) {
 			return new \WP_Error( 'file_not_found', 'Image file does not exist.' );
 		}
@@ -138,31 +163,29 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return $editor;
 		}
 
-		// Get supported formats directly from Imagick if available.
 		$supported_formats = array();
 		if ( 'imagemagick' === $library && \extension_loaded( 'imagick' ) && class_exists( 'Imagick' ) ) {
 			try {
 				$supported_formats = array_map( 'strtoupper', \Imagick::queryFormats() );
 			} catch ( \Exception $e ) {
-				// Could not query formats, proceed with WP default check.
+				// Could not query formats.
 			}
 		}
 
 		$quality = $settings['image_optimize_losslessly'] ? 100 : (int) $settings['image_quality'];
 		$editor->set_quality( $quality );
 
-		$next_gen_format = $settings['image_next_gen_format'] ?? 'webp';
-		$optimized_path  = '';
-		$mime_type       = '';
-		$is_supported    = false;
+		$optimized_path = '';
+		$mime_type      = '';
+		$is_supported   = false;
 
-		if ( 'webp' === $next_gen_format ) {
+		if ( 'webp' === $target_format ) {
 			$is_supported = ( ! empty( $supported_formats ) ) ? in_array( 'WEBP', $supported_formats, true ) : $editor->supports_mime_type( 'image/webp' );
 			if ( $is_supported ) {
 				$optimized_path = $file_path . '.webp';
 				$mime_type      = 'image/webp';
 			}
-		} elseif ( 'avif' === $next_gen_format ) {
+		} elseif ( 'avif' === $target_format ) {
 			$is_supported = ( ! empty( $supported_formats ) ) ? in_array( 'AVIF', $supported_formats, true ) : $editor->supports_mime_type( 'image/avif' );
 			if ( $is_supported ) {
 				$optimized_path = $file_path . '.avif';
@@ -198,6 +221,7 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 		);
 	}
 
+
 	/**
 	 * Hooks into `add_attachment` to optimize new uploads automatically.
 	 *
@@ -205,8 +229,9 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	 * @param int $attachment_id The ID of the new attachment.
 	 */
 	public static function auto_optimize_on_upload( int $attachment_id ) {
-		if ( ! Cache_Hive_Settings::get( 'image_batch_processing', false ) ) {
-			self::optimize_attachment( $attachment_id );
+		$settings = Cache_Hive_Settings::get_settings();
+		if ( empty( $settings['image_cron_optimization'] ) ) {
+			self::optimize_attachment( $attachment_id, $settings['image_next_gen_format'] );
 		}
 	}
 
@@ -247,88 +272,129 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 	}
 
 	/**
-	 * Deletes all optimized files and metadata from the database in a scalable, cache-aware way.
+	 * Deletes optimized files and/or metadata. Can target a specific format or all.
 	 *
-	 * @since 1.0.0
+	 * @since 1.2.0
+	 * @param string|null $format_to_delete The format to delete ('webp', 'avif'), or null for all.
 	 * @return array|\WP_Error The new stats array on success, or a WP_Error object.
 	 */
-	public static function delete_all_data() {
+	public static function delete_all_data( ?string $format_to_delete = null ) {
 		global $wpdb;
 
-		$batch_size = 5000; // Process 5000 records at a time to prevent memory issues.
-
-		// First, handle the metadata and cache invalidation in batches.
-		while ( true ) {
-			// 1. Get a batch of post IDs that have our metadata. This is fast and memory-efficient.
-			$attachment_ids = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s LIMIT %d",
-					Cache_Hive_Image_Meta::META_KEY,
-					$batch_size
-				)
-			);
-
-			// If no more IDs are found, we are done.
-			if ( empty( $attachment_ids ) ) {
-				break;
-			}
-
-			// 2. Loop through the batch and delete metadata and invalidate cache for each.
-			// This is the WPCS-compliant way to handle bulk operations without dynamic IN clauses.
-			foreach ( $attachment_ids as $attachment_id ) {
-				// Delete metadata for the specific attachment.
-				$wpdb->delete(
-					$wpdb->postmeta,
-					array(
-						'post_id'  => $attachment_id,
-						'meta_key' => Cache_Hive_Image_Meta::META_KEY,
-					),
-					array(
-						'%d',
-						'%s',
-					)
-				);
-
-				// 3. CRITICAL: Invalidate the object cache for each post ID we just cleaned up.
-				\wp_cache_delete( $attachment_id, 'post_meta' );
-			}
+		// 1. Handle File Deletion.
+		$extensions_to_delete = array();
+		if ( null === $format_to_delete ) {
+			$extensions_to_delete = array( 'webp', 'avif' );
+		} elseif ( 'webp' === $format_to_delete || 'avif' === $format_to_delete ) {
+			$extensions_to_delete[] = $format_to_delete;
 		}
 
-		// Second, handle file cleanup.
-		$upload_dir = \wp_upload_dir();
-		$path       = \trailingslashit( $upload_dir['basedir'] );
-
-		try {
-			$iterator = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $path, \RecursiveDirectoryIterator::SKIP_DOTS ) );
-			foreach ( $iterator as $file ) {
-				if ( $file->isFile() && in_array( $file->getExtension(), array( 'webp', 'avif' ), true ) ) {
-					$original_file = str_replace( '.' . $file->getExtension(), '', $file->getPathname() );
-					if ( file_exists( $original_file ) ) {
+		if ( ! empty( $extensions_to_delete ) ) {
+			$upload_dir = \wp_upload_dir();
+			$path       = \trailingslashit( $upload_dir['basedir'] );
+			try {
+				$iterator = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $path, \RecursiveDirectoryIterator::SKIP_DOTS ) );
+				foreach ( $iterator as $file ) {
+					if ( $file->isFile() && in_array( $file->getExtension(), $extensions_to_delete, true ) ) {
 						@unlink( $file->getPathname() );
 					}
 				}
+			} catch ( \Exception $e ) {
+				return new \WP_Error( 'file_scan_error', 'Could not scan uploads directory to delete files.' );
 			}
-		} catch ( \Exception $e ) {
-			return new \WP_Error( 'file_scan_error', 'Could not scan uploads directory to delete files.' );
 		}
 
-		// Finally, clean up the global stats and options.
-		\delete_option( Cache_Hive_Image_Stats::STATS_OPTION_KEY );
-		\delete_option( Cache_Hive_Image_Stats::SYNC_STATE_OPTION_KEY );
+		// 2. Handle Metadata Updates.
+		// Get all attachment IDs that have our metadata upfront to avoid infinite loops.
+		$attachment_ids = $wpdb->get_col( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s", Cache_Hive_Image_Meta::META_KEY ) );
 
-		\wp_cache_delete( Cache_Hive_Image_Stats::STATS_OPTION_KEY, 'options' );
-		\wp_cache_delete( Cache_Hive_Image_Stats::SYNC_STATE_OPTION_KEY, 'options' );
+		if ( ! empty( $attachment_ids ) ) {
+			foreach ( $attachment_ids as $id ) {
+				if ( null === $format_to_delete ) {
+					// "Revert All": Delete the entire meta row.
+					Cache_Hive_Image_Meta::delete_meta( (int) $id );
+				} else {
+					// "Revert Specific Format": Fetch, modify, and save.
+					$meta = Cache_Hive_Image_Meta::get_meta( (int) $id );
+					if ( is_array( $meta ) && isset( $meta[ $format_to_delete ] ) ) {
+						$meta[ $format_to_delete ] = array(
+							'status'  => 'pending',
+							'savings' => 0,
+						);
+						Cache_Hive_Image_Meta::update_meta( (int) $id, $meta );
+					}
+				}
+				// Invalidate object cache for the processed item.
+				\wp_cache_delete( $id, 'post_meta' );
+			}
+		}
+
+		// 3. Clear relevant options and recalculate stats.
+		if ( null === $format_to_delete ) {
+			\delete_option( Cache_Hive_Image_Stats::SYNC_STATE_OPTION_KEY );
+			\wp_cache_delete( Cache_Hive_Image_Stats::SYNC_STATE_OPTION_KEY, 'options' );
+		}
 
 		// Recalculate and return the fresh stats.
 		return Cache_Hive_Image_Stats::recalculate_stats();
 	}
 
+	/**
+	 * Reverts a single attachment for a specific format.
+	 *
+	 * @since 1.2.0
+	 * @param int    $attachment_id The ID of the attachment.
+	 * @param string $format        The format to revert ('webp' or 'avif').
+	 * @return bool True on success, false on failure.
+	 */
+	public static function revert_attachment_format( int $attachment_id, string $format ): bool {
+		if ( 'webp' !== $format && 'avif' !== $format ) {
+			return false;
+		}
+
+		$meta = Cache_Hive_Image_Meta::get_meta( $attachment_id );
+		if ( ! $meta || ! isset( $meta[ $format ] ) ) {
+			return false;
+		}
+
+		$was_optimized = ( 'optimized' === $meta[ $format ]['status'] );
+		$savings       = isset( $meta[ $format ]['savings'] ) ? (int) $meta[ $format ]['savings'] : 0;
+
+		$attachment_meta = \wp_get_attachment_metadata( $attachment_id );
+		$full_path       = \get_attached_file( $attachment_id );
+
+		if ( $full_path ) {
+			$files_to_delete = array( $full_path . '.' . $format );
+			if ( ! empty( $attachment_meta['sizes'] ) ) {
+				foreach ( $attachment_meta['sizes'] as $size_data ) {
+					$files_to_delete[] = dirname( $full_path ) . '/' . $size_data['file'] . '.' . $format;
+				}
+			}
+			foreach ( $files_to_delete as $file ) {
+				if ( file_exists( $file ) ) {
+					@unlink( $file );
+				}
+			}
+		}
+
+		$meta[ $format ] = array(
+			'status'  => 'pending',
+			'savings' => 0,
+		);
+		Cache_Hive_Image_Meta::update_meta( $attachment_id, $meta );
+
+		if ( $was_optimized ) {
+			Cache_Hive_Image_Stats::decrement_optimized_count( $format, $savings );
+		}
+
+		\wp_cache_delete( $attachment_id, 'post_meta' );
+
+		return true;
+	}
+
 
 	/**
 	 * Detects if the installed Imagick version has known transparency bugs with WebP.
-	 *
-	 * This check is based on known issues where specific versions of ImageMagick
-	 * improperly handled the alpha channel when converting from PNG or GIF to WebP.
 	 *
 	 * @since 1.0.0
 	 * @return bool True if the Imagick version is known to be problematic, false otherwise.
@@ -340,19 +406,16 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 
 		$v = \Imagick::getVersion();
 		if ( ! isset( $v['versionString'] ) ) {
-			return false; // Cannot determine version.
+			return false;
 		}
 
-		// Use preg_match to extract the version number, e.g., "ImageMagick 6.9.12-98 ...".
 		if ( ! preg_match( '/ImageMagick (\d+\.\d+\.\d+)-?(\d+)?/', $v['versionString'], $matches ) ) {
-			return false; // Could not parse version string.
+			return false;
 		}
 
 		$version = $matches[1];
-		$patch   = $matches[2] ?? 0;
+		$patch   = isset( $matches[2] ) ? $matches[2] : 0;
 
-		// Bug Condition 1 (PNG->WebP alpha issues): Affects ImageMagick 6.9.10-0 to 6.9.12-40.
-		// The bug was fixed in 6.9.12-41.
 		if ( \version_compare( $version, '6.9.10', '>=' ) && \version_compare( $version, '6.9.12', '<' ) ) {
 			return true;
 		}
@@ -360,8 +423,6 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			return true;
 		}
 
-		// Bug Condition 2 (GIF->WebP transparency issues): Affects early ImageMagick 7.1.0 builds.
-		// The bug was fixed in 7.1.0-22.
 		if ( \version_compare( $version, '7.1.0', '==' ) && $patch < 22 ) {
 			return true;
 		}
@@ -428,18 +489,15 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 		$intermediate_sizes = \get_intermediate_image_sizes();
 
 		foreach ( $intermediate_sizes as $size_name ) {
-			// WordPress default sizes are stored in options.
 			if ( in_array( $size_name, array( 'thumbnail', 'medium', 'medium_large', 'large' ), true ) ) {
 				$width  = (int) \get_option( "{$size_name}_size_w" );
 				$height = (int) \get_option( "{$size_name}_size_h" );
 			} else {
-				// Custom sizes are stored in a global variable.
 				global $_wp_additional_image_sizes;
 				if ( isset( $_wp_additional_image_sizes[ $size_name ] ) ) {
 					$width  = (int) $_wp_additional_image_sizes[ $size_name ]['width'];
 					$height = (int) $_wp_additional_image_sizes[ $size_name ]['height'];
 				} else {
-					// Skip if size details can't be found.
 					continue;
 				}
 			}
@@ -455,9 +513,6 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 
 	/**
 	 * Gathers and returns the server's image processing capabilities.
-	 *
-	 * This is the definitive method for checking what the server supports and should be
-	 * used to generate the `server_capabilities` object for the frontend API.
 	 *
 	 * @since 1.1.0
 	 * @return array An array of server capabilities.
@@ -475,7 +530,6 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			'thumbnail_sizes'      => array(),
 		);
 
-		// 1. Check for GD support
 		if ( extension_loaded( 'gd' ) && function_exists( 'gd_info' ) ) {
 			$capabilities['gd_support'] = true;
 			$gd_info                    = gd_info();
@@ -487,7 +541,6 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 			}
 		}
 
-		// 2. Check for Imagick support using the direct and reliable query method
 		if ( extension_loaded( 'imagick' ) && class_exists( 'Imagick' ) ) {
 			$capabilities['imagick_support'] = true;
 
@@ -497,7 +550,6 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 					$capabilities['imagick_version'] = $matches[1];
 				}
 
-				// Directly query supported formats. Format names are returned in uppercase.
 				$supported_formats = \Imagick::queryFormats();
 
 				if ( in_array( 'WEBP', $supported_formats, true ) ) {
@@ -507,15 +559,12 @@ class Cache_Hive_Image_Optimizer extends Cache_Hive_Base_Optimizer {
 					$capabilities['imagick_avif_support'] = true;
 				}
 			} catch ( \Exception $e ) {
-				// If Imagick throws an error, we mark it as not supported.
 				$capabilities['imagick_support'] = false;
 			}
 
-			// Check for old Imagick version with transparency bugs.
 			$capabilities['is_imagick_old'] = self::is_imagick_old();
 		}
 
-		// 3. Get all registered thumbnail sizes
 		$capabilities['thumbnail_sizes'] = self::get_all_thumbnail_sizes();
 
 		return $capabilities;

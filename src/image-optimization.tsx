@@ -42,7 +42,7 @@ import { ImageOptimizationSettingsSkeleton } from "@/components/skeletons/image-
 import {
   getImageOptimizationSettings,
   updateImageOptimizationSettings,
-  destroyAllImageOptimizationData,
+  revertOptimizationData,
   startImageSync,
   getImageSyncStatus,
   cancelImageSync,
@@ -230,11 +230,15 @@ function ImageOptimizationSettingsForm({
   }, [isSyncing, processNextImage]);
 
   const handleStartSync = async () => {
+    if (imageNextGenFormat === "default") {
+      sonnerToast.error("Please select a format (WebP or AVIF) to optimize.");
+      return;
+    }
     try {
-      const initialState = await startImageSync();
+      const initialState = await startImageSync(imageNextGenFormat);
       setSyncState(initialState);
       if (initialState.is_finished) {
-        sonnerToast.info("All images are already optimized.");
+        sonnerToast.info("All images are already optimized for this format.");
         onSaved();
       } else {
         setIsSyncing(true);
@@ -301,7 +305,8 @@ function ImageOptimizationSettingsForm({
 
     const savePromise = updateImageOptimizationSettings(payload)
       .then((data) => {
-        setStats(data.stats); // Update stats after saving settings too
+        setStats(data.stats);
+        onSaved();
         return { name: "Settings" };
       })
       .catch((err) => {
@@ -321,49 +326,56 @@ function ImageOptimizationSettingsForm({
     }
   };
 
-  const handleDestroy = () => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete all optimized images and data? This action cannot be undone."
-      )
-    ) {
+  const handleRevert = async (format?: "webp" | "avif") => {
+    let confirmationText =
+      "Are you sure? This will remove all optimization data and generated files, and cannot be undone.";
+    if (format) {
+      confirmationText = `Are you sure? This will remove all ${format.toUpperCase()} files and optimization data. This cannot be undone.`;
+    }
+
+    if (!window.confirm(confirmationText)) {
       return;
     }
 
     setSaving(true);
-    const destroyPromise = destroyAllImageOptimizationData()
-      .then((res) => {
-        setStats(res.stats); // Instantly update the UI with the new stats
-        return res;
-      })
-      .catch((err) => {
-        throw err;
-      });
+    const revertPromise = revertOptimizationData(format);
 
-    sonnerToast.promise(destroyPromise, {
-      loading: "Deleting optimization data...",
+    sonnerToast.promise(revertPromise, {
+      loading: "Reverting optimization data...",
       success: (data) => data.message,
-      error: (err) => err.message || "Could not delete data.",
+      error: (err) => err.message || "Could not revert data.",
     });
 
-    setSaving(false);
+    try {
+      const res = await revertPromise;
+      setStats(res.stats); // Instantly update the UI with the new stats
+    } catch (error) {
+      // The toast will handle showing the error message.
+    } finally {
+      setSaving(false); // Ensures the loading state is always turned off.
+    }
   };
+
+  const displayedStats =
+    stats && imageNextGenFormat !== "default"
+      ? stats[imageNextGenFormat]
+      : null;
 
   const progressValue = useMemo(() => {
     if (!syncState || !syncState.total_to_optimize) return 0;
     return (syncState.processed / syncState.total_to_optimize) * 100;
   }, [syncState]);
 
-  const chartData = useMemo(
-    () => [
+  const chartData = useMemo(() => {
+    const percent = displayedStats ? displayedStats.optimization_percent : 0;
+    return [
       {
         name: "optimized",
-        value: stats.optimization_percent,
+        value: percent,
         fill: "hsl(var(--primary))",
       },
-    ],
-    [stats.optimization_percent]
-  );
+    ];
+  }, [displayedStats]);
 
   const chartEndAngle = useMemo(() => {
     const startAngle = 90;
@@ -384,15 +396,16 @@ function ImageOptimizationSettingsForm({
   const syncButtonText =
     syncState && syncState.processed > 0
       ? "Resume Optimization"
-      : "Optimize All Unoptimized Images";
+      : `Optimize All to ${
+          imageNextGenFormat !== "default"
+            ? imageNextGenFormat.toUpperCase()
+            : ""
+        }`;
 
   return (
     <TooltipProvider>
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-3 space-y-8">
-          {/* --- CORE SETTINGS --- */}
-
-          {/* Optimization Library */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -486,7 +499,6 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* Optimization Targets */}
           <Card>
             <CardHeader>
               <CardTitle>Optimization Targets</CardTitle>
@@ -540,9 +552,6 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* --- FORMAT & QUALITY --- */}
-
-          {/* Format & Quality Settings */}
           <Card>
             <CardHeader>
               <CardTitle>Format & Quality Settings</CardTitle>
@@ -552,7 +561,6 @@ function ImageOptimizationSettingsForm({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Next-gen formats */}
               <div className="space-y-2">
                 <Label>Serve Next-Gen Formats</Label>
                 <Select
@@ -604,7 +612,6 @@ function ImageOptimizationSettingsForm({
 
               <Separator />
 
-              {/* Compression */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
@@ -645,9 +652,6 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* --- ADVANCED SETTINGS --- */}
-
-          {/* Advanced Settings */}
           <Card>
             <CardHeader>
               <CardTitle>Advanced Settings</CardTitle>
@@ -656,7 +660,6 @@ function ImageOptimizationSettingsForm({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Delivery Method */}
               <div className="space-y-2">
                 <Label>Image Delivery Method</Label>
                 <RadioGroup
@@ -681,7 +684,6 @@ function ImageOptimizationSettingsForm({
 
               <Separator />
 
-              {/* EXIF Data */}
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="remove-exif">Remove EXIF Data</Label>
@@ -698,7 +700,6 @@ function ImageOptimizationSettingsForm({
 
               <Separator />
 
-              {/* Resizing */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
@@ -745,7 +746,6 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* Exclusions */}
           <Card>
             <CardHeader>
               <CardTitle>Exclusions</CardTitle>
@@ -796,9 +796,6 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* --- SERVER & PERFORMANCE --- */}
-
-          {/* Batch Processing */}
           <Card>
             <CardHeader>
               <CardTitle>Automatic Background Optimization</CardTitle>
@@ -827,7 +824,6 @@ function ImageOptimizationSettingsForm({
             </CardContent>
           </Card>
 
-          {/* Action Button */}
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={saving || isSyncing}>
               {saving ? "Saving..." : "Save Settings"}
@@ -835,15 +831,13 @@ function ImageOptimizationSettingsForm({
           </div>
         </div>
 
-        {/* --- SIDEBAR --- */}
         <div className="lg:col-span-1">
           <div className="sticky top-6 space-y-8">
-            {/* Manual Bulk Optimization Card */}
             <Card>
               <CardHeader>
                 <CardTitle>Manual Bulk Optimization</CardTitle>
                 <CardDescription>
-                  Manually process all unoptimized images in your Media Library.
+                  Manually process images for the selected format.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -900,8 +894,11 @@ function ImageOptimizationSettingsForm({
                   </ChartContainer>
                 </div>
                 <div className="text-center text-sm text-muted-foreground">
-                  {stats.optimized_images} / {stats.total_images} images
-                  optimized
+                  {displayedStats
+                    ? `${displayedStats.optimized_count} / ${
+                        stats.total_images
+                      } images optimized to ${imageNextGenFormat.toUpperCase()}`
+                    : "Select a format to see stats"}
                 </div>
                 {isSyncing && syncState ? (
                   <div className="space-y-2">
@@ -923,7 +920,12 @@ function ImageOptimizationSettingsForm({
                   <Button
                     onClick={handleStartSync}
                     className="w-full"
-                    disabled={saving || stats.unoptimized_images === 0}
+                    disabled={
+                      saving ||
+                      imageNextGenFormat === "default" ||
+                      (displayedStats &&
+                        displayedStats.unoptimized_images === 0)
+                    }
                   >
                     <PlayIcon className="mr-2 h-4 w-4" />
                     {syncButtonText}
@@ -932,33 +934,42 @@ function ImageOptimizationSettingsForm({
               </CardContent>
             </Card>
 
-            {/* Danger Zone Card */}
             <Card className="border-destructive">
               <CardHeader>
                 <CardTitle className="text-destructive">Danger Zone</CardTitle>
                 <CardDescription>
-                  Destructive actions that cannot be undone.
+                  These actions will remove generated files and cannot be
+                  undone.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="font-semibold">
-                    Destroy All Optimization Data
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    This will permanently delete all generated WebP/AVIF files
-                    and remove all optimization records from your database.
-                    Original images will not be affected.
-                  </p>
-                </div>
                 <Button
                   variant="destructive"
-                  onClick={handleDestroy}
+                  onClick={() => handleRevert("webp")}
                   disabled={saving || isSyncing}
                   className="w-full"
                 >
                   <Trash2Icon className="mr-2 h-4 w-4" />
-                  Destroy All Data
+                  Revert WebP Images
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => handleRevert("avif")}
+                  disabled={saving || isSyncing}
+                  className="w-full"
+                >
+                  <Trash2Icon className="mr-2 h-4 w-4" />
+                  Revert AVIF Images
+                </Button>
+                <Separator className="my-2" />
+                <Button
+                  variant="destructive"
+                  onClick={() => handleRevert()}
+                  disabled={saving || isSyncing}
+                  className="w-full"
+                >
+                  <Trash2Icon className="mr-2 h-4 w-4" />
+                  Revert All Optimizations
                 </Button>
               </CardContent>
             </Card>

@@ -1,4 +1,5 @@
 import { wpApiSettings } from "./shared";
+
 export interface ImageOptimizationSettings {
   image_optimization_library: "gd" | "imagemagick";
   image_optimize_losslessly: boolean;
@@ -10,7 +11,7 @@ export interface ImageOptimizationSettings {
   image_auto_resize: boolean;
   image_max_width: number;
   image_max_height: number;
-  image_cron_optimization: boolean; // RENAMED
+  image_cron_optimization: boolean;
   image_exclude_images: string;
   image_exclude_picture_rewrite: string;
   image_selected_thumbnails: string[];
@@ -35,14 +36,21 @@ export interface ServerCapabilities {
   thumbnail_sizes: ThumbnailSize[];
 }
 
-export interface ImageStats {
-  total_images: number;
-  optimized_images: number;
+export interface FormatStats {
+  optimized_count: number;
+  savings: number;
   unoptimized_images: number;
   optimization_percent: number;
 }
 
+export interface ImageStats {
+  total_images: number;
+  webp: FormatStats;
+  avif: FormatStats;
+}
+
 export interface SyncState {
+  format: "webp" | "avif";
   is_running: boolean;
   is_finished: boolean;
   total_to_optimize: number;
@@ -93,7 +101,9 @@ export async function updateImageOptimizationSettings(
   return response.json();
 }
 
-export async function destroyAllImageOptimizationData(): Promise<{
+export async function revertOptimizationData(
+  format?: "webp" | "avif"
+): Promise<{
   message: string;
   stats: ImageStats;
 }> {
@@ -103,25 +113,33 @@ export async function destroyAllImageOptimizationData(): Promise<{
       method: "DELETE",
       headers: {
         "X-WP-Nonce": wpApiSettings.nonce,
+        "Content-Type": "application/json",
       },
       credentials: "include",
+      body: format ? JSON.stringify({ format }) : null,
     }
   );
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.message || "Failed to destroy optimization data");
+    throw new Error(errorData.message || "Failed to revert optimization data");
   }
   return response.json();
 }
 
 // API functions for manual sync
-export async function startImageSync(): Promise<SyncState> {
+export async function startImageSync(
+  format: "webp" | "avif"
+): Promise<SyncState> {
   const response = await fetch(
     `${wpApiSettings.root}cache-hive/v1/optimizers/image/sync`,
     {
       method: "POST",
-      headers: { "X-WP-Nonce": wpApiSettings.nonce },
+      headers: {
+        "X-WP-Nonce": wpApiSettings.nonce,
+        "Content-Type": "application/json",
+      },
       credentials: "include",
+      body: JSON.stringify({ format }),
     }
   );
   if (!response.ok) throw new Error("Failed to start sync");

@@ -6,38 +6,43 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  // Use event delegation to handle clicks, as elements can be added dynamically.
   document.body.addEventListener("click", function (event) {
-    const target = event.target;
+    const optimizeButton = event.target.closest(".cache-hive-optimize-now");
+    const restoreButton = event.target.closest(".cache-hive-restore-image");
 
-    if (target.matches(".cache-hive-optimize-now")) {
+    if (optimizeButton) {
       event.preventDefault();
-      const actionsContainer = target.closest(".cache-hive-media-actions");
-      if (actionsContainer) {
-        handleAction("cache_hive_optimize_image", actionsContainer);
+      const format = optimizeButton.dataset.format;
+      const container = optimizeButton.closest(".cache-hive-media-actions");
+      if (format && container) {
+        handleAction("cache_hive_optimize_image", container, format);
       }
     }
 
-    if (target.matches(".cache-hive-restore-image")) {
+    if (restoreButton) {
       event.preventDefault();
-      const actionsContainer = target.closest(".cache-hive-media-actions");
-      if (actionsContainer) {
-        handleAction("cache_hive_restore_image", actionsContainer);
+      const format = restoreButton.dataset.format;
+      const container = restoreButton.closest(".cache-hive-media-actions");
+      if (format && container) {
+        // **FIX**: Use the original action name.
+        handleAction("cache_hive_restore_image", container, format);
       }
     }
   });
 
-  function handleAction(action, container) {
+  function handleAction(action, container, format) {
     const attachmentId = container.dataset.id;
     if (!attachmentId) return;
 
-    // Show loading state
+    const originalContent = container.innerHTML;
     container.innerHTML = `<p class="in-progress-notice">${window.cacheHiveMedia.l10n.processing}</p>`;
 
     const formData = new FormData();
     formData.append("action", action);
     formData.append("nonce", nonce);
     formData.append("attachment_id", attachmentId);
+    // This sends the format, which the PHP is now expecting.
+    formData.append("format", format);
 
     fetch(ajaxUrl, {
       method: "POST",
@@ -48,13 +53,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (response.success && response.data.html) {
           container.innerHTML = response.data.html;
         } else {
-          container.innerHTML = `<p class="error-notice">${
-            response.data.message || window.cacheHiveMedia.l10n.error
-          }</p>`;
+          const errorMessage =
+            response.data?.message || window.cacheHiveMedia.l10n.error;
+          container.innerHTML = `<p class="error-notice">${errorMessage}</p>`;
+          // Revert to original state on error so the user can try again.
+          setTimeout(() => {
+            container.innerHTML = originalContent;
+          }, 3000);
         }
       })
       .catch(() => {
         container.innerHTML = `<p class="error-notice">${window.cacheHiveMedia.l10n.error}</p>`;
+        setTimeout(() => {
+          container.innerHTML = originalContent;
+        }, 3000);
       });
   }
 });
