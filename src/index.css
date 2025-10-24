@@ -67,6 +67,13 @@
   }
 }
 
+/* --- ADD THIS LAYER --- */
+@layer utilities {
+  body[class*='_page_cache-hive'] #wpcontent {
+    padding-left: 0;
+  }
+}
+
 ::-webkit-scrollbar {
   @apply w-2.5 h-0;
 }

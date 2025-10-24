@@ -1,4 +1,5 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
+import type { ChangeEvent } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -71,7 +72,7 @@ export function CssSettingsForm({
   }, [initial, form.reset]);
 
   const handleTextareaChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
     // Correctly update the form state with an array of strings

@@ -1,6 +1,6 @@
-import * as React from "react";
-// Import useEffect and useState
-import { useEffect, useState } from "react";
+import * as React from "@wordpress/element";
+import { useEffect, useState } from "@wordpress/element";
+import type { ChangeEvent } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -15,7 +15,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-// No longer need wrapPromise here
 import { getRoles, getExclusionsSettings, ExclusionsFormData } from "../api";
 import { ExclusionsRolesSkeleton } from "@/components/skeletons/exclusions-roles-skeleton";
 import { ExclusionsSettingsSkeleton } from "@/components/skeletons/exclusions-settings-skeleton";
@@ -146,7 +145,7 @@ export function ExclusionsTabForm({
   }, [form.reset]); // form.reset is stable, so this still runs only once
 
   const handleTextareaChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
     field.onChange(e.target.value.split("\n"));

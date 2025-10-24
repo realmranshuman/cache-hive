@@ -205,12 +205,22 @@ function cache_hive_render_admin_page() {
  * @since 1.0.0
  * @param string $hook The current admin page hook.
  */
+/**
+ * Enqueues scripts and styles for the admin area.
+ *
+ * @since 1.0.0
+ * @param string $hook The current admin page hook.
+ */
 function cache_hive_enqueue_admin_assets( $hook ) {
+	// Enqueue the main React application script on its pages.
 	if ( false !== strpos( $hook, 'cache-hive' ) ) {
 		$script_path = CACHE_HIVE_DIR . 'build/index.js';
-		$style_path  = CACHE_HIVE_DIR . 'build/index.css';
+
 		if ( file_exists( $script_path ) ) {
+			// Enqueue the main JS bundle. CSS is now included within this file.
 			wp_enqueue_script( 'cache-hive-app', CACHE_HIVE_URL . 'build/index.js', array( 'wp-element', 'wp-i18n' ), filemtime( $script_path ), true );
+
+			// Localize script with required data.
 			wp_localize_script(
 				'cache-hive-app',
 				'wpApiSettings',
@@ -220,17 +230,16 @@ function cache_hive_enqueue_admin_assets( $hook ) {
 				)
 			);
 		}
-		if ( file_exists( $style_path ) ) {
-			wp_enqueue_style( 'cache-hive-style', CACHE_HIVE_URL . 'build/index.css', array(), filemtime( $style_path ) );
-			$custom_css = "\n\tbody[class*='_page_cache-hive'] #wpcontent {\n\t\tpadding-left: 0;\n\t}\n\t";
-			wp_add_inline_style( 'cache-hive-style', $custom_css );
-		}
 	}
+
+	// Enqueue the separate vanilla JS for the Media Library.
 	$media_library_hooks = array( 'upload.php', 'post.php' );
 	if ( in_array( $hook, $media_library_hooks, true ) ) {
 		$media_script_path = CACHE_HIVE_DIR . 'build/media-library.js';
+
 		if ( file_exists( $media_script_path ) ) {
 			wp_enqueue_script( 'cache-hive-media-library', CACHE_HIVE_URL . 'build/media-library.js', array(), filemtime( $media_script_path ), true );
+
 			wp_localize_script(
 				'cache-hive-media-library',
 				'cacheHiveMedia',

@@ -1,8 +1,8 @@
 "use client";
 
-import * as React from "react";
-// Important: Add useEffect to the import list
-import { Suspense, useState, useCallback, useEffect } from "react";
+import * as React from "@wordpress/element";
+import { Suspense, useState, useCallback, useEffect } from "@wordpress/element";
+import type { ReactNode } from "react"; 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CacheTabForm } from "./caching/CacheTabForm";
@@ -27,7 +27,7 @@ function SectionSuspense({
   children,
 }: {
   resource: any;
-  children: (data: any) => React.ReactNode;
+  children: (data: any) => ReactNode;
 }) {
   const data = resource.read();
   return children(data);
@@ -164,7 +164,7 @@ export function Caching() {
     []
   );
 
-  const skeletonMap: { [key: string]: React.ReactNode } = {
+  const skeletonMap: { [key: string]: ReactNode } = {
     cache: <CacheSettingsSkeleton />,
     ttl: <TtlSettingsSkeleton />,
     autopurge: <AutoPurgeSettingsSkeleton />,
@@ -173,7 +173,7 @@ export function Caching() {
     browser: <BrowserCacheSettingsSkeleton />,
   };
 
-  const formMap: { [key: string]: (initial: any) => React.ReactNode } = {
+  const formMap: { [key: string]: (initial: any) => ReactNode } = {
     cache: (initial) => (
       <CacheTabForm
         initial={initial}

@@ -1,11 +1,16 @@
-import * as React from "react";
-import { Skeleton } from "@/components/ui/skeleton"; // Adjust path if needed
+import * as React from "@wordpress/element";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Helper component for a single form field skeleton
-const FormFieldSkeleton = ({ labelWidth = "w-4/5" }: { labelWidth?: string }) => (
+const FormFieldSkeleton = ({
+  labelWidth = "w-4/5",
+}: {
+  labelWidth?: string;
+}) => (
   <div className="space-y-2">
     <Skeleton className={`h-5 ${labelWidth} rounded-md`} /> {/* Label */}
-    <Skeleton className="h-10 w-full rounded-md" /> {/* Input (shadcn Input default height) */}
+    <Skeleton className="h-10 w-full rounded-md" />{" "}
+    {/* Input (shadcn Input default height) */}
   </div>
 );
 

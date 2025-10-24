@@ -3,16 +3,26 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      jsxRuntime: "classic",
+    }),
+  ],
   build: {
     outDir: "build",
     emptyOutDir: true,
-    manifest: true,
+    manifest: false,
     rollupOptions: {
+      external: ["react", "react-dom", "@wordpress/element"],
       input: "src/index.tsx",
       output: {
+        format: "iife",
         entryFileNames: "index.js",
-        assetFileNames: "[name][extname]",
+        globals: {
+          react: "React",
+          "react-dom": "ReactDOM",
+          "@wordpress/element": "wp.element",
+        },
       },
     },
   },

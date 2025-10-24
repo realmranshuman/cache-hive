@@ -1,8 +1,14 @@
-import * as React from "react";
-import { Skeleton } from "@/components/ui/skeleton"; // Adjust path if needed
+import * as React from "@wordpress/element";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Helper for a standard input field with a label
-const InputFieldSkeleton = ({ labelWidth = "w-1/3", className = "" }: { labelWidth?: string, className?: string }) => (
+const InputFieldSkeleton = ({
+  labelWidth = "w-1/3",
+  className = "",
+}: {
+  labelWidth?: string;
+  className?: string;
+}) => (
   <div className={`space-y-2 ${className}`}>
     <Skeleton className={`h-5 ${labelWidth} rounded-md`} /> {/* Label */}
     <Skeleton className="h-10 w-full rounded-md" /> {/* Input */}
@@ -10,15 +16,28 @@ const InputFieldSkeleton = ({ labelWidth = "w-1/3", className = "" }: { labelWid
 );
 
 // Helper for a textarea field with a label
-const TextareaFieldSkeleton = ({ labelWidth = "w-1/3", className = "" }: { labelWidth?: string, className?: string }) => (
+const TextareaFieldSkeleton = ({
+  labelWidth = "w-1/3",
+  className = "",
+}: {
+  labelWidth?: string;
+  className?: string;
+}) => (
   <div className={`space-y-2 ${className}`}>
     <Skeleton className={`h-5 ${labelWidth} rounded-md`} /> {/* Label */}
-    <Skeleton className="h-24 w-full rounded-md" /> {/* Textarea (rows={4} approx h-24) */}
+    <Skeleton className="h-24 w-full rounded-md" />{" "}
+    {/* Textarea (rows={4} approx h-24) */}
   </div>
 );
 
 // Helper for a switch field with a label
-const SwitchFieldSkeleton = ({ labelWidth = "w-2/5", className = "" }: { labelWidth?: string, className?: string }) => (
+const SwitchFieldSkeleton = ({
+  labelWidth = "w-2/5",
+  className = "",
+}: {
+  labelWidth?: string;
+  className?: string;
+}) => (
   <div className={`flex items-center justify-between ${className}`}>
     <Skeleton className={`h-5 ${labelWidth} rounded-md`} /> {/* Label */}
     <Skeleton className="h-6 w-11 rounded-full" /> {/* Switch */}
@@ -36,7 +55,8 @@ export function ObjectCacheSettingsSkeleton() {
           {/* Skeleton for "Method" Select */}
           <div className="space-y-2">
             <Skeleton className="h-5 w-1/5 rounded-md" /> {/* Label */}
-            <Skeleton className="h-10 w-full rounded-md" /> {/* SelectTrigger */}
+            <Skeleton className="h-10 w-full rounded-md" />{" "}
+            {/* SelectTrigger */}
           </div>
 
           {/* Skeleton for Host and Port Grid */}
@@ -74,18 +94,29 @@ export function ObjectCacheSettingsSkeleton() {
         <div className="sticky top-6">
           <div className="border rounded-lg p-6 bg-white dark:bg-gray-900 space-y-3">
             <Skeleton className="h-8 w-32 mb-1 rounded-md" /> {/* Card Title */}
-            <Skeleton className="h-4 w-3/4 mb-3 rounded-md" /> {/* Card Description */}
-            <Skeleton className="h-4 w-24 mb-1 rounded-md" /> {/* 'Live Status' section header */}
-            <Skeleton className="h-6 w-20 mb-2 rounded-md" /> {/* Status badge */}
-            <Skeleton className="h-px w-full bg-gray-200 dark:bg-gray-700 my-2" /> {/* Divider */}
-            <Skeleton className="h-4 w-28 mb-1 rounded-md" /> {/* 'Client In Use' */}
-            <Skeleton className="h-4 w-24 mb-1 rounded-md" /> {/* 'Serializer' */}
-            <Skeleton className="h-4 w-28 mb-1 rounded-md" /> {/* 'Compression' */}
-            <Skeleton className="h-4 w-20 mb-1 rounded-md" /> {/* 'Persistent' */}
+            <Skeleton className="h-4 w-3/4 mb-3 rounded-md" />{" "}
+            {/* Card Description */}
+            <Skeleton className="h-4 w-24 mb-1 rounded-md" />{" "}
+            {/* 'Live Status' section header */}
+            <Skeleton className="h-6 w-20 mb-2 rounded-md" />{" "}
+            {/* Status badge */}
+            <Skeleton className="h-px w-full bg-gray-200 dark:bg-gray-700 my-2" />{" "}
+            {/* Divider */}
+            <Skeleton className="h-4 w-28 mb-1 rounded-md" />{" "}
+            {/* 'Client In Use' */}
+            <Skeleton className="h-4 w-24 mb-1 rounded-md" />{" "}
+            {/* 'Serializer' */}
+            <Skeleton className="h-4 w-28 mb-1 rounded-md" />{" "}
+            {/* 'Compression' */}
+            <Skeleton className="h-4 w-20 mb-1 rounded-md" />{" "}
+            {/* 'Persistent' */}
             <Skeleton className="h-4 w-20 mb-2 rounded-md" /> {/* 'Prefetch' */}
-            <Skeleton className="h-px w-full bg-gray-200 dark:bg-gray-700 my-2" /> {/* Divider */}
-            <Skeleton className="h-4 w-32 mb-1 rounded-md" /> {/* 'Server Capabilities' section header */}
-            <Skeleton className="h-5 w-36 mb-1 rounded-md" /> {/* Best Redis Client */}
+            <Skeleton className="h-px w-full bg-gray-200 dark:bg-gray-700 my-2" />{" "}
+            {/* Divider */}
+            <Skeleton className="h-4 w-32 mb-1 rounded-md" />{" "}
+            {/* 'Server Capabilities' section header */}
+            <Skeleton className="h-5 w-36 mb-1 rounded-md" />{" "}
+            {/* Best Redis Client */}
             <Skeleton className="h-5 w-24 mb-1 rounded-md" /> {/* PhpRedis */}
             <Skeleton className="h-5 w-24 mb-1 rounded-md" /> {/* Predis */}
             <Skeleton className="h-5 w-24 mb-1 rounded-md" /> {/* Credis */}

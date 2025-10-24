@@ -1,6 +1,6 @@
-import { Zap } from "lucide-react"
-import * as React from "react"
-import { ModeToggle } from "@/components/mode-toggle"
+import * as React from "@wordpress/element";
+import { Zap } from "lucide-react";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export function Header() {
   return (
@@ -12,8 +12,12 @@ export function Header() {
               <Zap className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Cache Hive</h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">WordPress Caching & Optimization Plugin</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                Cache Hive
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                WordPress Caching & Optimization Plugin
+              </p>
             </div>
           </div>
           <div className="flex items-center">
@@ -22,5 +26,5 @@ export function Header() {
         </div>
       </div>
     </header>
-  )
+  );
 }

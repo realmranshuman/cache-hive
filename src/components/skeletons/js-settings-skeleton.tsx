@@ -1,4 +1,4 @@
-import * as React from "react"
+import * as React from "@wordpress/element";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function JsSettingsSkeleton() {

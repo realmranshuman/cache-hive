@@ -1,5 +1,4 @@
-import * as React from "react";
-import { createRoot } from "react-dom/client";
+import * as React from "@wordpress/element";
 import { Header } from "./header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dashboard } from "./dashboard";
@@ -53,23 +52,15 @@ function setUrlForTab(tab: string) {
   const url = new URL(window.location.href);
   const currentParams = url.searchParams;
 
-  // Only update the URL if the main page slug is changing.
-  // This prevents this logic from interfering with the local child-tab handlers.
   if (currentParams.get("page") !== slug) {
     currentParams.set("page", slug);
 
-    // THIS IS THE FIX:
-    // When changing the primary page, we ALWAYS reset the child tab parameter.
     if (defaultChildTab) {
-      // Unconditionally set the 'tab' parameter to the correct default for the NEW page.
-      // This overwrites any lingering 'tab' param from the previous page.
       currentParams.set("tab", defaultChildTab);
     } else {
-      // If the new page has no children (like Dashboard), remove the 'tab' parameter entirely.
       currentParams.delete("tab");
     }
 
-    // Use pushState to create a new, correct history entry.
     window.history.pushState({ path: url.toString() }, "", url.toString());
   }
 }
@@ -146,12 +137,12 @@ function CacheHiveApp() {
 
 const rootEl = document.getElementById("cache-hive-root");
 if (rootEl) {
-  createRoot(rootEl).render(<CacheHiveApp />);
+  React.render(<CacheHiveApp />, rootEl);
 } else {
   document.addEventListener("DOMContentLoaded", () => {
     const el = document.getElementById("cache-hive-root");
     if (el) {
-      createRoot(el).render(<CacheHiveApp />);
+      React.render(<CacheHiveApp />, el);
     }
   });
 }

@@ -1,5 +1,5 @@
-import * as React from "react";
-import { Skeleton } from "@/components/ui/skeleton"; // Adjust path if needed
+import * as React from "@wordpress/element";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function CacheSettingsSkeleton() {
   return (
@@ -7,7 +7,8 @@ export function CacheSettingsSkeleton() {
       {/* Skeleton for "Enable Full-Page Caching" */}
       <div className="flex items-center justify-between">
         <Skeleton className="h-5 w-2/5 rounded-md" /> {/* Label */}
-        <Skeleton className="h-6 w-11 rounded-full" /> {/* Switch (shadcn Switch dimensions) */}
+        <Skeleton className="h-6 w-11 rounded-full" />{" "}
+        {/* Switch (shadcn Switch dimensions) */}
       </div>
 
       {/* Skeleton for "Cache for Logged-in Users" */}
@@ -38,11 +39,14 @@ export function CacheSettingsSkeleton() {
       {/* For a skeleton, we usually show all potential elements */}
       <div className="space-y-2">
         <Skeleton className="h-5 w-1/3 rounded-md" /> {/* Label */}
-        <Skeleton className="h-24 w-full rounded-md" /> {/* Textarea (rows={4} approx h-24) */}
+        <Skeleton className="h-24 w-full rounded-md" />{" "}
+        {/* Textarea (rows={4} approx h-24) */}
       </div>
 
       {/* Skeleton for "Save Changes" Button */}
-      <div className="flex justify-end pt-2"> {/* Added pt-2 for slight separation like buttons often have */}
+      <div className="flex justify-end pt-2">
+        {" "}
+        {/* Added pt-2 for slight separation like buttons often have */}
         <Skeleton className="h-10 w-28 rounded-md" /> {/* Button */}
       </div>
     </div>

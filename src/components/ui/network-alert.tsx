@@ -1,4 +1,4 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 

@@ -1,4 +1,5 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
+import type { ReactNode } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -230,7 +231,7 @@ export function ObjectCacheTabForm({
 
   const withWpConfigHoverCard = (
     fieldKey: keyof ObjectCacheSettings,
-    children: React.ReactNode
+    children: ReactNode
   ) => {
     if (disabled(fieldKey)) {
       return (

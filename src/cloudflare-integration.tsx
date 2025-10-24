@@ -1,7 +1,8 @@
 "use client";
 
-import * as React from "react";
-import { Suspense, useState, useCallback } from "react";
+import * as React from "@wordpress/element";
+import { Suspense, useState, useCallback } from "@wordpress/element";
+import type { ReactNode } from "react";
 import {
   Card,
   CardContent,
@@ -38,7 +39,7 @@ function SectionSuspense({
   children,
 }: {
   resource: { read: () => CloudflareSettings };
-  children: (data: CloudflareSettings) => React.ReactNode;
+  children: (data: CloudflareSettings) => ReactNode;
 }) {
   const data = resource.read();
   return children(data);

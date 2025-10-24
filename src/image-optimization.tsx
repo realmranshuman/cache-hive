@@ -1,4 +1,4 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
 import {
   useState,
   Suspense,
@@ -6,7 +6,8 @@ import {
   useMemo,
   useEffect,
   useRef,
-} from "react";
+} from "@wordpress/element";
+import type { ReactNode } from "react";
 import {
   Card,
   CardContent,
@@ -70,7 +71,7 @@ function SectionSuspense({
   children,
 }: {
   resource: any;
-  children: (data: ImageOptimizationApiResponse) => React.ReactNode;
+  children: (data: ImageOptimizationApiResponse) => ReactNode;
 }) {
   const data = resource.read();
   return children(data);

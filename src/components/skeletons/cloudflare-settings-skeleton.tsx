@@ -1,4 +1,4 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 

@@ -1,4 +1,4 @@
-import * as React from "react"
+import * as React from "@wordpress/element";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function HtmlSettingsSkeleton() {
@@ -24,7 +24,7 @@ export function HtmlSettingsSkeleton() {
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-6 w-12 rounded-full" />
       </div>
-       <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between">
         <Skeleton className="h-5 w-36" />
         <Skeleton className="h-6 w-12 rounded-full" />
       </div>

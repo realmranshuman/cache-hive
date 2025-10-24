@@ -1,4 +1,4 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
 import type { ReactNode, ErrorInfo } from "react";
 
 interface ErrorBoundaryProps {
@@ -9,7 +9,10 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends React.Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };

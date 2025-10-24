@@ -1,4 +1,5 @@
-import * as React from "react";
+import * as React from "@wordpress/element";
+import type { ChangeEvent } from "react"; // Corrective import
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -69,7 +70,7 @@ export function CacheTabForm({
   });
 
   const handleTextareaChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLTextAreaElement>,
     field: any
   ) => {
     field.onChange(e.target.value.split("\n"));

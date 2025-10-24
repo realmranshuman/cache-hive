@@ -1,5 +1,5 @@
-import * as React from "react";
-import { Skeleton } from "@/components/ui/skeleton"; // Adjust path if needed
+import * as React from "@wordpress/element";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function AutoPurgeSettingsSkeleton() {
   const checkboxItemCount = 10; // Number of checkbox items in the "Auto Purge Rules" section
