@@ -8,6 +8,8 @@
 
 namespace Cache_Hive\Includes;
 
+use Cache_Hive\Includes\Helpers\Cache_Hive_Server_Rules_Helper;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -62,6 +64,29 @@ final class Cache_Hive_Settings {
 		foreach ( $merged_settings as $key => &$value ) {
 			if ( isset( $defaults[ $key ] ) && is_array( $defaults[ $key ] ) && is_string( $value ) ) {
 				$value = array_values( array_filter( array_map( 'trim', explode( "\n", $value ) ) ) );
+			}
+		}
+
+		// Self-healing for Nginx logged-in cache. This is a critical security check.
+		$is_setting_enabled = ! empty( $merged_settings['cache_logged_users'] );
+		if ( $is_setting_enabled ) {
+			$server          = Cache_Hive_Server_Rules_Helper::get_server_software();
+			$is_nginx_like   = ! in_array( $server, array( 'apache', 'litespeed' ), true );
+			$is_override_set = defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) && CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX;
+
+			// If the setting is enabled on Nginx but the required constant has been removed from wp-config.php,
+			// we must force-disable the feature in the database to maintain security.
+			if ( $is_nginx_like && ! $is_override_set ) {
+				$merged_settings['cache_logged_users'] = false; // Disable in memory for this request.
+
+				// Persist the corrected, secure setting back to the database.
+				update_option( 'cache_hive_settings', $merged_settings, 'yes' );
+
+				// Invalidate any generated config files to reflect the change immediately.
+				if ( class_exists( 'Cache_Hive\\Includes\\Cache_Hive_Lifecycle' ) ) {
+					Cache_Hive_Lifecycle::create_config_file( $merged_settings );
+				}
+				self::invalidate_settings_snapshot();
 			}
 		}
 
