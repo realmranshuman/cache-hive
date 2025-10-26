@@ -9,7 +9,6 @@
 namespace Cache_Hive\Includes;
 
 use Cache_Hive\Includes\Helpers\Cache_Hive_Server_Rules_Helper;
-use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite;
 use WP_Filesystem_Direct;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -102,9 +101,6 @@ final class Cache_Hive_Lifecycle {
 		update_option( 'cache_hive_settings', $settings );
 		self::setup_site_directories();
 		self::create_config_file( $settings );
-		if ( 'rewrite' === ( $settings['image_delivery_method'] ?? 'rewrite' ) ) {
-			Cache_Hive_Image_Rewrite::insert_rules();
-		}
 	}
 
 	/**
@@ -116,7 +112,7 @@ final class Cache_Hive_Lifecycle {
 		$dirs_to_create = array( \CACHE_HIVE_BASE_CACHE_DIR, \CACHE_HIVE_PUBLIC_CACHE_DIR, \CACHE_HIVE_PRIVATE_CACHE_DIR, \CACHE_HIVE_PRIVATE_USER_CACHE_DIR, \CACHE_HIVE_PRIVATE_URL_INDEX_DIR, \CACHE_HIVE_IMAGE_CACHE_DIR, \CACHE_HIVE_CONFIG_DIR );
 		foreach ( $dirs_to_create as $dir ) {
 			if ( ! is_dir( $dir ) ) {
-				@mkdir( $dir, 0755, true );
+				mkdir( $dir, 0755, true );
 			}
 		}
 	}
@@ -133,6 +129,7 @@ final class Cache_Hive_Lifecycle {
 		$server = Cache_Hive_Server_Rules_Helper::get_server_software();
 		if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
 			self::create_security_files();
+			Cache_Hive_Server_Rules_Helper::update_root_htaccess();
 		} elseif ( 'nginx' === $server ) {
 			Cache_Hive_Server_Rules_Helper::update_nginx_file();
 		}
@@ -146,9 +143,9 @@ final class Cache_Hive_Lifecycle {
 	public static function cleanup_environment() {
 		$advanced_cache_file = WP_CONTENT_DIR . '/advanced-cache.php';
 		if ( file_exists( $advanced_cache_file ) ) {
-			$content = @file_get_contents( $advanced_cache_file, false, null, 0, 128 );
-			if ( $content && false !== strpos( $content, 'Cache Hive - Advanced Cache Drop-in' ) ) {
-				@unlink( $advanced_cache_file );
+			$content = file_get_contents( $advanced_cache_file, false, null, 0, 128 );
+			if ( false !== $content && false !== strpos( $content, 'Cache Hive - Advanced Cache Drop-in' ) ) {
+				unlink( $advanced_cache_file );
 			}
 		}
 		self::set_wp_cache_constant( false );
@@ -156,6 +153,7 @@ final class Cache_Hive_Lifecycle {
 		$server = Cache_Hive_Server_Rules_Helper::get_server_software();
 		if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
 			self::remove_security_files();
+			Cache_Hive_Server_Rules_Helper::remove_root_htaccess_rules();
 		} elseif ( 'nginx' === $server ) {
 			Cache_Hive_Server_Rules_Helper::delete_nginx_file();
 		}
@@ -216,7 +214,7 @@ final class Cache_Hive_Lifecycle {
 	private static function remove_security_files() {
 		$htaccess_file = CACHE_HIVE_ROOT_CACHE_DIR . '/.htaccess';
 		if ( file_exists( $htaccess_file ) ) {
-			@unlink( $htaccess_file );
+			unlink( $htaccess_file );
 		}
 	}
 
@@ -232,7 +230,7 @@ final class Cache_Hive_Lifecycle {
 			return;
 		}
 		if ( ! is_dir( \CACHE_HIVE_CONFIG_DIR ) ) {
-			@mkdir( \CACHE_HIVE_CONFIG_DIR, 0755, true );
+			mkdir( \CACHE_HIVE_CONFIG_DIR, 0755, true );
 		}
 
 		if ( is_multisite() && is_main_site() ) {
@@ -285,10 +283,10 @@ final class Cache_Hive_Lifecycle {
 		}
 		$config_file = \CACHE_HIVE_CONFIG_DIR . '/config.php';
 		if ( file_exists( $config_file ) ) {
-			@unlink( $config_file );
+			unlink( $config_file );
 		}
 		if ( is_dir( \CACHE_HIVE_CONFIG_DIR ) ) {
-			@rmdir( \CACHE_HIVE_CONFIG_DIR );
+			rmdir( \CACHE_HIVE_CONFIG_DIR );
 		}
 	}
 
@@ -333,7 +331,10 @@ final class Cache_Hive_Lifecycle {
 	 * @since 1.1.0
 	 */
 	private static function cleanup_site() {
-		$cron_hook_suffix = is_multisite() ? '_' . get_current_blog_id() : '';
+		$cron_hook_suffix = '';
+		if ( is_multisite() ) {
+			$cron_hook_suffix = '_' . get_current_blog_id();
+		}
 
 		// Unschedule the image optimization cron.
 		$image_cron_hook = 'cache_hive_image_optimization_batch' . $cron_hook_suffix;
@@ -343,10 +344,15 @@ final class Cache_Hive_Lifecycle {
 			$timestamp = wp_next_scheduled( $image_cron_hook );
 		}
 
-		Cache_Hive_Purge::purge_disk_cache();
-		Cache_Hive_Object_Cache::disable();
+		// These classes should be available during deactivation but not necessarily uninstall.
+		if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Purge' ) ) {
+			Cache_Hive_Purge::purge_disk_cache();
+		}
+		if ( class_exists( 'Cache_Hive\Includes\Cache_Hive_Object_Cache' ) ) {
+			Cache_Hive_Object_Cache::disable();
+		}
+
 		self::delete_config_file();
-		Cache_Hive_Image_Rewrite::remove_rules();
 	}
 
 	/**

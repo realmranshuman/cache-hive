@@ -29,9 +29,13 @@ class Cache_Hive_REST_Cache {
 	 * @return WP_REST_Response The response object.
 	 */
 	public static function get_settings() {
-		$settings       = Cache_Hive_Settings::get_settings();
-		$server         = Cache_Hive_Server_Rules_Helper::get_server_software();
-		$is_apache_like = in_array( $server, array( 'apache', 'litespeed' ), true );
+		$settings        = Cache_Hive_Settings::get_settings();
+		$server          = Cache_Hive_Server_Rules_Helper::get_server_software();
+		$is_apache_like  = in_array( $server, array( 'apache', 'litespeed' ), true );
+		$is_override_set = false;
+		if ( defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) ) {
+			$is_override_set = (bool) CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX;
+		}
 
 		$response_data = array(
 			'enable_cache'                    => (bool) ( $settings['enable_cache'] ?? false ),
@@ -42,8 +46,7 @@ class Cache_Hive_REST_Cache {
 			'mobile_user_agents'              => $settings['mobile_user_agents'] ?? array(),
 			'is_network_admin'                => is_multisite() && is_network_admin(),
 			'is_apache_like'                  => $is_apache_like,
-			// CORRECT: Check for the wp-config.php constant, not a database setting.
-			'is_logged_in_cache_override_set' => defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) && CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX,
+			'is_logged_in_cache_override_set' => $is_override_set,
 		);
 		return new WP_REST_Response( $response_data, 200 );
 	}
@@ -64,24 +67,32 @@ class Cache_Hive_REST_Cache {
 
 		// If user is trying to enable logged-in user caching.
 		if ( ! empty( $new_settings['cache_logged_users'] ) ) {
-			// On a non-Apache server.
+			// For Nginx, the wp-config.php constant is a mandatory prerequisite.
 			if ( ! $is_apache_like ) {
-				// CORRECT: Check if the wp-config.php override is set.
-				if ( ! ( defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) && CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX ) ) {
-					$new_settings['cache_logged_users'] = false; // Force disable if override is not set.
-				} else {
-					// Override is set, so we MUST verify security.
-					$verification = self::run_private_cache_verification();
-					if ( ! $verification['verified'] ) {
-						// Verification failed, so force disable the setting and return an error.
-						$new_settings['cache_logged_users'] = false;
-						self::save_settings( $new_settings, $is_network_admin, $old_settings ); // Save with the setting disabled.
-						return new WP_Error(
-							'cache_insecure',
-							$verification['message'],
-							array( 'status' => 400 )
-						);
-					}
+				$is_override_set = false;
+				if ( defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) ) {
+					$is_override_set = (bool) CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX;
+				}
+
+				if ( ! $is_override_set ) {
+					// Force disable if the override is not set. This is a safeguard;
+					// the UI should prevent this action, and the self-healing in get_settings() is the primary guard.
+					$new_settings['cache_logged_users'] = false;
+				}
+			}
+
+			// If the setting is still enabled after prerequisite checks, run the live security verification for ALL server types.
+			if ( ! empty( $new_settings['cache_logged_users'] ) ) {
+				$verification = self::run_private_cache_verification();
+				if ( ! $verification['verified'] ) {
+					// Verification failed, so force disable the setting and return an error to the user.
+					$new_settings['cache_logged_users'] = false;
+					self::save_settings( $new_settings, $is_network_admin, $old_settings );
+					return new WP_Error(
+						'cache_insecure',
+						$verification['message'],
+						array( 'status' => 400 )
+					);
 				}
 			}
 		}

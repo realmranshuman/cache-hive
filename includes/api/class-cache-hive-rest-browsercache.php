@@ -7,10 +7,6 @@
 
 namespace Cache_Hive\Includes\API;
 
-require_once dirname( __DIR__ ) . '/class-cache-hive-browser-cache.php';
-require_once dirname( __DIR__ ) . '/helpers/class-cache-hive-server-rules-helper.php';
-
-use Cache_Hive\Includes\Cache_Hive_Browser_Cache;
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Settings;
 use Cache_Hive\Includes\Helpers\Cache_Hive_Server_Rules_Helper;
@@ -34,7 +30,7 @@ class Cache_Hive_REST_BrowserCache {
 	 */
 	public static function get_settings() {
 		$settings = Cache_Hive_Settings::get_settings();
-		$server   = Cache_Hive_Browser_Cache::get_server_software();
+		$server   = Cache_Hive_Server_Rules_Helper::get_server_software();
 		$status   = array(
 			'settings'         => array(
 				'browser_cache_enabled' => (bool) ( $settings['browser_cache_enabled'] ?? false ),
@@ -47,17 +43,17 @@ class Cache_Hive_REST_BrowserCache {
 		if ( 'apache' === $server || 'litespeed' === $server ) {
 			$htaccess_file               = trailingslashit( get_home_path() ) . '.htaccess';
 			$status['htaccess_writable'] = is_writable( $htaccess_file );
-			$status['rules']             = Cache_Hive_Browser_Cache::generate_htaccess_rules( $settings );
+			$status['rules']             = Cache_Hive_Server_Rules_Helper::generate_browser_cache_htaccess_rules( $settings );
 			$status['rules_present']     = false;
 
 			if ( file_exists( $htaccess_file ) ) {
-				$contents = @file_get_contents( $htaccess_file );
-				if ( $contents && str_contains( $contents, '# BEGIN Cache Hive Browser Cache' ) ) {
+				$contents = file_get_contents( $htaccess_file );
+				if ( false !== $contents && str_contains( $contents, '# BEGIN Cache Hive' ) ) {
 					$status['rules_present'] = true;
 				}
 			}
 		} elseif ( 'nginx' === $server ) {
-			$status['rules'] = Cache_Hive_Browser_Cache::generate_nginx_rules( $settings );
+			$status['rules'] = Cache_Hive_Server_Rules_Helper::generate_browser_cache_nginx_rules( $settings );
 		}
 
 		return new WP_REST_Response( $status, 200 );
@@ -75,7 +71,7 @@ class Cache_Hive_REST_BrowserCache {
 		$new_settings     = Cache_Hive_Settings::sanitize_settings( $params );
 		$is_network_admin = is_multisite() && is_network_admin();
 
-		if ( $is_network_admin ) {
+		if ( $is_network__admin ) {
 			update_site_option( 'cache_hive_settings', $new_settings );
 		} else {
 			update_option( 'cache_hive_settings', $new_settings, 'yes' );
@@ -85,7 +81,7 @@ class Cache_Hive_REST_BrowserCache {
 
 		$server = Cache_Hive_Server_Rules_Helper::get_server_software();
 		if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
-			$result = Cache_Hive_Browser_Cache::update_htaccess( $new_settings );
+			$result = Cache_Hive_Server_Rules_Helper::update_root_htaccess();
 			if ( is_wp_error( $result ) ) {
 				$status          = self::get_settings()->get_data();
 				$status['error'] = $result->get_error_message();
@@ -93,8 +89,12 @@ class Cache_Hive_REST_BrowserCache {
 			}
 		} elseif ( 'nginx' === $server ) {
 			// Trigger nginx.conf regeneration if settings changed.
-			if ( ( $old_settings['browser_cache_enabled'] ?? false ) !== ( $new_settings['browser_cache_enabled'] ?? false ) ||
-				( $old_settings['browser_cache_ttl'] ?? 0 ) !== ( $new_settings['browser_cache_ttl'] ?? 0 ) ) {
+			$old_enabled = $old_settings['browser_cache_enabled'] ?? false;
+			$new_enabled = $new_settings['browser_cache_enabled'] ?? false;
+			$old_ttl     = $old_settings['browser_cache_ttl'] ?? 0;
+			$new_ttl     = $new_settings['browser_cache_ttl'] ?? 0;
+
+			if ( $old_enabled !== $new_enabled || $old_ttl !== $new_ttl ) {
 				Cache_Hive_Server_Rules_Helper::update_nginx_file();
 			}
 		}

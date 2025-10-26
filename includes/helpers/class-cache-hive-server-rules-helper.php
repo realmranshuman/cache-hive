@@ -34,7 +34,11 @@ final class Cache_Hive_Server_Rules_Helper {
 			}
 		}
 
-		$software = strtolower( sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ?? '' ) ) );
+		$software = '';
+		if ( isset( $_SERVER['SERVER_SOFTWARE'] ) ) {
+			$software = strtolower( sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ) ) );
+		}
+
 		if ( str_contains( $software, 'apache' ) ) {
 			return 'apache';
 		}
@@ -80,13 +84,53 @@ final class Cache_Hive_Server_Rules_Helper {
 
 		// file_put_contents returns false on failure.
 		if ( false === $result ) {
-			// You could add error logging here if needed.
-			// error_log( 'Cache Hive: Failed to write Nginx configuration file at ' . $nginx_conf_path );.
 			return false;
 		}
 
 		return true;
 	}
+
+	/**
+	 * Master function to update the root .htaccess file with all Cache Hive rules.
+	 *
+	 * @since 1.3.0
+	 * @return true|WP_Error True on success, WP_Error on failure.
+	 */
+	public static function update_root_htaccess() {
+		$htaccess_path = trailingslashit( get_home_path() ) . '.htaccess';
+		$settings      = Cache_Hive_Settings::get_settings( true );
+		$rules         = array();
+
+		// Generate rules for Browser Caching.
+		$browser_cache_rules = self::generate_browser_cache_htaccess_rules( $settings );
+		if ( ! empty( $browser_cache_rules ) ) {
+			$rules[] = '# BEGIN Cache Hive Browser Cache';
+			$rules[] = $browser_cache_rules;
+			$rules[] = '# END Cache Hive Browser Cache';
+		}
+
+		// Generate rules for Image Rewriting.
+		$image_rewrite_rules = self::generate_image_rewrite_htaccess_rules( $settings );
+		if ( ! empty( $image_rewrite_rules ) ) {
+			$rules[] = '# BEGIN Cache Hive Image Optimizer';
+			$rules[] = $image_rewrite_rules;
+			$rules[] = '# END Cache Hive Image Optimizer';
+		}
+
+		return self::update_htaccess( $htaccess_path, 'Cache Hive', $rules );
+	}
+
+	/**
+	 * Removes the Cache Hive block from the root .htaccess file.
+	 *
+	 * @since 1.3.0
+	 * @return true|WP_Error True on success, WP_Error on failure.
+	 */
+	public static function remove_root_htaccess_rules() {
+		$htaccess_path = trailingslashit( get_home_path() ) . '.htaccess';
+		return self::update_htaccess( $htaccess_path, 'Cache Hive', array() );
+	}
+
 
 	/**
 	 * Deletes the nginx.conf file.
@@ -96,7 +140,7 @@ final class Cache_Hive_Server_Rules_Helper {
 	public static function delete_nginx_file() {
 		$nginx_conf_path = ABSPATH . 'cache-hive-nginx.conf';
 		if ( file_exists( $nginx_conf_path ) ) {
-			@unlink( $nginx_conf_path );
+			unlink( $nginx_conf_path );
 		}
 	}
 
@@ -107,8 +151,17 @@ final class Cache_Hive_Server_Rules_Helper {
 	 * @return string
 	 */
 	public static function generate_browser_cache_htaccess_rules( array $settings ): string {
-		$ttl = absint( $settings['browser_cache_ttl'] ?? 0 );
-		if ( ! ( $settings['browser_cache_enabled'] ?? false ) || $ttl <= 0 ) {
+		$ttl = 0;
+		if ( isset( $settings['browser_cache_ttl'] ) ) {
+			$ttl = absint( $settings['browser_cache_ttl'] );
+		}
+
+		$is_enabled = false;
+		if ( isset( $settings['browser_cache_enabled'] ) ) {
+			$is_enabled = (bool) $settings['browser_cache_enabled'];
+		}
+
+		if ( ! $is_enabled || $ttl <= 0 ) {
 			return '';
 		}
 
@@ -131,11 +184,21 @@ final class Cache_Hive_Server_Rules_Helper {
 	 * @return string
 	 */
 	public static function generate_browser_cache_nginx_rules( array $settings ): string {
-		$ttl = absint( $settings['browser_cache_ttl'] ?? 0 );
-		if ( ! ( $settings['browser_cache_enabled'] ?? false ) || $ttl <= 0 ) {
+		$ttl = 0;
+		if ( isset( $settings['browser_cache_ttl'] ) ) {
+			$ttl = absint( $settings['browser_cache_ttl'] );
+		}
+
+		$is_enabled = false;
+		if ( isset( $settings['browser_cache_enabled'] ) ) {
+			$is_enabled = (bool) $settings['browser_cache_enabled'];
+		}
+
+		if ( ! $is_enabled || $ttl <= 0 ) {
 			return '';
 		}
 
+		$nginx_ttl = '';
 		if ( 0 === $ttl % 31536000 ) {
 			$nginx_ttl = ( $ttl / 31536000 ) . 'y';
 		} elseif ( 0 === $ttl % 2592000 ) {
@@ -210,6 +273,38 @@ final class Cache_Hive_Server_Rules_Helper {
 
 		return $rules;
 	}
+
+	/**
+	 * Generates .htaccess rewrite rules for next-gen images.
+	 *
+	 * @param array $settings The plugin settings.
+	 * @return string The .htaccess rule block.
+	 */
+	public static function generate_image_rewrite_htaccess_rules( array $settings ): string {
+		$delivery_method = $settings['image_delivery_method'] ?? 'picture';
+		if ( 'rewrite' !== $delivery_method ) {
+			return '';
+		}
+
+		$next_gen_format = $settings['image_next_gen_format'] ?? 'webp';
+		$mime_type       = 'image/' . $next_gen_format;
+
+		$rules  = "<IfModule mod_rewrite.c>\n";
+		$rules .= "    RewriteEngine On\n\n";
+		$rules .= '    # Serve ' . strtoupper( $next_gen_format ) . ' image if browser supports it and a ' . $next_gen_format . " version exists.\n";
+		$rules .= '    RewriteCond %{HTTP_ACCEPT} ' . $mime_type . "\n";
+		$rules .= '    RewriteCond %{REQUEST_FILENAME}.' . $next_gen_format . " -f\n";
+		$rules .= '    RewriteRule (.+)\.(jpe?g|png)$ $1.$2.' . $next_gen_format . ' [T=' . $mime_type . ",E=__CH_REWRITE_MATCH:1,L]\n";
+		$rules .= "</IfModule>\n\n";
+
+		$rules .= "<IfModule mod_headers.c>\n";
+		$rules .= "    # Add Vary header to inform caches to serve different versions based on browser's Accept header.\n";
+		$rules .= "    Header append Vary Accept env=__CH_REWRITE_MATCH\n";
+		$rules .= "</IfModule>\n";
+
+		return $rules;
+	}
+
 
 	/**
 	 * Generates Nginx rewrite rules for next-gen images.
