@@ -228,12 +228,27 @@ final class Cache_Hive_Server_Rules_Helper {
 	 * @return string The security rules.
 	 */
 	public static function get_security_htaccess_rules(): string {
-		$rules  = "<IfModule mod_authz_core.c>\n";
+		$rules = "# BEGIN Cache Hive Security\n\n";
+
+		$rules .= "# Rule 1: Allow direct access to specific asset types (.css, .js).\n";
+		$rules .= "# This is necessary for logged-in user caching to function with styled content.\n";
+		$rules .= "<IfModule mod_rewrite.c>\n";
+		$rules .= "    RewriteEngine On\n";
+		$rules .= "    RewriteCond %{REQUEST_URI} \.(css|js)$ [NC]\n";
+		$rules .= "    RewriteRule ^ - [L]\n"; // If the file is a CSS or JS, stop processing and allow access.
+		$rules .= "</IfModule>\n\n";
+
+		$rules .= "# Rule 2: Block all other direct access to this directory.\n";
+		$rules .= "# This acts as a default safety net, preventing direct access to sensitive .cache or .meta files.\n";
+		$rules .= "<IfModule mod_authz_core.c>\n";
 		$rules .= "    Require all denied\n";
 		$rules .= "</IfModule>\n";
 		$rules .= "<IfModule !mod_authz_core.c>\n";
 		$rules .= "    Deny from all\n";
-		$rules .= "</IfModule>\n";
+		$rules .= "</IfModule>\n\n";
+
+		$rules .= "# END Cache Hive Security\n";
+
 		return $rules;
 	}
 
