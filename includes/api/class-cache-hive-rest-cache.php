@@ -42,6 +42,7 @@ class Cache_Hive_REST_Cache {
 			'mobile_user_agents'              => $settings['mobile_user_agents'] ?? array(),
 			'is_network_admin'                => is_multisite() && is_network_admin(),
 			'is_apache_like'                  => $is_apache_like,
+			// CORRECT: Check for the wp-config.php constant, not a database setting.
 			'is_logged_in_cache_override_set' => defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) && CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX,
 		);
 		return new WP_REST_Response( $response_data, 200 );
@@ -65,7 +66,7 @@ class Cache_Hive_REST_Cache {
 		if ( ! empty( $new_settings['cache_logged_users'] ) ) {
 			// On a non-Apache server.
 			if ( ! $is_apache_like ) {
-				// Check if the wp-config.php override is set.
+				// CORRECT: Check if the wp-config.php override is set.
 				if ( ! ( defined( 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX' ) && CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX ) ) {
 					$new_settings['cache_logged_users'] = false; // Force disable if override is not set.
 				} else {
@@ -132,35 +133,60 @@ class Cache_Hive_REST_Cache {
 
 		$result = array(
 			'verified' => false,
-			'message'  => __( 'Verification failed. Could not create a test file in the private cache directory.', 'cache-hive' ),
+			'message'  => __( 'An unknown verification error occurred.', 'cache-hive' ),
 		);
 
+		// 1. Ensure the directory exists.
 		if ( ! is_dir( $test_dir ) ) {
-			@mkdir( $test_dir, 0755, true );
+			// Try to create it recursively.
+			if ( ! wp_mkdir_p( $test_dir ) ) {
+				$result['message'] = __( 'Verification failed. The private cache directory could not be created. Please check file permissions.', 'cache-hive' );
+				return $result;
+			}
 		}
 
-		if ( file_put_contents( $test_file_path, 'SECURITY_TEST' ) ) {
-			$response              = wp_remote_get(
+		// 2. Check if the directory is writable.
+		if ( ! is_writable( $test_dir ) ) {
+			$result['message'] = __( 'Verification failed. The private cache directory is not writable. Please check file permissions.', 'cache-hive' );
+			return $result;
+		}
+
+		// 3. Attempt to write the test file.
+		$write_success = file_put_contents( $test_file_path, 'SECURITY_TEST' );
+
+		if ( false !== $write_success ) {
+			// 4. File was written, now perform the HTTP check.
+			$response      = wp_remote_get(
 				$test_file_url,
 				array(
 					'timeout'   => 10,
 					'sslverify' => false,
 				)
 			);
-					$response_code = wp_remote_retrieve_response_code( $response );
+			$response_body = wp_remote_retrieve_body( $response );
 
-			if ( ! is_wp_error( $response ) && 200 !== $response_code ) {
-				$result['verified'] = true;
-				$result['message']  = 'OK';
-			} else {
+			if ( is_wp_error( $response ) ) {
+				// This could happen if loopback requests are disabled.
+				$result['verified'] = false;
+				// translators: %s: The error message from WordPress.
+				$result['message'] = sprintf( __( 'Security Verification Failed: A loopback request to the test file failed. Error: %s', 'cache-hive' ), $response->get_error_message() );
+			} elseif ( 'SECURITY_TEST' === $response_body ) {
+				// If we got the content back, it's publicly accessible. This is a failure.
 				$result['verified'] = false;
 				$result['message']  = __( 'Security Verification Failed: The private cache directory is publicly accessible. Logged-in user caching has been disabled. Please correct your Nginx configuration and try again.', 'cache-hive' );
+			} else {
+				// The request was handled by something else (like WordPress index.php), which is the correct and secure behavior.
+				$result['verified'] = true;
+				$result['message']  = 'OK';
 			}
 
-			// Check if the file exists before trying to delete it.
+			// 5. Clean up the test file.
 			if ( file_exists( $test_file_path ) ) {
 				unlink( $test_file_path );
 			}
+		} else {
+			// 6. File writing failed.
+			$result['message'] = __( 'Verification failed. Could not create a test file in the private cache directory. Please check file permissions.', 'cache-hive' );
 		}
 
 		return $result;

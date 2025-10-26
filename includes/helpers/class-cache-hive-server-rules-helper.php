@@ -181,7 +181,34 @@ final class Cache_Hive_Server_Rules_Helper {
 	 */
 	public static function get_security_nginx_rules(): string {
 		$relative_path = str_replace( wp_normalize_path( ABSPATH ), '', wp_normalize_path( CACHE_HIVE_ROOT_CACHE_DIR ) );
-		return "# BEGIN Cache Hive Security\nlocation ~* {$relative_path}/private/ {\n    deny all;\n    return 403;\n}\n# END Cache Hive Security\n";
+
+		$rules = "# BEGIN Cache Hive Security\n\n";
+
+		$rules .= "# Rule 1: Allow specific asset types (.css, .js) from the private directory to be passed to the backend.\n";
+		$rules .= "# This is necessary for logged-in user caching to function with styled content. The backend (WordPress)\n";
+		$rules .= "# is responsible for authenticating the user before serving the file.\n";
+		$rules .= "# IMPORTANT: For this to work, this location block must be processed before any generic static file location block.\n";
+		$rules .= "location ~* ^/{$relative_path}/private/.*\\.(css|js)$ {\n";
+		$rules .= "    # This rule assumes a reverse-proxy setup where requests are passed to a backend PHP server.\n";
+		$rules .= "    # In a standard setup (like PHP-FPM), you would use 'try_files \$uri /index.php?\$args;'\n";
+		$rules .= "    # The proxy_pass directive and headers should match the rest of your configuration.\n";
+		$rules .= "    proxy_pass http://127.0.0.1:8080; # This target may need adjustment for other environments.\n";
+		$rules .= "    proxy_set_header Host \$host;\n";
+		$rules .= "    proxy_set_header X-Forwarded-Host \$host;\n";
+		$rules .= "    proxy_set_header X-Real-IP \$remote_addr;\n";
+		$rules .= "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n";
+		$rules .= "    proxy_redirect off;\n";
+		$rules .= "}\n\n";
+
+		$rules .= "# Rule 2: Block all other direct access to the private cache directory.\n";
+		$rules .= "# This acts as a default safety net, preventing direct download of sensitive .cache or .meta files.\n";
+		$rules .= "location ~* /{$relative_path}/private/ {\n";
+		$rules .= "    deny all;\n";
+		$rules .= "}\n\n";
+
+		$rules .= "# END Cache Hive Security\n";
+
+		return $rules;
 	}
 
 	/**
