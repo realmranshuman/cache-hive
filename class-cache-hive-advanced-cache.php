@@ -171,7 +171,6 @@ final class Cache_Hive_Advanced_Cache {
 		$config_file       = $config_dir . '/config.php';
 
 		if ( @is_readable( $config_file ) ) {
-			// This include is now safe because the file returns a JSON string, not an executable array.
 			$config_json = include $config_file;
 			if ( is_string( $config_json ) ) {
 				return json_decode( $config_json, true );
@@ -187,7 +186,8 @@ final class Cache_Hive_Advanced_Cache {
 	 */
 	private function should_bypass_early() {
 		if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'GET' ) {
-			return true; }
+			return true;
+		}
 		if ( ! empty( $_COOKIE ) ) {
 			$cookie_hash = defined( 'COOKIEHASH' ) ? COOKIEHASH : '';
 			foreach ( $_COOKIE as $name => $value ) {
@@ -201,12 +201,15 @@ final class Cache_Hive_Advanced_Cache {
 				}
 			}
 			if ( ! empty( $_COOKIE[ 'wp-postpass_' . $cookie_hash ] ) ) {
-				return true; }
+				return true;
+			}
 			if ( ! ( $this->settings['cache_commenters'] ?? false ) && ! empty( $_COOKIE[ 'comment_author_' . $cookie_hash ] ) ) {
-				return true; }
+				return true;
+			}
 		}
 		if ( $this->is_logged_in && ! ( $this->settings['cache_logged_users'] ?? false ) ) {
-			return true; }
+			return true;
+		}
 		return false;
 	}
 
@@ -220,7 +223,8 @@ final class Cache_Hive_Advanced_Cache {
 		if ( ! empty( $this->settings['exclude_uris'] ) && is_array( $this->settings['exclude_uris'] ) ) {
 			foreach ( $this->settings['exclude_uris'] as $pattern ) {
 				if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $request_uri ) ) {
-					return true; }
+					return true;
+				}
 			}
 		}
 		if ( ! empty( $_SERVER['QUERY_STRING'] ) && ! empty( $this->settings['exclude_query_strings'] ) && is_array( $this->settings['exclude_query_strings'] ) ) {
@@ -229,7 +233,8 @@ final class Cache_Hive_Advanced_Cache {
 			foreach ( $query_keys as $key ) {
 				foreach ( $this->settings['exclude_query_strings'] as $pattern ) {
 					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $key ) ) {
-							return true; }
+							return true;
+					}
 				}
 			}
 		}
@@ -237,7 +242,8 @@ final class Cache_Hive_Advanced_Cache {
 			foreach ( array_keys( $_COOKIE ) as $key ) {
 				foreach ( $this->settings['exclude_cookies'] as $pattern ) {
 					if ( ! empty( $pattern ) && preg_match( '#' . $pattern . '#i', $key ) ) {
-							return true; }
+							return true;
+					}
 				}
 			}
 		}
@@ -251,10 +257,12 @@ final class Cache_Hive_Advanced_Cache {
 	 */
 	private function check_if_mobile() {
 		if ( ! ( $this->settings['cache_mobile'] ?? false ) || empty( $_SERVER['HTTP_USER_AGENT'] ) ) {
-			return false; }
+			return false;
+		}
 		$user_agents = $this->settings['mobile_user_agents'] ?? array();
 		if ( empty( $user_agents ) || ! is_array( $user_agents ) ) {
-			return false; }
+			return false;
+		}
 		$regex = '/' . implode( '|', array_map( '\preg_quote', $user_agents, array_fill( 0, count( $user_agents ), '/' ) ) ) . '/i';
 		return (bool) \preg_match( $regex, $_SERVER['HTTP_USER_AGENT'] );
 	}
@@ -324,13 +332,13 @@ final class Cache_Hive_Advanced_Cache {
 		$file_suffix   = $this->is_mobile ? '-mobile' : '';
 
 		$dir_path  = CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
-		$file_name = $filename_base . $file_suffix . '.html';
+		$file_name = $filename_base . $file_suffix . '.cache';
 
 		return $dir_path . '/' . $file_name;
 	}
 
 	/**
-	 * Constructs the path for a private cache file from the primary `/user_cache/` storage.
+	 * Constructs the direct path for a private cache file from the primary `/user_cache/` storage.
 	 *
 	 * @return string
 	 */
@@ -356,7 +364,7 @@ final class Cache_Hive_Advanced_Cache {
 		$url_hash  = md5( $cache_key );
 
 		$file_suffix = $this->is_mobile ? '-mobile' : '';
-		$file_name   = $url_hash . $file_suffix . '.html';
+		$file_name   = $url_hash . $file_suffix . '.cache';
 
 		return $user_dir_path . '/' . $file_name;
 	}
@@ -405,16 +413,19 @@ final class Cache_Hive_Advanced_Cache {
 		}
 		$meta_file = $cache_file . '.meta';
 		if ( ! @is_readable( $cache_file ) || ! @is_readable( $meta_file ) ) {
-			return 'invalid'; }
+			return 'invalid';
+		}
 		$meta_contents = @file_get_contents( $meta_file );
 		if ( false === $meta_contents ) {
 			return 'invalid';
 		}
 		$meta_data = json_decode( $meta_contents, true );
 		if ( ! is_array( $meta_data ) || empty( $meta_data['created'] ) || ! isset( $meta_data['ttl'] ) ) {
-			return 'invalid'; }
+			return 'invalid';
+		}
 		if ( 0 === (int) $meta_data['ttl'] ) {
-			return 'valid'; }
+			return 'valid';
+		}
 
 		if ( ( $meta_data['created'] + (int) $meta_data['ttl'] ) > time() ) {
 			return 'valid';

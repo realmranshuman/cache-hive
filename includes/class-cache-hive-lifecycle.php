@@ -8,6 +8,7 @@
 
 namespace Cache_Hive\Includes;
 
+use Cache_Hive\Includes\Helpers\Cache_Hive_Server_Rules_Helper;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite;
 use WP_Filesystem_Direct;
 
@@ -97,7 +98,6 @@ final class Cache_Hive_Lifecycle {
 	 */
 	private static function setup_site() {
 		$settings                     = Cache_Hive_Settings::get_settings( true );
-		$settings['use_symlinks']     = 'WIN' !== strtoupper( substr( PHP_OS, 0, 3 ) );
 		$settings['object_cache_key'] = 'ch-' . wp_generate_password( 10, false );
 		update_option( 'cache_hive_settings', $settings );
 		self::setup_site_directories();
@@ -122,13 +122,20 @@ final class Cache_Hive_Lifecycle {
 	}
 
 	/**
-	 * Sets up the global environment (drop-in and wp-config constant).
+	 * Sets up the global environment (drop-in, wp-config constant, and server config files).
 	 *
 	 * @since 1.1.0
 	 */
 	public static function setup_environment() {
 		self::create_advanced_cache_file();
 		self::set_wp_cache_constant( true );
+
+		$server = Cache_Hive_Server_Rules_Helper::get_server_software();
+		if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
+			self::create_security_files();
+		} elseif ( 'nginx' === $server ) {
+			Cache_Hive_Server_Rules_Helper::update_nginx_file();
+		}
 	}
 
 	/**
@@ -141,9 +148,17 @@ final class Cache_Hive_Lifecycle {
 		if ( file_exists( $advanced_cache_file ) ) {
 			$content = @file_get_contents( $advanced_cache_file, false, null, 0, 128 );
 			if ( $content && false !== strpos( $content, 'Cache Hive - Advanced Cache Drop-in' ) ) {
-				@unlink( $advanced_cache_file ); }
+				@unlink( $advanced_cache_file );
+			}
 		}
 		self::set_wp_cache_constant( false );
+
+		$server = Cache_Hive_Server_Rules_Helper::get_server_software();
+		if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
+			self::remove_security_files();
+		} elseif ( 'nginx' === $server ) {
+			Cache_Hive_Server_Rules_Helper::delete_nginx_file();
+		}
 	}
 
 	/**
@@ -155,7 +170,8 @@ final class Cache_Hive_Lifecycle {
 	private static function set_wp_cache_constant( $enable = true ) {
 		$config_path = self::find_wp_config_path();
 		if ( ! $config_path || ! is_writable( $config_path ) ) {
-			return; }
+			return;
+		}
 		$config_content = file_get_contents( $config_path );
 		$define_string  = "define( 'WP_CACHE', true ); // Added by Cache Hive.";
 		$config_content = preg_replace( "/^[\t\s]*define\s*\(\s*['\"]WP_CACHE['\"]\s*,\s*.*\s*\);.*?\R/mi", '', $config_content );
@@ -166,6 +182,46 @@ final class Cache_Hive_Lifecycle {
 	}
 
 	/**
+	 * Creates security files (like .htaccess) to protect cache directories.
+	 *
+	 * @since 1.2.0
+	 */
+	public static function create_security_files() {
+		$cache_dir     = CACHE_HIVE_ROOT_CACHE_DIR;
+		$htaccess_file = $cache_dir . '/.htaccess';
+		$rules         = Cache_Hive_Server_Rules_Helper::get_security_htaccess_rules();
+
+		if ( ! is_dir( $cache_dir ) ) {
+			$created = mkdir( $cache_dir, 0755, true );
+			// If directory creation fails, we can't proceed.
+			if ( ! $created ) {
+				return;
+			}
+		}
+
+		// file_put_contents can return false on failure.
+		$result = file_put_contents( $htaccess_file, $rules );
+
+		if ( false === $result ) {
+			// Optional: You could log an error here if you have a logging system.
+			// error_log( 'Cache Hive: Failed to write security .htaccess file.' );.
+		}
+	}
+
+	/**
+	 * Removes security files from cache directories.
+	 *
+	 * @since 1.2.0
+	 */
+	private static function remove_security_files() {
+		$htaccess_file = CACHE_HIVE_ROOT_CACHE_DIR . '/.htaccess';
+		if ( file_exists( $htaccess_file ) ) {
+			@unlink( $htaccess_file );
+		}
+	}
+
+
+	/**
 	 * Creates or updates the config file for the current site using the secure "PHP Guard" method.
 	 *
 	 * @since 1.1.0
@@ -173,9 +229,11 @@ final class Cache_Hive_Lifecycle {
 	 */
 	public static function create_config_file( $settings ) {
 		if ( ! defined( 'CACHE_HIVE_CONFIG_DIR' ) ) {
-			return; }
+			return;
+		}
 		if ( ! is_dir( \CACHE_HIVE_CONFIG_DIR ) ) {
-			@mkdir( \CACHE_HIVE_CONFIG_DIR, 0755, true ); }
+			@mkdir( \CACHE_HIVE_CONFIG_DIR, 0755, true );
+		}
 
 		if ( is_multisite() && is_main_site() ) {
 			global $wpdb;
@@ -223,12 +281,15 @@ final class Cache_Hive_Lifecycle {
 	 */
 	public static function delete_config_file() {
 		if ( ! defined( 'CACHE_HIVE_CONFIG_DIR' ) ) {
-			return; }
+			return;
+		}
 		$config_file = \CACHE_HIVE_CONFIG_DIR . '/config.php';
 		if ( file_exists( $config_file ) ) {
-			@unlink( $config_file ); }
+			@unlink( $config_file );
+		}
 		if ( is_dir( \CACHE_HIVE_CONFIG_DIR ) ) {
-			@rmdir( \CACHE_HIVE_CONFIG_DIR ); }
+			@rmdir( \CACHE_HIVE_CONFIG_DIR );
+		}
 	}
 
 	/**
@@ -239,11 +300,13 @@ final class Cache_Hive_Lifecycle {
 	 */
 	public static function create_advanced_cache_file() {
 		if ( ! is_writable( WP_CONTENT_DIR ) ) {
-			return false; }
+			return false;
+		}
 		$source      = \CACHE_HIVE_DIR . 'class-cache-hive-advanced-cache.php';
 		$destination = WP_CONTENT_DIR . '/advanced-cache.php';
 		if ( ! is_readable( $source ) ) {
-			return false; }
+			return false;
+		}
 		return copy( $source, $destination );
 	}
 
@@ -255,10 +318,12 @@ final class Cache_Hive_Lifecycle {
 	 */
 	private static function find_wp_config_path() {
 		if ( file_exists( ABSPATH . 'wp-config.php' ) ) {
-			return ABSPATH . 'wp-config.php'; }
+			return ABSPATH . 'wp-config.php';
+		}
 		$parent_config = dirname( ABSPATH ) . '/wp-config.php';
 		if ( file_exists( $parent_config ) && ! file_exists( dirname( ABSPATH ) . '/wp-settings.php' ) ) {
-			return $parent_config; }
+			return $parent_config;
+		}
 		return false;
 	}
 
@@ -268,16 +333,7 @@ final class Cache_Hive_Lifecycle {
 	 * @since 1.1.0
 	 */
 	private static function cleanup_site() {
-		// BUG FIX: Use a more robust method to unschedule cron events.
 		$cron_hook_suffix = is_multisite() ? '_' . get_current_blog_id() : '';
-
-		// Unschedule the garbage collection cron.
-		$gc_cron_hook = 'cache_hive_garbage_collection' . $cron_hook_suffix;
-		$timestamp    = wp_next_scheduled( $gc_cron_hook );
-		while ( $timestamp ) {
-			wp_unschedule_event( $timestamp, $gc_cron_hook );
-			$timestamp = wp_next_scheduled( $gc_cron_hook );
-		}
 
 		// Unschedule the image optimization cron.
 		$image_cron_hook = 'cache_hive_image_optimization_batch' . $cron_hook_suffix;
@@ -314,9 +370,11 @@ final class Cache_Hive_Lifecycle {
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-direct.php';
 		$wp_filesystem = new WP_Filesystem_Direct( null );
 		if ( defined( 'CACHE_HIVE_BASE_CACHE_DIR' ) ) {
-			$wp_filesystem->rmdir( \CACHE_HIVE_BASE_CACHE_DIR, true ); }
+			$wp_filesystem->rmdir( \CACHE_HIVE_BASE_CACHE_DIR, true );
+		}
 		if ( defined( 'CACHE_HIVE_CONFIG_DIR' ) ) {
-			$wp_filesystem->rmdir( \CACHE_HIVE_CONFIG_DIR, true ); }
+			$wp_filesystem->rmdir( \CACHE_HIVE_CONFIG_DIR, true );
+		}
 	}
 
 	/**

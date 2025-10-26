@@ -9,6 +9,7 @@ namespace Cache_Hive\Includes\API;
 
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Settings;
+use Cache_Hive\Includes\Helpers\Cache_Hive_Server_Rules_Helper;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Batch_Processor;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Optimizer;
 use Cache_Hive\Includes\Optimizers\Image_Optimizer\Cache_Hive_Image_Rewrite;
@@ -116,10 +117,16 @@ class Cache_Hive_REST_Optimizers_Image {
 
 		$new_delivery_method = $all_settings['image_delivery_method'];
 		if ( $new_delivery_method !== $old_delivery_method ) {
-			if ( 'rewrite' === $new_delivery_method ) {
-				Cache_Hive_Image_Rewrite::insert_rules();
-			} elseif ( 'rewrite' === $old_delivery_method ) {
-				Cache_Hive_Image_Rewrite::remove_rules();
+			$server = Cache_Hive_Server_Rules_Helper::get_server_software();
+			if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
+				if ( 'rewrite' === $new_delivery_method ) {
+					Cache_Hive_Image_Rewrite::insert_rules();
+				} elseif ( 'rewrite' === $old_delivery_method ) {
+					Cache_Hive_Image_Rewrite::remove_rules();
+				}
+			} elseif ( 'nginx' === $server ) {
+				// The change to or from 'rewrite' affects the nginx file.
+				Cache_Hive_Server_Rules_Helper::update_nginx_file();
 			}
 		}
 

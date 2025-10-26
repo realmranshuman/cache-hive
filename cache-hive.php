@@ -72,19 +72,26 @@ $base_cache_dir  = CACHE_HIVE_ROOT_CACHE_DIR . $site_path_segment;
 $base_config_dir = CACHE_HIVE_ROOT_CONFIG_DIR . $site_path_segment;
 
 if ( ! defined( 'CACHE_HIVE_BASE_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_BASE_CACHE_DIR', $base_cache_dir ); }
+	define( 'CACHE_HIVE_BASE_CACHE_DIR', $base_cache_dir );
+}
 if ( ! defined( 'CACHE_HIVE_PUBLIC_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_PUBLIC_CACHE_DIR', $base_cache_dir . '/public' ); }
+	define( 'CACHE_HIVE_PUBLIC_CACHE_DIR', $base_cache_dir . '/public' );
+}
 if ( ! defined( 'CACHE_HIVE_PRIVATE_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_CACHE_DIR', $base_cache_dir . '/private' ); }
+	define( 'CACHE_HIVE_PRIVATE_CACHE_DIR', $base_cache_dir . '/private' );
+}
 if ( ! defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', $base_cache_dir . '/private/user_cache' ); }
+	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', $base_cache_dir . '/private/user_cache' );
+}
 if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR', $base_cache_dir . '/private/url_index' ); }
+	define( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR', $base_cache_dir . '/private/url_index' );
+}
 if ( ! defined( 'CACHE_HIVE_IMAGE_CACHE_DIR' ) ) {
-	define( 'CACHE_HIVE_IMAGE_CACHE_DIR', $base_cache_dir . '/images' ); }
+	define( 'CACHE_HIVE_IMAGE_CACHE_DIR', $base_cache_dir . '/images' );
+}
 if ( ! defined( 'CACHE_HIVE_CONFIG_DIR' ) ) {
-	define( 'CACHE_HIVE_CONFIG_DIR', $base_config_dir ); }
+	define( 'CACHE_HIVE_CONFIG_DIR', $base_config_dir );
+}
 
 
 // =========================================================================
@@ -94,6 +101,7 @@ if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
 	require_once __DIR__ . '/vendor/autoload.php';
 }
 
+require_once CACHE_HIVE_DIR . 'includes/helpers/class-cache-hive-server-rules-helper.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-lifecycle.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-settings.php';
 require_once CACHE_HIVE_DIR . 'includes/class-cache-hive-disk.php';
@@ -199,12 +207,6 @@ function cache_hive_render_admin_page() {
 	echo '<div id="cache-hive-root"></div>';
 }
 
-/**
- * Enqueues scripts and styles for the admin area.
- *
- * @since 1.0.0
- * @param string $hook The current admin page hook.
- */
 /**
  * Enqueues scripts and styles for the admin area.
  *

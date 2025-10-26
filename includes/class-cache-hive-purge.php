@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Handles all cache purging operations using a dual-index symlink strategy.
+ * Handles all cache purging operations using a sharded pointer file index strategy.
  */
 final class Cache_Hive_Purge {
 
@@ -49,19 +49,6 @@ final class Cache_Hive_Purge {
 			foreach ( $custom_hooks as $hook ) {
 				add_action( $hook, array( __CLASS__, 'purge_all' ) );
 			}
-		}
-
-		// MULTISITE: Make cron hooks site-specific to avoid conflicts.
-		$cron_hook_suffix = is_multisite() ? '_' . get_current_blog_id() : '';
-		$gc_cron_hook     = 'cache_hive_garbage_collection' . $cron_hook_suffix;
-
-		if ( Cache_Hive_Settings::get( 'use_symlinks' ) ) {
-			add_action( $gc_cron_hook, array( __CLASS__, 'garbage_collect_private_cache' ) );
-			if ( ! wp_next_scheduled( $gc_cron_hook ) ) {
-				wp_schedule_event( time(), 'daily', $gc_cron_hook );
-			}
-		} else {
-			wp_clear_scheduled_hook( $gc_cron_hook );
 		}
 	}
 
@@ -218,7 +205,7 @@ final class Cache_Hive_Purge {
 	}
 
 	/**
-	 * Purges all public and private cache files for a single URL using an OS-aware strategy.
+	 * Purges all public and private cache files for a single URL using the pointer index strategy.
 	 *
 	 * @param string|false $url The URL to purge.
 	 */
@@ -238,16 +225,15 @@ final class Cache_Hive_Purge {
 		$cache_key = $scheme . '://' . $host . $uri;
 		$url_hash  = md5( $cache_key );
 
-		// --- 1. Purge Public Cache (Fast, Direct Deletion) ---
-		$level1_dir      = substr( $url_hash, 0, 2 );
-		$level2_dir      = substr( $url_hash, 2, 2 );
+		// --- 1. Purge Public Cache ---
+		$url_l1          = substr( $url_hash, 0, 2 );
+		$url_l2          = substr( $url_hash, 2, 2 );
 		$filename_prefix = substr( $url_hash, 4 );
-		$target_dir      = CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
+		$public_dir      = CACHE_HIVE_PUBLIC_CACHE_DIR . "/{$url_l1}/{$url_l2}";
 
-		if ( is_dir( $target_dir ) ) {
+		if ( is_dir( $public_dir ) ) {
 			try {
-				$iterator = new DirectoryIterator( $target_dir );
-				foreach ( $iterator as $fileinfo ) {
+				foreach ( new DirectoryIterator( $public_dir ) as $fileinfo ) {
 					if ( ! $fileinfo->isDot() && $fileinfo->isFile() && str_starts_with( $fileinfo->getFilename(), $filename_prefix ) ) {
 						@unlink( $fileinfo->getRealPath() );
 						@unlink( $fileinfo->getRealPath() . '.meta' );
@@ -258,44 +244,51 @@ final class Cache_Hive_Purge {
 			}
 		}
 
-		// --- 2. Purge Private Cache (OS-Aware Strategy) ---
-		if ( Cache_Hive_Settings::get( 'use_symlinks' ) ) {
-			// Optimized Path (Linux): Purge symlinks precisely.
-			$url_level1_dir = substr( $url_hash, 0, 2 );
-			$url_level2_dir = substr( $url_hash, 2, 2 );
-			$symlink_dir    = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
-			$symlink_prefix = substr( $url_hash, 4 );
+		// --- 2. Purge Private Cache via Sharded Pointer Index ---
+		$url_rem         = substr( $url_hash, 4 );
+		$base_index_path = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}";
 
-			if ( is_dir( $symlink_dir ) ) {
-				try {
-					$iterator = new DirectoryIterator( $symlink_dir );
-					foreach ( $iterator as $fileinfo ) {
-						if ( ! $fileinfo->isDot() && $fileinfo->isFile() && str_starts_with( $fileinfo->getFilename(), $symlink_prefix ) ) {
-							@unlink( $fileinfo->getRealPath() );
-						}
-					}
-				} catch ( \Exception $e ) {
-					// Ignore errors.
+		if ( ! is_dir( $base_index_path ) ) {
+			return; // No private cache exists for this URL.
+		}
+
+		try {
+			// Iterate through the 256x256 sharded user directories.
+			$iterator = new RecursiveIteratorIterator(
+				new RecursiveDirectoryIterator( $base_index_path, RecursiveDirectoryIterator::SKIP_DOTS ),
+				RecursiveIteratorIterator::SELF_FIRST
+			);
+
+			foreach ( $iterator as $file ) {
+				if ( ! $file->isFile() || '.pointer' !== substr( $file->getFilename(), -8 ) ) {
+					continue;
 				}
+
+				// Reconstruct the user hash from the pointer file's path and name.
+				$user_rem  = str_replace( '.pointer', '', $file->getFilename() );
+				$user_l2   = basename( $file->getPath() );
+				$user_l1   = basename( dirname( $file->getPath() ) );
+				$user_hash = $user_l1 . $user_l2 . $user_rem;
+
+				// Construct the direct path to the user's real cache file.
+				$user_dir_path     = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$user_l1}/{$user_l2}/{$user_rem}";
+				$real_cache_prefix = "{$user_dir_path}/{$url_hash}";
+
+				// Delete the cache file and its mobile variant, plus their meta files.
+				@unlink( $real_cache_prefix . '.cache' );
+				@unlink( $real_cache_prefix . '.cache.meta' );
+				@unlink( $real_cache_prefix . '-mobile.cache' );
+				@unlink( $real_cache_prefix . '-mobile.cache.meta' );
+
+				// Delete the pointer file itself.
+				@unlink( $file->getRealPath() );
 			}
-		} else {
-			// Compatible Path (Windows): Recursively scan the primary user cache directory.
-			if ( defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) && is_dir( CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
-				try {
-					$iterator = new RecursiveIteratorIterator(
-						new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_USER_CACHE_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
-						RecursiveIteratorIterator::SELF_FIRST
-					);
-					foreach ( $iterator as $file ) {
-						if ( $file->isFile() && str_starts_with( $file->getFilename(), $url_hash ) ) {
-							@unlink( $file->getRealPath() );
-							@unlink( $file->getRealPath() . '.meta' );
-						}
-					}
-				} catch ( \Exception $e ) {
-					// Ignore errors during iteration.
-				}
-			}
+
+			// Clean up the now-empty index directories.
+			self::delete_directory( $base_index_path );
+
+		} catch ( \Exception $e ) {
+			// Ignore errors during iteration.
 		}
 	}
 
@@ -321,6 +314,10 @@ final class Cache_Hive_Purge {
 
 	/**
 	 * Purges the entire private cache for a specific user ID.
+	 * This involves deleting their specific user_cache directory.
+	 * Note: This will leave dangling pointer files in the url_index, which is acceptable.
+	 * They are harmless and will be cleaned up if/when the corresponding URLs are purged.
+	 * A full scan of the url_index to find and delete them would be too slow.
 	 *
 	 * @param int $user_id The user ID whose private cache should be purged.
 	 */
@@ -337,42 +334,13 @@ final class Cache_Hive_Purge {
 		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
 		$user_hash = md5( $username . $auth_key );
 
-		$user_level1_dir = substr( $user_hash, 0, 2 );
-		$user_level2_dir = substr( $user_hash, 2, 2 );
-		$user_dir_base   = substr( $user_hash, 4 );
-		$user_dir_path   = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
+		$user_l1       = substr( $user_hash, 0, 2 );
+		$user_l2       = substr( $user_hash, 2, 2 );
+		$user_rem      = substr( $user_hash, 4 );
+		$user_dir_path = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$user_l1}/{$user_l2}/{$user_rem}";
 
 		if ( is_dir( $user_dir_path ) ) {
 			self::delete_directory( $user_dir_path );
-		}
-	}
-
-	/**
-	 * Performs garbage collection on the private cache indexes.
-	 */
-	public static function garbage_collect_private_cache() {
-		if ( ! Cache_Hive_Settings::get( 'use_symlinks' ) ) {
-			return;
-		}
-
-		if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) || ! is_dir( CACHE_HIVE_PRIVATE_URL_INDEX_DIR ) ) {
-			return;
-		}
-		try {
-			$iterator = new RecursiveIteratorIterator(
-				new RecursiveDirectoryIterator( CACHE_HIVE_PRIVATE_URL_INDEX_DIR, RecursiveDirectoryIterator::SKIP_DOTS ),
-				RecursiveIteratorIterator::SELF_FIRST
-			);
-			foreach ( $iterator as $file ) {
-				if ( $file->isFile() && '.ln' === substr( $file->getFilename(), -3 ) ) {
-					// Use is_link() to be safe, then check if the target exists.
-					if ( is_link( $file->getRealPath() ) && ! file_exists( readlink( $file->getRealPath() ) ) ) {
-						@unlink( $file->getRealPath() );
-					}
-				}
-			}
-		} catch ( \Exception $e ) {
-			// Ignore errors during garbage collection.
 		}
 	}
 

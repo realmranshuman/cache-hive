@@ -88,8 +88,7 @@ final class Cache_Hive_Engine {
 	}
 
 	/**
-	 * Callback function for output buffering to write the cache file.
-	 * This now serves the optimized version to the first visitor correctly.
+	 * Callback function for output buffering to write the cache file and pointer index.
 	 *
 	 * @param string $buffer The captured output buffer content.
 	 * @return string The original or optimized buffer content.
@@ -101,50 +100,35 @@ final class Cache_Hive_Engine {
 
 		$is_private_cache = \is_user_logged_in() && ( self::$settings['cache_logged_users'] ?? false );
 		$cache_file       = null;
-		$symlink_file     = null;
 		$original_buffer  = $buffer; // Keep a copy of the original buffer for fallback.
 
-		// If caching for a logged-in user, replace dynamic elements with placeholders before optimization.
 		if ( $is_private_cache ) {
 			if ( class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) ) {
 				$buffer = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::replace_dynamic_elements_with_placeholders( $buffer );
 			}
-		}
-
-		// Determine the correct cache file path.
-		if ( $is_private_cache ) {
-			if ( self::$settings['use_symlinks'] ) {
-				list( $cache_file, $symlink_file ) = self::get_private_cache_paths();
-			} else {
-				$cache_file = self::get_private_cache_primary_path();
-			}
+			$cache_file = self::get_private_cache_path();
 		} else {
 			$cache_file = self::get_public_cache_path();
 		}
 
-		// If a valid cache path was determined, optimize and cache the page.
 		if ( $cache_file ) {
-			// This call now optimizes, saves the file, and returns the optimized buffer on success.
 			$optimized_buffer = Cache_Hive_Disk::cache_page( $buffer, $cache_file );
 
-			// Check if caching was successful.
 			if ( false !== $optimized_buffer ) {
-				if ( $symlink_file ) {
-					self::create_symlink( $cache_file, $symlink_file );
+				// If this was a private cache, create the pointer file for purging.
+				if ( $is_private_cache ) {
+					self::create_pointer_file();
 				}
+
 				if ( ! headers_sent() ) {
 					header( 'X-Cache-Hive-Engine: Miss (Generated)' );
 				}
 
-				// This is the CRITICAL FIX:
-				// If it's a private cache, inject dynamic elements back before serving.
-				// For public cache, the optimized buffer is ready to be served.
 				$final_content_for_browser = $optimized_buffer;
 				if ( $is_private_cache && class_exists( '\\Cache_Hive\\Includes\\Cache_Hive_Logged_In_Cache' ) ) {
 					$final_content_for_browser = \Cache_Hive\Includes\Cache_Hive_Logged_In_Cache::inject_dynamic_elements_from_placeholders( $optimized_buffer );
 				}
 
-				// Append the signature and return the fully processed, functional page.
 				return $final_content_for_browser . Cache_Hive_Disk::get_cache_signature();
 			}
 		}
@@ -156,7 +140,7 @@ final class Cache_Hive_Engine {
 
 	/**
 	 * Generates the path for a public cache file.
-	 * Path: /public/{L1}/{L2}/{remainder}.html
+	 * Path: /public/{L1}/{L2}/{remainder}.cache
 	 *
 	 * @return string The public cache file path.
 	 */
@@ -175,58 +159,18 @@ final class Cache_Hive_Engine {
 		$file_suffix   = self::is_mobile() ? '-mobile' : '';
 
 		$dir_path  = \CACHE_HIVE_PUBLIC_CACHE_DIR . '/' . $level1_dir . '/' . $level2_dir;
-		$file_name = $filename_base . $file_suffix . '.html';
+		$file_name = $filename_base . $file_suffix . '.cache';
 
 		return $dir_path . '/' . $file_name;
 	}
 
 	/**
-	 * Generates paths for a private cache file and its corresponding symlink index.
-	 * This is the high-performance path for non-Windows systems.
-	 *
-	 * @return array An array containing [Real cache file path, Symlink path], or [null, null] on failure.
-	 */
-	private static function get_private_cache_paths() {
-		// Get the primary storage path first.
-		$real_path = self::get_private_cache_primary_path();
-		if ( ! $real_path ) {
-			return array( null, null );
-		}
-
-		// Now, generate the symlink path for the URL-based index.
-		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
-		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
-		$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
-		$uri       = \rtrim( $uri, '/' );
-		$uri       = empty( $uri ) ? '/' : $uri;
-		$cache_key = $scheme . '://' . $host . $uri;
-		$url_hash  = \md5( $cache_key );
-
-		$user      = \wp_get_current_user();
-		$username  = $user->user_login;
-		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
-		$user_hash = \md5( $username . $auth_key );
-
-		$url_level1_dir    = \substr( $url_hash, 0, 2 );
-		$url_level2_dir    = \substr( $url_hash, 2, 2 );
-		$url_filename_base = \substr( $url_hash, 4 );
-		$file_suffix       = self::is_mobile() ? '-mobile' : '';
-		$symlink_dir       = \CACHE_HIVE_PRIVATE_URL_INDEX_DIR . '/' . $url_level1_dir . '/' . $url_level2_dir;
-		// The symlink name must be unique per-user for the same URL.
-		$symlink_name = $url_filename_base . '-' . $user_hash . $file_suffix . '.ln';
-		$symlink_path = $symlink_dir . '/' . $symlink_name;
-
-		return array( $real_path, $symlink_path );
-	}
-
-	/**
-	 * Generates only the primary storage path for a private cache file.
-	 * This is used by both symlink and non-symlink (Windows) modes.
-	 * Path: /private/user_cache/{user_L1}/{user_L2}/{user_remainder}/{url_hash}.html
+	 * Generates the primary storage path for a private cache file.
+	 * Path: /private/user_cache/{user_L1}/{user_L2}/{user_remainder}/{url_hash}.cache
 	 *
 	 * @return string|null The path to the real cache file, or null on failure.
 	 */
-	private static function get_private_cache_primary_path() {
+	private static function get_private_cache_path() {
 		$user = \wp_get_current_user();
 		if ( ! $user || ! $user->ID > 0 || empty( $user->user_login ) ) {
 			return null;
@@ -249,37 +193,61 @@ final class Cache_Hive_Engine {
 		$url_hash  = \md5( $cache_key );
 
 		$file_suffix = self::is_mobile() ? '-mobile' : '';
-		$file_name   = $url_hash . $file_suffix . '.html';
+		$file_name   = $url_hash . $file_suffix . '.cache';
 
 		return $user_dir_path . '/' . $file_name;
 	}
 
-
 	/**
-	 * Creates a symlink from the symlink file to the real cache file.
-	 * This is a core part of the dual-index strategy for private cache.
+	 * Creates the sharded pointer file for the current user and URL.
+	 * This is the core of the new scalable purge index.
 	 *
-	 * @param string $real_path The target file (in `/user_cache/`).
-	 * @param string $symlink_path The link to be created (in `/url_index/`).
+	 * @return bool True on success, false on failure.
 	 */
-	private static function create_symlink( $real_path, $symlink_path ) {
-		if ( ! $real_path || ! $symlink_path ) {
-			return;
+	private static function create_pointer_file() {
+		$user = \wp_get_current_user();
+		if ( ! $user || ! $user->ID > 0 || empty( $user->user_login ) ) {
+			return false;
 		}
-		$symlink_dir = dirname( $symlink_path );
-		if ( ! is_dir( $symlink_dir ) ) {
-			if ( ! @\mkdir( $symlink_dir, 0755, true ) ) {
-				return; // Cannot create symlink if directory fails.
+
+		// 1. Get User Hash (same logic as cache path)
+		$username  = $user->user_login;
+		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
+		$user_hash = \md5( $username . $auth_key );
+
+		// 2. Get URL Hash (same logic as cache path)
+		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
+		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
+		$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
+		$uri       = \rtrim( $uri, '/' );
+		$uri       = empty( $uri ) ? '/' : $uri;
+		$cache_key = $scheme . '://' . $host . $uri;
+		$url_hash  = \md5( $cache_key );
+
+		// 3. Build the fully sharded path for the pointer file.
+		$url_l1  = \substr( $url_hash, 0, 2 );
+		$url_l2  = \substr( $url_hash, 2, 2 );
+		$url_rem = \substr( $url_hash, 4 );
+
+		$user_l1  = \substr( $user_hash, 0, 2 );
+		$user_l2  = \substr( $user_hash, 2, 2 );
+		$user_rem = \substr( $user_hash, 4 );
+
+		$pointer_dir_path = \CACHE_HIVE_PRIVATE_URL_INDEX_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}/{$user_l1}/{$user_l2}";
+		$pointer_file     = $pointer_dir_path . "/{$user_rem}.pointer";
+
+		// 4. Create the directory if it doesn't exist.
+		if ( ! is_dir( $pointer_dir_path ) ) {
+			// Non-silenced mkdir with proper error checking.
+			if ( ! \mkdir( $pointer_dir_path, 0755, true ) ) {
+				return false; // Failed to create directory.
 			}
 		}
-		// If a broken symlink from a previous purge exists, remove it first.
-		if ( file_exists( $symlink_path ) || is_link( $symlink_path ) ) {
-			@unlink( $symlink_path );
-		}
-		// Create the link from the `url_index` index to the `user_cache` file.
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		@\symlink( $real_path, $symlink_path );
+
+		// 5. Create the empty pointer file.
+		return \touch( $pointer_file );
 	}
+
 
 	/**
 	 * Checks if the current request is from a mobile user agent.

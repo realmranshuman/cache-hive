@@ -8,10 +8,12 @@
 namespace Cache_Hive\Includes\API;
 
 require_once dirname( __DIR__ ) . '/class-cache-hive-browser-cache.php';
+require_once dirname( __DIR__ ) . '/helpers/class-cache-hive-server-rules-helper.php';
 
 use Cache_Hive\Includes\Cache_Hive_Browser_Cache;
 use Cache_Hive\Includes\Cache_Hive_Lifecycle;
 use Cache_Hive\Includes\Cache_Hive_Settings;
+use Cache_Hive\Includes\Helpers\Cache_Hive_Server_Rules_Helper;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -62,12 +64,13 @@ class Cache_Hive_REST_BrowserCache {
 	}
 
 	/**
-	 * Updates the browser cache settings and applies them to .htaccess if possible.
+	 * Updates the browser cache settings and applies them to server configs.
 	 *
 	 * @param WP_REST_Request $request The request object containing the new settings.
 	 * @return WP_REST_Response The response object with the updated status.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
+		$old_settings     = Cache_Hive_Settings::get_settings( true );
 		$params           = $request->get_json_params();
 		$new_settings     = Cache_Hive_Settings::sanitize_settings( $params );
 		$is_network_admin = is_multisite() && is_network_admin();
@@ -80,17 +83,22 @@ class Cache_Hive_REST_BrowserCache {
 
 		Cache_Hive_Lifecycle::create_config_file( $new_settings );
 
-		$server = Cache_Hive_Browser_Cache::get_server_software();
-		if ( 'apache' === $server || 'litespeed' === $server ) {
+		$server = Cache_Hive_Server_Rules_Helper::get_server_software();
+		if ( in_array( $server, array( 'apache', 'litespeed' ), true ) ) {
 			$result = Cache_Hive_Browser_Cache::update_htaccess( $new_settings );
 			if ( is_wp_error( $result ) ) {
 				$status          = self::get_settings()->get_data();
 				$status['error'] = $result->get_error_message();
 				return new WP_REST_Response( $status, 500 );
 			}
+		} elseif ( 'nginx' === $server ) {
+			// Trigger nginx.conf regeneration if settings changed.
+			if ( ( $old_settings['browser_cache_enabled'] ?? false ) !== ( $new_settings['browser_cache_enabled'] ?? false ) ||
+				( $old_settings['browser_cache_ttl'] ?? 0 ) !== ( $new_settings['browser_cache_ttl'] ?? 0 ) ) {
+				Cache_Hive_Server_Rules_Helper::update_nginx_file();
+			}
 		}
 
-		// Invalidate the static settings snapshot to ensure the next get_settings() call is fresh.
 		Cache_Hive_Settings::invalidate_settings_snapshot();
 
 		return self::get_settings();

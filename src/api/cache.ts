@@ -1,4 +1,5 @@
 import { wpApiSettings } from "./shared";
+
 export interface CacheFormData {
   enable_cache: boolean;
   cache_logged_users: boolean;
@@ -7,6 +8,8 @@ export interface CacheFormData {
   cache_mobile: boolean;
   mobile_user_agents?: string[];
   is_network_admin?: boolean;
+  is_apache_like?: boolean;
+  is_logged_in_cache_override_set?: boolean;
 }
 
 export async function getCacheSettings(): Promise<CacheFormData> {
@@ -34,6 +37,11 @@ export async function updateCacheSettings(
     credentials: "include",
     body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error("Failed to update cache settings");
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      errorData.message || "An unknown error occurred while updating settings."
+    );
+  }
   return response.json();
 }

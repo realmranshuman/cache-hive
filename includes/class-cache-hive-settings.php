@@ -89,6 +89,7 @@ final class Cache_Hive_Settings {
 			'object_cache_timeout'               => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
 			'object_cache_lifetime'              => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
 			'object_cache_persistent_connection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
+			'allow_logged_in_cache_on_nginx'     => 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX',
 		);
 
 		foreach ( $simple_constants as $setting_key => $constant_name ) {
@@ -162,6 +163,7 @@ final class Cache_Hive_Settings {
 			// General Cache Settings.
 			'enable_cache'                       => true,
 			'cache_logged_users'                 => false,
+			'allow_logged_in_cache_on_nginx'     => false,
 			'cache_commenters'                   => false,
 			'cache_rest_api'                     => false,
 			'cache_mobile'                       => false,
@@ -187,8 +189,6 @@ final class Cache_Hive_Settings {
 			),
 			'serve_stale'                        => false,
 			'purge_on_upgrade'                   => true,
-			// OS-aware setting for symlink capability. Defaults to true.
-			'use_symlinks'                       => true,
 
 			// TTL Settings.
 			'public_cache_ttl'                   => 604800,
@@ -223,15 +223,6 @@ final class Cache_Hive_Settings {
 				'/cart/',
 				'/checkout/',
 				'/my-account/.*',
-			),
-			'exclude_query_strings'              => array(
-				'utm_source',
-				'utm_medium',
-				'utm_campaign',
-				'fbclid',
-				'preview',
-				'edit',
-				'_ga',
 			),
 			'exclude_query_strings'              => array(
 				'utm_source',
