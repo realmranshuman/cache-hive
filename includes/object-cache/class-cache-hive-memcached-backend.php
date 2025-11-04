@@ -337,6 +337,8 @@ class Cache_Hive_Memcached_Backend implements Cache_Hive_Backend_Interface {
 			'port'              => $this->config['port'],
 			'persistent'        => ! empty( $this->config['persistent'] ),
 			'prefetch'          => ! empty( $this->config['prefetch'] ),
+			'flush_async'       => ! empty( $this->config['flush_async'] ),
+			'async_supported'   => false, // Memcached flush is a namespace version bump, not a server command.
 			'serializer'        => $this->config['serializer'] ?? 'php',
 			'server_version'    => $stats['version'] ?? 'N/A',
 			'memory_usage'      => isset( $stats['bytes'] ) ? size_format( $stats['bytes'] ) : 'N/A',

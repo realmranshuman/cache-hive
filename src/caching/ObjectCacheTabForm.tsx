@@ -52,6 +52,8 @@ const objectCacheSchema = z.object({
   object_cache_global_groups: z.any(),
   object_cache_no_cache_groups: z.any(),
   object_cache_persistent_connection: z.boolean().optional().default(false),
+  object_cache_prefetch: z.boolean().optional().default(true),
+  object_cache_flush_async: z.boolean().optional().default(true),
 });
 
 type ObjectCacheFormData = z.infer<typeof objectCacheSchema>;
@@ -83,13 +85,13 @@ function StatusPanel({
     );
   };
 
-  const bestClient = React.useMemo(() => {
-    if (!capabilities?.clients) return "N/A";
-    if (capabilities.clients.phpredis) return "PhpRedis";
-    if (capabilities.clients.predis) return "Predis";
-    if (capabilities.clients.credis) return "Credis";
-    return "N/A";
-  }, [capabilities]);
+  const serverVersionLabel = React.useMemo(() => {
+    if (!status?.client) return "Server Version";
+    const clientName = status.client.toLowerCase();
+    if (clientName.includes("redis")) return "Redis Version";
+    if (clientName.includes("memcached")) return "Memcached Version";
+    return "Server Version";
+  }, [status?.client]);
 
   return (
     <Card className="sticky top-6">
@@ -108,6 +110,7 @@ function StatusPanel({
         />
         <hr />
         <StatusItem label="Client In Use" value={status?.client} />
+        <StatusItem label={serverVersionLabel} value={status?.server_version} />
         <StatusItem label="Serializer" value={status?.serializer} />
         <StatusItem label="Compression" value={status?.compression} />
         <StatusItem
@@ -115,16 +118,23 @@ function StatusPanel({
           value={status?.persistent ? "Yes" : "No"}
         />
         <StatusItem label="Prefetch" value={status?.prefetch ? "Yes" : "No"} />
+        <StatusItem
+          label="Async Flush"
+          value={
+            status?.flush_async
+              ? `Enabled ${
+                  status.async_supported ? "(Supported)" : "(Not Supported)"
+                }`
+              : "Disabled"
+          }
+        />
         <hr />
         <p className="text-sm font-medium text-muted-foreground pt-2">
           Server Capabilities
         </p>
-        <StatusItem
-          label="Best Redis Client"
-          value={bestClient}
-          isBadge
-          variant="secondary"
-        />
+        <p className="text-sm font-semibold text-muted-foreground pt-2">
+          Available Clients
+        </p>
         <StatusItem
           label="PhpRedis"
           value={capabilities?.clients?.phpredis ? "Available" : "Not Found"}
@@ -140,6 +150,15 @@ function StatusPanel({
         <StatusItem
           label="Memcached"
           value={capabilities?.clients?.memcached ? "Available" : "Not Found"}
+        />
+        <p className="text-sm font-semibold text-muted-foreground pt-2">
+          Available Serializers
+        </p>
+        <StatusItem
+          label="Igbinary"
+          value={
+            capabilities?.serializers?.igbinary ? "Available" : "Not Found"
+          }
         />
       </CardContent>
     </Card>
@@ -184,6 +203,8 @@ export function ObjectCacheTabForm({
       ),
       object_cache_persistent_connection:
         initial.object_cache_persistent_connection ?? false,
+      object_cache_prefetch: initial.object_cache_prefetch ?? true,
+      object_cache_flush_async: initial.object_cache_flush_async ?? true,
     },
   });
 
@@ -207,6 +228,8 @@ export function ObjectCacheTabForm({
       ),
       object_cache_persistent_connection:
         initial.object_cache_persistent_connection ?? false,
+      object_cache_prefetch: initial.object_cache_prefetch ?? true,
+      object_cache_flush_async: initial.object_cache_flush_async ?? true,
     });
   }, [initial, form.reset]);
 
@@ -529,32 +552,82 @@ export function ObjectCacheTabForm({
                 )}
               />
             </div>
-            <FormField
-              control={form.control}
-              name="object_cache_persistent_connection"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <FormLabel>Persistent Connection</FormLabel>
-                    <CardDescription>
-                      Reduces latency by reusing connections.
-                    </CardDescription>
-                  </div>
-                  {withWpConfigHoverCard(
-                    "object_cache_persistent_connection",
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={disabled(
-                          "object_cache_persistent_connection"
-                        )}
-                      />
-                    </FormControl>
-                  )}
-                </FormItem>
-              )}
-            />
+            <div className="space-y-4">
+              <FormField
+                control={form.control}
+                name="object_cache_persistent_connection"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel>Persistent Connection</FormLabel>
+                      <CardDescription>
+                        Reduces latency by reusing connections.
+                      </CardDescription>
+                    </div>
+                    {withWpConfigHoverCard(
+                      "object_cache_persistent_connection",
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={disabled(
+                            "object_cache_persistent_connection"
+                          )}
+                        />
+                      </FormControl>
+                    )}
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="object_cache_prefetch"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel>Option Prefetching</FormLabel>
+                      <CardDescription>
+                        Preloads all WordPress options for faster admin access.
+                      </CardDescription>
+                    </div>
+                    {withWpConfigHoverCard(
+                      "object_cache_prefetch",
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={disabled("object_cache_prefetch")}
+                        />
+                      </FormControl>
+                    )}
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="object_cache_flush_async"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel>Asynchronous Flushing</FormLabel>
+                      <CardDescription>
+                        Performs cache flushing in the background if supported.
+                      </CardDescription>
+                    </div>
+                    {withWpConfigHoverCard(
+                      "object_cache_flush_async",
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={disabled("object_cache_flush_async")}
+                        />
+                      </FormControl>
+                    )}
+                  </FormItem>
+                )}
+              />
+            </div>
             <div className="flex justify-end pt-4">
               <Button type="submit" disabled={isSaving}>
                 {isSaving

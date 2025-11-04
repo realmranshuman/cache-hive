@@ -226,13 +226,13 @@ final class WP_Object_Cache {
 		\$config['pass'] = \$settings['object_cache_password'] ?? '';
 		\$config['timeout'] = (float) (\$settings['object_cache_timeout'] ?? 2.0);
 		\$config['persistent'] = !empty(\$settings['object_cache_persistent_connection']);
-		\$config['prefetch'] = !empty(\$settings['prefetch']);
-		\$config['flush_async'] = !empty(\$settings['flush_async']);
+		\$config['prefetch'] = !empty(\$settings['object_cache_prefetch']);
+		\$config['flush_async'] = !empty(\$settings['object_cache_flush_async']);
 		\$config['key_prefix'] = \$settings['object_cache_key'] ?? '';
 		\$config['lifetime'] = (int) (\$settings['object_cache_lifetime'] ?? 3600);
 		\$config['global_groups'] = \$settings['object_cache_global_groups'] ?? [];
 		\$config['no_cache_groups'] = \$settings['object_cache_no_cache_groups'] ?? [];
-		\$config['serializer'] = \$settings['serializer'] ?? 'php';
+		\$config['serializer'] = \$settings['object_cache_serializer'] ?? 'php';
 		if ('redis' === \$method) {
 			\$config['client'] = \$settings['object_cache_client'] ?? 'phpredis';
 			\$config['database'] = (int) (\$settings['object_cache_database'] ?? 0);

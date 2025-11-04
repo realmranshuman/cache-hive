@@ -114,6 +114,9 @@ final class Cache_Hive_Settings {
 			'object_cache_timeout'               => 'CACHE_HIVE_OBJECT_CACHE_TIMEOUT',
 			'object_cache_lifetime'              => 'CACHE_HIVE_OBJECT_CACHE_LIFETIME',
 			'object_cache_persistent_connection' => 'CACHE_HIVE_OBJECT_CACHE_PERSISTENT',
+			'object_cache_prefetch'              => 'CACHE_HIVE_OBJECT_CACHE_PREFETCH',
+			'object_cache_flush_async'           => 'CACHE_HIVE_OBJECT_CACHE_FLUSH_ASYNC',
+			'object_cache_serializer'            => 'CACHE_HIVE_OBJECT_CACHE_SERIALIZER',
 			'allow_logged_in_cache_on_nginx'     => 'CACHE_HIVE_ALLOW_LOGGED_IN_CACHE_ON_NGINX',
 		);
 
@@ -321,8 +324,9 @@ final class Cache_Hive_Settings {
 			),
 			'object_cache_tls_options'           => array(),
 			'object_cache_persistent_connection' => false,
-			'prefetch'                           => true,
-			'flush_async'                        => true,
+			'object_cache_prefetch'              => true,
+			'object_cache_flush_async'           => true,
+			'object_cache_serializer'            => 'php',
 
 			// Cloudflare Settings.
 			'cloudflare_enabled'                 => false,
@@ -422,8 +426,8 @@ final class Cache_Hive_Settings {
 		$config['pass']        = $settings['object_cache_password'] ?? '';
 		$config['timeout']     = (float) ( $settings['object_cache_timeout'] ?? 2.0 );
 		$config['persistent']  = ! empty( $settings['object_cache_persistent_connection'] );
-		$config['prefetch']    = ! empty( $settings['prefetch'] );
-		$config['flush_async'] = ! empty( $settings['flush_async'] );
+		$config['prefetch']    = ! empty( $settings['object_cache_prefetch'] );
+		$config['flush_async'] = ! empty( $settings['object_cache_flush_async'] );
 
 		// MULTISITE: Prefix the key with the blog ID to prevent collisions in a shared cache.
 		$key_prefix = $settings['object_cache_key'] ?? '';
@@ -435,7 +439,7 @@ final class Cache_Hive_Settings {
 		$config['lifetime']        = $settings['object_cache_lifetime'] ?? 3600;
 		$config['global_groups']   = $settings['object_cache_global_groups'] ?? array();
 		$config['no_cache_groups'] = $settings['object_cache_no_cache_groups'] ?? array();
-		$config['serializer']      = extension_loaded( 'igbinary' ) ? 'igbinary' : 'php';
+		$config['serializer']      = $settings['object_cache_serializer'] ?? 'php';
 
 		if ( 'redis' === $method ) {
 			$config['client']   = $settings['object_cache_client'] ?? ( class_exists( 'Redis' ) ? 'phpredis' : ( class_exists( 'Predis\\Client' ) ? 'predis' : 'credis' ) );

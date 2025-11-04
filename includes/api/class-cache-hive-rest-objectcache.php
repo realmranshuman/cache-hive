@@ -72,6 +72,9 @@ class Cache_Hive_REST_ObjectCache {
 			'object_cache_no_cache_groups'       => $settings['object_cache_no_cache_groups'] ?? array(),
 			'object_cache_tls_options'           => $settings['object_cache_tls_options'] ?? array(),
 			'object_cache_persistent_connection' => ! empty( $settings['object_cache_persistent_connection'] ),
+			'object_cache_prefetch'              => ! empty( $settings['object_cache_prefetch'] ),
+			'object_cache_flush_async'           => ! empty( $settings['object_cache_flush_async'] ),
+			'object_cache_serializer'            => $settings['object_cache_serializer'] ?? 'php',
 			'wp_config_overrides'                => array_fill_keys( Cache_Hive_Settings::get_overridden_keys(), true ),
 			'live_status'                        => function_exists( 'wp_cache_get_info' ) ? wp_cache_get_info() : array(
 				'status' => 'Disabled',
@@ -91,10 +94,20 @@ class Cache_Hive_REST_ObjectCache {
 	 * @return WP_REST_Response The response object with the updated settings and status.
 	 */
 	public static function update_settings( WP_REST_Request $request ) {
-		$params           = $request->get_json_params();
+		$params = $request->get_json_params();
+
 		$settings_to_save = Cache_Hive_Settings::sanitize_settings( $params );
 		$is_network_admin = is_multisite() && is_network_admin();
 		$live_status      = null;
+
+		// Logic to determine and set the serializer. This overrides any sanitized value.
+		if ( defined( 'CACHE_HIVE_OBJECT_CACHE_SERIALIZER' ) ) {
+			$settings_to_save['object_cache_serializer'] = CACHE_HIVE_OBJECT_CACHE_SERIALIZER;
+		} elseif ( extension_loaded( 'igbinary' ) ) {
+			$settings_to_save['object_cache_serializer'] = 'igbinary';
+		} else {
+			$settings_to_save['object_cache_serializer'] = 'php';
+		}
 
 		if ( ! empty( $settings_to_save['object_cache_enabled'] ) ) {
 			// Unconditionally regenerate the key. This acts as a cache salt/buster,

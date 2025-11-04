@@ -15,6 +15,9 @@ export interface ObjectCacheSettings {
   object_cache_global_groups?: string[];
   object_cache_no_cache_groups?: string[];
   object_cache_persistent_connection?: boolean;
+  object_cache_prefetch?: boolean;
+  object_cache_flush_async?: boolean;
+  object_cache_serializer?: "php" | "igbinary";
   object_cache_tls_options?: {
     ca_cert?: string;
     verify_peer?: boolean;
@@ -23,6 +26,7 @@ export interface ObjectCacheSettings {
   live_status?: {
     status: string;
     client: string;
+    async_supported?: boolean;
     [key: string]: any;
   };
   server_capabilities?: {

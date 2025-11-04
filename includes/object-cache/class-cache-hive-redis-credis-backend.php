@@ -254,19 +254,24 @@ class Cache_Hive_Redis_Credis_Backend implements Cache_Hive_Backend_Interface {
 			);
 		}
 		try {
-			$info = $this->client->info();
+			$info            = $this->client->info();
+			$redis_version   = $info['redis_version'] ?? '0.0.0';
+			$async_supported = version_compare( $redis_version, '4.0.0', '>=' );
+
 			return array(
-				'status'         => 'Connected',
-				'client'         => 'Credis',
-				'host'           => $this->config['host'],
-				'port'           => $this->config['port'],
-				'database'       => $this->config['database'],
-				'persistent'     => ! empty( $this->config['persistent'] ),
-				'prefetch'       => ! empty( $this->config['prefetch'] ),
-				'serializer'     => $this->config['serializer'] ?? 'php',
-				'server_version' => $info['redis_version'] ?? 'N/A',
-				'memory_usage'   => $info['used_memory_human'] ?? 'N/A',
-				'uptime'         => $info['uptime_in_seconds'] ?? 'N/A',
+				'status'          => 'Connected',
+				'client'          => 'Credis',
+				'host'            => $this->config['host'],
+				'port'            => $this->config['port'],
+				'database'        => $this->config['database'],
+				'persistent'      => ! empty( $this->config['persistent'] ),
+				'prefetch'        => ! empty( $this->config['prefetch'] ),
+				'flush_async'     => ! empty( $this->config['flush_async'] ),
+				'async_supported' => $async_supported,
+				'serializer'      => $this->config['serializer'] ?? 'php',
+				'server_version'  => $redis_version,
+				'memory_usage'    => $info['used_memory_human'] ?? 'N/A',
+				'uptime'          => $info['uptime_in_seconds'] ?? 'N/A',
 			);
 		} catch ( \Exception $e ) {
 			return array(
