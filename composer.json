@@ -38,7 +38,7 @@
     "lint": "vendor/bin/phpcs --standard=phpcs.ruleset.xml .",
     "fix": "vendor/bin/phpcbf --standard=phpcs.ruleset.xml .",
     "prepare-dirs": [
-      "mkdir -p lib/predis/predis/src lib/psr/log/src lib/psr/http-message/src lib/colinmollenhour/credis lib/matthiasmullie/minify/src lib/matthiasmullie/path-converter/src"
+      "@php build-scripts.php prepare-dirs"
     ],
     "dev": [
       "echo 'Step 1/5: Preparing directories...'",
@@ -54,19 +54,7 @@
       "echo '\\nSUCCESS! Development environment is ready.'"
     ],
     "build": [
-      "composer dev",
-      "echo 'START: Assembling production package...'",
-      "rm -rf dist",
-      "mkdir -p dist/cache-hive",
-      "rsync -rc --exclude-from=.distignore . dist/cache-hive/",
-      "cp -R lib dist/cache-hive/",
-      "cp -R build dist/cache-hive/",
-      "cp composer.dist.json dist/cache-hive/composer.json",
-      "echo 'START: Generating final production autoloader...'",
-      "cd dist/cache-hive && composer dump-autoload --no-dev --optimize && cd ../..",
-      "rm -rf dist/cache-hive/composer.json",
-      "cp src/media-library.js build/media-library.js",
-      "echo '\\nSUCCESS! Production-ready plugin is in dist/cache-hive'"
+      "@php build-scripts.php build"
     ]
   },
   "config": {
