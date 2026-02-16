@@ -342,19 +342,18 @@ final class Cache_Hive_Advanced_Cache {
 	 *
 	 * @return string
 	 */
+	/**
+	 * Constructs the direct path for a private cache file.
+	 * Structure: /private/user_cache/{url_L1}/{url_L2}/{url_rem}/{user_hash}.cache
+	 *
+	 * @return string
+	 */
 	private function get_private_cache_path() {
 		if ( empty( $this->username ) ) {
 			return '';
 		}
 
-		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
-		$user_hash = md5( $this->username . $auth_key );
-
-		$user_level1_dir = substr( $user_hash, 0, 2 );
-		$user_level2_dir = substr( $user_hash, 2, 2 );
-		$user_dir_base   = substr( $user_hash, 4 );
-		$user_dir_path   = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
-
+		// 1. Calculate URL Hash
 		$host      = strtolower( $_SERVER['HTTP_HOST'] ?? '' );
 		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
 		$uri       = strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
@@ -363,10 +362,20 @@ final class Cache_Hive_Advanced_Cache {
 		$cache_key = $scheme . '://' . $host . $uri;
 		$url_hash  = md5( $cache_key );
 
-		$file_suffix = $this->is_mobile ? '-mobile' : '';
-		$file_name   = $url_hash . $file_suffix . '.cache';
+		// 2. Calculate User Hash
+		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
+		$user_hash = md5( $this->username . $auth_key );
 
-		return $user_dir_path . '/' . $file_name;
+		// 3. Build Path
+		$url_l1       = substr( $url_hash, 0, 2 );
+		$url_l2       = substr( $url_hash, 2, 2 );
+		$url_rem      = substr( $url_hash, 4 );
+		$url_dir_path = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $url_l1 . '/' . $url_l2 . '/' . $url_rem;
+
+		$file_suffix = $this->is_mobile ? '-mobile' : '';
+		$file_name   = $user_hash . $file_suffix . '.cache';
+
+		return $url_dir_path . '/' . $file_name;
 	}
 
 

@@ -244,52 +244,22 @@ final class Cache_Hive_Purge {
 			}
 		}
 
-		// --- 2. Purge Private Cache via Sharded Pointer Index ---
+		// --- 2. Purge Private Cache ---
+		// New Structure: /private/user_cache/{url_l1}/{url_l2}/{url_rem}/...
 		$url_rem         = substr( $url_hash, 4 );
-		$base_index_path = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}";
+		$private_url_dir = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}";
 
-		if ( ! is_dir( $base_index_path ) ) {
-			return; // No private cache exists for this URL.
+		if ( is_dir( $private_url_dir ) ) {
+			self::delete_directory( $private_url_dir );
 		}
 
-		try {
-			// Iterate through the 256x256 sharded user directories.
-			$iterator = new RecursiveIteratorIterator(
-				new RecursiveDirectoryIterator( $base_index_path, RecursiveDirectoryIterator::SKIP_DOTS ),
-				RecursiveIteratorIterator::SELF_FIRST
-			);
-
-			foreach ( $iterator as $file ) {
-				if ( ! $file->isFile() || '.pointer' !== substr( $file->getFilename(), -8 ) ) {
-					continue;
-				}
-
-				// Reconstruct the user hash from the pointer file's path and name.
-				$user_rem  = str_replace( '.pointer', '', $file->getFilename() );
-				$user_l2   = basename( $file->getPath() );
-				$user_l1   = basename( dirname( $file->getPath() ) );
-				$user_hash = $user_l1 . $user_l2 . $user_rem;
-
-				// Construct the direct path to the user's real cache file.
-				$user_dir_path     = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$user_l1}/{$user_l2}/{$user_rem}";
-				$real_cache_prefix = "{$user_dir_path}/{$url_hash}";
-
-				// Delete the cache file and its mobile variant, plus their meta files.
-				@unlink( $real_cache_prefix . '.cache' );
-				@unlink( $real_cache_prefix . '.cache.meta' );
-				@unlink( $real_cache_prefix . '-mobile.cache' );
-				@unlink( $real_cache_prefix . '-mobile.cache.meta' );
-
-				// Delete the pointer file itself.
-				@unlink( $file->getRealPath() );
-			}
-
-			// Clean up the now-empty index directories.
-			self::delete_directory( $base_index_path );
-
-		} catch ( \Exception $e ) {
-			// Ignore errors during iteration.
-		}
+		// Clean up the Database Index.
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'cache_hive_private_index';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->query(
+			$wpdb->prepare( "DELETE FROM {$wpdb->prefix}cache_hive_private_index WHERE url_hash = %s", $url_hash )
+		);
 	}
 
 
@@ -314,10 +284,7 @@ final class Cache_Hive_Purge {
 
 	/**
 	 * Purges the entire private cache for a specific user ID.
-	 * This involves deleting their specific user_cache directory.
-	 * Note: This will leave dangling pointer files in the url_index, which is acceptable.
-	 * They are harmless and will be cleaned up if/when the corresponding URLs are purged.
-	 * A full scan of the url_index to find and delete them would be too slow.
+	 * Moves from O(N) URL scanning to O(1) DB lookup.
 	 *
 	 * @param int $user_id The user ID whose private cache should be purged.
 	 */
@@ -334,14 +301,39 @@ final class Cache_Hive_Purge {
 		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
 		$user_hash = md5( $username . $auth_key );
 
-		$user_l1       = substr( $user_hash, 0, 2 );
-		$user_l2       = substr( $user_hash, 2, 2 );
-		$user_rem      = substr( $user_hash, 4 );
-		$user_dir_path = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$user_l1}/{$user_l2}/{$user_rem}";
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'cache_hive_private_index';
 
-		if ( is_dir( $user_dir_path ) ) {
-			self::delete_directory( $user_dir_path );
+		// 1. Get all URLs this user has visited from the index.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$urls = $wpdb->get_col(
+			$wpdb->prepare( "SELECT url_hash FROM {$wpdb->prefix}cache_hive_private_index WHERE user_hash = %s", $user_hash )
+		);
+
+		if ( empty( $urls ) ) {
+			return;
 		}
+
+		// 2. Delete the actual files for each URL.
+		foreach ( $urls as $url_hash ) {
+			$url_l1  = substr( $url_hash, 0, 2 );
+			$url_l2  = substr( $url_hash, 2, 2 );
+			$url_rem = substr( $url_hash, 4 );
+
+			$url_dir_path = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}";
+			$file_prefix  = "{$url_dir_path}/{$user_hash}";
+
+			@unlink( $file_prefix . '.cache' );
+			@unlink( $file_prefix . '.cache.meta' );
+			@unlink( $file_prefix . '-mobile.cache' );
+			@unlink( $file_prefix . '-mobile.cache.meta' );
+		}
+
+		// 3. Clean up the index.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->query(
+			$wpdb->prepare( "DELETE FROM {$wpdb->prefix}cache_hive_private_index WHERE user_hash = %s", $user_hash )
+		);
 	}
 
 	/**

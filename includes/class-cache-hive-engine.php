@@ -117,7 +117,24 @@ final class Cache_Hive_Engine {
 			if ( false !== $optimized_buffer ) {
 				// If this was a private cache, create the pointer file for purging.
 				if ( $is_private_cache ) {
-					self::create_pointer_file();
+					// We need the hashes again to record the index.
+					// This is slightly inefficient but keeps the method signature clean.
+					// Or we could have get_private_cache_path return metadata.
+					// For now, let's recalculate simply.
+					$user      = \wp_get_current_user();
+					$username  = $user->user_login;
+					$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
+					$user_hash = \md5( $username . $auth_key );
+
+					$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
+					$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
+					$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
+					$uri       = \rtrim( $uri, '/' );
+					$uri       = empty( $uri ) ? '/' : $uri;
+					$cache_key = $scheme . '://' . $host . $uri;
+					$url_hash  = \md5( $cache_key );
+
+					self::record_private_cache_index( $user_hash, $url_hash );
 				}
 
 				if ( ! headers_sent() ) {
@@ -170,20 +187,24 @@ final class Cache_Hive_Engine {
 	 *
 	 * @return string|null The path to the real cache file, or null on failure.
 	 */
+	/**
+	 * Generates the primary storage path for a private cache file.
+	 * Path: /private/user_cache/{user_L1}/{user_L2}/{url_hash}/{user_hash}.cache
+	 * Note: We now group by URL first (roughly) to allow easy URL purging.
+	 * Wait, no. The request is URL -> User.
+	 * So /private/user_cache/{url_L1}/{url_L2}/{url_rem}/{user_hash}.cache
+	 * But we want to reuse existing constants if possible.
+	 * Let's stick to the plan: /private/user_cache/{url_L1}/{url_L2}/{url_remainder}/{user_hash}.cache
+	 *
+	 * @return string|null The path to the real cache file, or null on failure.
+	 */
 	private static function get_private_cache_path() {
 		$user = \wp_get_current_user();
 		if ( ! $user || ! $user->ID > 0 || empty( $user->user_login ) ) {
 			return null;
 		}
-		$username  = $user->user_login;
-		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
-		$user_hash = \md5( $username . $auth_key );
 
-		$user_level1_dir = \substr( $user_hash, 0, 2 );
-		$user_level2_dir = \substr( $user_hash, 2, 2 );
-		$user_dir_base   = \substr( $user_hash, 4 );
-		$user_dir_path   = \CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
-
+		// 1. Calculate URL Hash
 		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
 		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
 		$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
@@ -192,60 +213,43 @@ final class Cache_Hive_Engine {
 		$cache_key = $scheme . '://' . $host . $uri;
 		$url_hash  = \md5( $cache_key );
 
-		$file_suffix = self::is_mobile() ? '-mobile' : '';
-		$file_name   = $url_hash . $file_suffix . '.cache';
+		// 2. Calculate User Hash
+		$username  = $user->user_login;
+		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
+		$user_hash = \md5( $username . $auth_key );
 
-		return $user_dir_path . '/' . $file_name;
+		// 3. Build Path: .../public_structure/{user_hash}.cache
+		$url_l1       = \substr( $url_hash, 0, 2 );
+		$url_l2       = \substr( $url_hash, 2, 2 );
+		$url_rem      = \substr( $url_hash, 4 );
+		$url_dir_path = \CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $url_l1 . '/' . $url_l2 . '/' . $url_rem;
+
+		$file_suffix = self::is_mobile() ? '-mobile' : '';
+		$file_name   = $user_hash . $file_suffix . '.cache';
+
+		return $url_dir_path . '/' . $file_name;
 	}
 
 	/**
-	 * Creates the sharded pointer file for the current user and URL.
-	 * This is the core of the new scalable purge index.
+	 * Records the User-URL relationship in the database index.
 	 *
-	 * @return bool True on success, false on failure.
+	 * @param string $user_hash The user hash.
+	 * @param string $url_hash  The URL hash.
+	 * @return bool|int False on failure, number of rows affected on success.
 	 */
-	private static function create_pointer_file() {
-		$user = \wp_get_current_user();
-		if ( ! $user || ! $user->ID > 0 || empty( $user->user_login ) ) {
-			return false;
-		}
+	private static function record_private_cache_index( $user_hash, $url_hash ) {
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'cache_hive_private_index';
 
-		// 1. Get User Hash (same logic as cache path)
-		$username  = $user->user_login;
-		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
-		$user_hash = \md5( $username . $auth_key );
-
-		// 2. Get URL Hash (same logic as cache path)
-		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
-		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
-		$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
-		$uri       = \rtrim( $uri, '/' );
-		$uri       = empty( $uri ) ? '/' : $uri;
-		$cache_key = $scheme . '://' . $host . $uri;
-		$url_hash  = \md5( $cache_key );
-
-		// 3. Build the fully sharded path for the pointer file.
-		$url_l1  = \substr( $url_hash, 0, 2 );
-		$url_l2  = \substr( $url_hash, 2, 2 );
-		$url_rem = \substr( $url_hash, 4 );
-
-		$user_l1  = \substr( $user_hash, 0, 2 );
-		$user_l2  = \substr( $user_hash, 2, 2 );
-		$user_rem = \substr( $user_hash, 4 );
-
-		$pointer_dir_path = \CACHE_HIVE_PRIVATE_URL_INDEX_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}/{$user_l1}/{$user_l2}";
-		$pointer_file     = $pointer_dir_path . "/{$user_rem}.pointer";
-
-		// 4. Create the directory if it doesn't exist.
-		if ( ! is_dir( $pointer_dir_path ) ) {
-			// Non-silenced mkdir with proper error checking.
-			if ( ! \mkdir( $pointer_dir_path, 0755, true ) ) {
-				return false; // Failed to create directory.
-			}
-		}
-
-		// 5. Create the empty pointer file.
-		return \touch( $pointer_file );
+		// Use INSERT IGNORE to avoid errors on duplicate entries (which are fine).
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return $wpdb->query(
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->prefix}cache_hive_private_index (user_hash, url_hash) VALUES (%s, %s)",
+				$user_hash,
+				$url_hash
+			)
+		);
 	}
 
 
