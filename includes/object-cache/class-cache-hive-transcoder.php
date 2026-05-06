@@ -94,7 +94,7 @@ final class Cache_Hive_Transcoder {
 		if ( 'igbinary' === $this->serializer ) {
 			try {
 				$value = igbinary_unserialize( $serialized_data );
-			} catch ( Exception $e ) {
+			} catch ( \Throwable $e ) {
 				$value = false;
 			}
 		} else {
