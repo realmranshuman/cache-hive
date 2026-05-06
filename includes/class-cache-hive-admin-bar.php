@@ -94,6 +94,18 @@ final class Cache_Hive_Admin_Bar {
 			)
 		);
 
+		$wp_admin_bar->add_node(
+			array(
+				'id'     => 'cache-hive-purge-private-cache',
+				'parent' => 'cache-hive',
+				'title'  => esc_html__( 'Purge Private Cache', 'cache-hive' ) . $hourglass_icon,
+				'href'   => '#',
+				'meta'   => array(
+					'class' => 'cache-hive-purge-action',
+				),
+			)
+		);
+
 		if ( Cache_Hive_Settings::get( 'object_cache_enabled', false ) ) {
 			$wp_admin_bar->add_node(
 				array(

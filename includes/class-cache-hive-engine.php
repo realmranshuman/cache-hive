@@ -115,11 +115,6 @@ final class Cache_Hive_Engine {
 			$optimized_buffer = Cache_Hive_Disk::cache_page( $buffer, $cache_file );
 
 			if ( false !== $optimized_buffer ) {
-				// If this was a private cache, create the pointer file for purging.
-				if ( $is_private_cache ) {
-					self::create_pointer_file();
-				}
-
 				if ( ! headers_sent() ) {
 					header( 'X-Cache-Hive-Engine: Miss (Generated)' );
 				}
@@ -179,11 +174,6 @@ final class Cache_Hive_Engine {
 		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
 		$user_hash = \md5( $username . $auth_key );
 
-		$user_level1_dir = \substr( $user_hash, 0, 2 );
-		$user_level2_dir = \substr( $user_hash, 2, 2 );
-		$user_dir_base   = \substr( $user_hash, 4 );
-		$user_dir_path   = \CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $user_level1_dir . '/' . $user_level2_dir . '/' . $user_dir_base;
-
 		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
 		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
 		$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
@@ -192,62 +182,17 @@ final class Cache_Hive_Engine {
 		$cache_key = $scheme . '://' . $host . $uri;
 		$url_hash  = \md5( $cache_key );
 
-		$file_suffix = self::is_mobile() ? '-mobile' : '';
-		$file_name   = $url_hash . $file_suffix . '.cache';
-
-		return $user_dir_path . '/' . $file_name;
-	}
-
-	/**
-	 * Creates the sharded pointer file for the current user and URL.
-	 * This is the core of the new scalable purge index.
-	 *
-	 * @return bool True on success, false on failure.
-	 */
-	private static function create_pointer_file() {
-		$user = \wp_get_current_user();
-		if ( ! $user || ! $user->ID > 0 || empty( $user->user_login ) ) {
-			return false;
-		}
-
-		// 1. Get User Hash (same logic as cache path)
-		$username  = $user->user_login;
-		$auth_key  = \defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
-		$user_hash = \md5( $username . $auth_key );
-
-		// 2. Get URL Hash (same logic as cache path)
-		$host      = \strtolower( $_SERVER['HTTP_HOST'] ?? '' );
-		$scheme    = ( isset( $_SERVER['HTTPS'] ) && 'on' === $_SERVER['HTTPS'] ) ? 'https' : 'http';
-		$uri       = \strtok( $_SERVER['REQUEST_URI'] ?? '', '?' );
-		$uri       = \rtrim( $uri, '/' );
-		$uri       = empty( $uri ) ? '/' : $uri;
-		$cache_key = $scheme . '://' . $host . $uri;
-		$url_hash  = \md5( $cache_key );
-
-		// 3. Build the fully sharded path for the pointer file.
 		$url_l1  = \substr( $url_hash, 0, 2 );
 		$url_l2  = \substr( $url_hash, 2, 2 );
 		$url_rem = \substr( $url_hash, 4 );
 
-		$user_l1  = \substr( $user_hash, 0, 2 );
-		$user_l2  = \substr( $user_hash, 2, 2 );
-		$user_rem = \substr( $user_hash, 4 );
+		$dir_path = \CACHE_HIVE_PRIVATE_USER_CACHE_DIR . '/' . $url_l1 . '/' . $url_l2 . '/' . $url_rem;
 
-		$pointer_dir_path = \CACHE_HIVE_PRIVATE_URL_INDEX_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}/{$user_l1}/{$user_l2}";
-		$pointer_file     = $pointer_dir_path . "/{$user_rem}.pointer";
+		$file_suffix = self::is_mobile() ? '-mobile' : '';
+		$file_name   = $user_hash . $file_suffix . '.cache';
 
-		// 4. Create the directory if it doesn't exist.
-		if ( ! is_dir( $pointer_dir_path ) ) {
-			// Non-silenced mkdir with proper error checking.
-			if ( ! \mkdir( $pointer_dir_path, 0755, true ) ) {
-				return false; // Failed to create directory.
-			}
-		}
-
-		// 5. Create the empty pointer file.
-		return \touch( $pointer_file );
+		return $dir_path . '/' . $file_name;
 	}
-
 
 	/**
 	 * Checks if the current request is from a mobile user agent.

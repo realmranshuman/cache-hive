@@ -109,7 +109,7 @@ final class Cache_Hive_Lifecycle {
 	 * @since 1.1.0
 	 */
 	private static function setup_site_directories() {
-		$dirs_to_create = array( \CACHE_HIVE_BASE_CACHE_DIR, \CACHE_HIVE_PUBLIC_CACHE_DIR, \CACHE_HIVE_PRIVATE_CACHE_DIR, \CACHE_HIVE_PRIVATE_USER_CACHE_DIR, \CACHE_HIVE_PRIVATE_URL_INDEX_DIR, \CACHE_HIVE_IMAGE_CACHE_DIR, \CACHE_HIVE_CONFIG_DIR );
+		$dirs_to_create = array( \CACHE_HIVE_BASE_CACHE_DIR, \CACHE_HIVE_PUBLIC_CACHE_DIR, \CACHE_HIVE_PRIVATE_CACHE_DIR, \CACHE_HIVE_PRIVATE_USER_CACHE_DIR, \CACHE_HIVE_IMAGE_CACHE_DIR, \CACHE_HIVE_CONFIG_DIR );
 		foreach ( $dirs_to_create as $dir ) {
 			if ( ! is_dir( $dir ) ) {
 				mkdir( $dir, 0755, true );

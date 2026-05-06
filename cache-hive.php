@@ -83,9 +83,6 @@ if ( ! defined( 'CACHE_HIVE_PRIVATE_CACHE_DIR' ) ) {
 if ( ! defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) ) {
 	define( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR', $base_cache_dir . '/private/user_cache' );
 }
-if ( ! defined( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR' ) ) {
-	define( 'CACHE_HIVE_PRIVATE_URL_INDEX_DIR', $base_cache_dir . '/private/url_index' );
-}
 if ( ! defined( 'CACHE_HIVE_IMAGE_CACHE_DIR' ) ) {
 	define( 'CACHE_HIVE_IMAGE_CACHE_DIR', $base_cache_dir . '/images' );
 }
