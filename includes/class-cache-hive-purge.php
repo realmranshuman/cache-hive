@@ -40,9 +40,6 @@ final class Cache_Hive_Purge {
 		// Purge on theme/plugin/core updates.
 		add_action( 'upgrader_process_complete', array( __CLASS__, 'on_upgrade' ), 10, 2 );
 
-		// Purge when a user's profile is updated (e.g., role change).
-		add_action( 'profile_update', array( __CLASS__, 'purge_user_private_cache' ), 10, 1 );
-
 		// Register custom purge hooks from settings.
 		$custom_hooks = Cache_Hive_Settings::get( 'custom_purge_hooks' );
 		if ( ! empty( $custom_hooks ) && is_array( $custom_hooks ) ) {
@@ -244,103 +241,24 @@ final class Cache_Hive_Purge {
 			}
 		}
 
-		// --- 2. Purge Private Cache via Sharded Pointer Index ---
-		$url_rem         = substr( $url_hash, 4 );
-		$base_index_path = CACHE_HIVE_PRIVATE_URL_INDEX_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}";
+		// --- 2. Purge Private Cache (No Index Needed!) ---
+		$url_rem     = substr( $url_hash, 4 );
+		$private_dir = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$url_l1}/{$url_l2}/{$url_rem}";
 
-		if ( ! is_dir( $base_index_path ) ) {
-			return; // No private cache exists for this URL.
-		}
-
-		try {
-			// Iterate through the 256x256 sharded user directories.
-			$iterator = new RecursiveIteratorIterator(
-				new RecursiveDirectoryIterator( $base_index_path, RecursiveDirectoryIterator::SKIP_DOTS ),
-				RecursiveIteratorIterator::SELF_FIRST
-			);
-
-			foreach ( $iterator as $file ) {
-				if ( ! $file->isFile() || '.pointer' !== substr( $file->getFilename(), -8 ) ) {
-					continue;
-				}
-
-				// Reconstruct the user hash from the pointer file's path and name.
-				$user_rem  = str_replace( '.pointer', '', $file->getFilename() );
-				$user_l2   = basename( $file->getPath() );
-				$user_l1   = basename( dirname( $file->getPath() ) );
-				$user_hash = $user_l1 . $user_l2 . $user_rem;
-
-				// Construct the direct path to the user's real cache file.
-				$user_dir_path     = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$user_l1}/{$user_l2}/{$user_rem}";
-				$real_cache_prefix = "{$user_dir_path}/{$url_hash}";
-
-				// Delete the cache file and its mobile variant, plus their meta files.
-				@unlink( $real_cache_prefix . '.cache' );
-				@unlink( $real_cache_prefix . '.cache.meta' );
-				@unlink( $real_cache_prefix . '-mobile.cache' );
-				@unlink( $real_cache_prefix . '-mobile.cache.meta' );
-
-				// Delete the pointer file itself.
-				@unlink( $file->getRealPath() );
-			}
-
-			// Clean up the now-empty index directories.
-			self::delete_directory( $base_index_path );
-
-		} catch ( \Exception $e ) {
-			// Ignore errors during iteration.
+		if ( is_dir( $private_dir ) ) {
+			self::delete_directory( $private_dir );
 		}
 	}
 
 
 	/**
-	 * Registers hooks for purging private cache on user logout.
-	 */
-	public static function register_hooks() {
-		add_action( 'wp_logout', array( __CLASS__, 'purge_current_user_private_cache' ) );
-	}
-
-	/**
-	 * Purges the private cache for the current user on logout.
-	 */
-	public static function purge_current_user_private_cache() {
-		if ( function_exists( 'wp_get_current_user' ) ) {
-			$user = wp_get_current_user();
-			if ( $user && $user->ID ) {
-				self::purge_user_private_cache( $user->ID );
-			}
-		}
-	}
-
-	/**
-	 * Purges the entire private cache for a specific user ID.
-	 * This involves deleting their specific user_cache directory.
-	 * Note: This will leave dangling pointer files in the url_index, which is acceptable.
-	 * They are harmless and will be cleaned up if/when the corresponding URLs are purged.
-	 * A full scan of the url_index to find and delete them would be too slow.
+	 * Purges all private user cache globally.
 	 *
-	 * @param int $user_id The user ID whose private cache should be purged.
+	 * @since 1.2.0
 	 */
-	public static function purge_user_private_cache( $user_id ) {
-		if ( ! Cache_Hive_Settings::get( 'cache_logged_users' ) ) {
-			return;
-		}
-
-		$user_data = get_userdata( $user_id );
-		if ( ! $user_data || empty( $user_data->user_login ) ) {
-			return;
-		}
-		$username  = $user_data->user_login;
-		$auth_key  = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'cachehive_fallback_key';
-		$user_hash = md5( $username . $auth_key );
-
-		$user_l1       = substr( $user_hash, 0, 2 );
-		$user_l2       = substr( $user_hash, 2, 2 );
-		$user_rem      = substr( $user_hash, 4 );
-		$user_dir_path = CACHE_HIVE_PRIVATE_USER_CACHE_DIR . "/{$user_l1}/{$user_l2}/{$user_rem}";
-
-		if ( is_dir( $user_dir_path ) ) {
-			self::delete_directory( $user_dir_path );
+	public static function purge_private_cache() {
+		if ( defined( 'CACHE_HIVE_PRIVATE_USER_CACHE_DIR' ) && is_dir( CACHE_HIVE_PRIVATE_USER_CACHE_DIR ) ) {
+			self::delete_directory( CACHE_HIVE_PRIVATE_USER_CACHE_DIR );
 		}
 	}
 

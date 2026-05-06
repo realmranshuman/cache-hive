@@ -211,6 +211,16 @@ final class Cache_Hive_REST_API {
 					200
 				);
 
+			case 'purge_private_cache':
+				Cache_Hive_Purge::purge_private_cache();
+				return new \WP_REST_Response(
+					array(
+						'success' => true,
+						'message' => __( 'Private cache purged successfully.', 'cache-hive' ),
+					),
+					200
+				);
+
 			case 'purge_object_cache':
 				Cache_Hive_Purge::purge_object_cache();
 				return new \WP_REST_Response(
